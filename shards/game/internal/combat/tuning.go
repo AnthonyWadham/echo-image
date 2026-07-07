@@ -10,8 +10,7 @@ import "fmt"
 // it, the JSON lives under content/combat/, and cross-feature references (when they come) are by
 // string ID resolved through the catalog — never a Go import into another feature's types.
 type CombatTuning struct {
-	ProjectileDamage   int `json:"projectile_damage"`
-	EnemyContactDamage int `json:"enemy_contact_damage"`
+	ProjectileDamage int `json:"projectile_damage"`
 }
 
 // Name is the data-catalog key used by data.Get[CombatTuning]().
@@ -28,9 +27,6 @@ func (CombatTuning) SingleObject() {}
 func (t CombatTuning) Validate() error {
 	if t.ProjectileDamage < 0 {
 		return fmt.Errorf("combat_tuning: projectile_damage must be >= 0, got %d", t.ProjectileDamage)
-	}
-	if t.EnemyContactDamage < 0 {
-		return fmt.Errorf("combat_tuning: enemy_contact_damage must be >= 0, got %d", t.EnemyContactDamage)
 	}
 	return nil
 }

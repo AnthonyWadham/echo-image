@@ -35,15 +35,17 @@ shards/game/
   main.go                     registration wiring ONLY
   content/    package content   embedded JSON config (go:embed), namespaced content/<feature>/*.json
   internal/
-    physics/  package physics  physics2d plugin wiring, collision categories, body helpers
-    combat/   package combat    Health, collision routing (DamageIntent), damage resolution,
-                                CombatTuning (data.Definition)
-    demo/     package demo       throwaway spawn scene (delete when real spawners land)
+    physics/  package physics  physics2d plugin wiring, collision categories (kind, not team), helpers
+    team/     package team      Team allegiance component + lookup Row (shared cross-cutting primitive)
+    combat/   package combat    Health, kind-based collision routing (DamageIntent) with team-aware
+                                friend/foe, damage resolution, CombatTuning (data.Definition)
+    player/   package player    Player component, Team-tagged invincible Body, dev spawner
 ```
 
-Current dependency direction (must stay acyclic): **demo → combat → physics**. `content` is a
-leaf (imported only by `main.go`); feature packages never import it — they name their JSON file by
-path string in `JSONFile()`.
+Current dependency direction (must stay acyclic): feature packages depend on **physics** and the
+**team** primitive (`player → {physics, team}`, `combat → {physics, team, data}`); `team` imports
+only cardinal. `content` is a leaf (imported only by `main.go`); feature packages never import it —
+they name their JSON file by path string in `JSONFile()`.
 
 ### Conventions when adding systems
 
@@ -54,7 +56,9 @@ path string in `JSONFile()`.
    sub-packages only when a package genuinely gets large (~10+ files), and split **by sub-feature**
    (`combat/status`), **never by layer** (no `components/` `systems/` `events/` trio upfront).
 3. **Descriptive package names, no stutter.** `physics.Register` not `physics.RegisterPhysics`;
-   `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `main.go` import-alias-free.
+   `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `main.go` import-alias-free. The
+   rule targets verb/function stutter; an eponymous type in a single-concept package (`team.Team`,
+   like stdlib `list.List`) is fine.
 4. **A component/event lives in the package that owns it.** Promote to a `shared`/`core` package
    only when ownership is genuinely ambiguous — not preemptively.
 5. **`main.go` is wiring only** — construct the world, register plugins/systems in order, no logic.
@@ -77,11 +81,22 @@ path string in `JSONFile()`.
 - **Corollary:** add new collision effects as **new intents + resolver logic**, not inline
   mutations, to preserve this order-independence.
 
-### Collision filtering
-- Category bits are the collision vocabulary (`physics.CategoryPlayer/Enemy/Projectile/...`).
+### Collision filtering & teams
+- **Category bits describe what a shape IS (its kind)** — `Body`, `Echo`, `Projectile`,
+  `Environment` — never whose side it's on.
 - **Filter at the source with mask bits** so pairs you'll never act on don't even generate events —
   cheaper than classify-and-discard. Two shapes interact only if each one's category is in the
   other's mask.
+- **Team allegiance is NOT a category bit.** "Enemy" is relational (team A's enemies are teams B and
+  C, who aren't allies of each other) and teams are assigned dynamically at match start — you can't
+  bake that into a fixed bit. Friend/foe is decided **in gameplay code** from `Team`/owner components
+  at collision time. This is *not* the "reverse type lookup" the classification rule forbids — that
+  rule is about KIND (use bits); team is genuine game state (read the component).
+- **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match;
+  friendly-fire prevention (projectile vs an allied Echo) is a **team** match. Echoes and projectiles
+  carry their owner; team derives from owner. A "same-team = don't collide" bit/`groupIndex` scheme
+  is therefore wrong for damage — it would suppress the owner-match self-collision.
+- `groupIndex` *may* later express purely-physical same-team pass-through (movement), never damage rules.
 
 ### System registration ordering (`main.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready

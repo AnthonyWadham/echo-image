@@ -6,8 +6,8 @@ import (
 
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/combat"
-	"echo_image/shards/game/internal/demo"
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/player"
 )
 
 func main() {
@@ -29,8 +29,9 @@ func main() {
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick.
 	physics.Register(world)
 
-	// Demo scene (spawns a projectile + enemy once at init). Remove when real spawners exist.
-	cardinal.RegisterSystem(world, demo.SpawnSystem, cardinal.WithHook(cardinal.Init))
+	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
+	// spawning when matchmaking/clients land.
+	cardinal.RegisterSystem(world, player.DevSpawnSystem, cardinal.WithHook(cardinal.Init))
 
 	// Combat pipeline (Update). Order matters: CollisionSystem emits DamageIntents, then
 	// DamageResolveSystem drains them the same tick. System events are cleared at tick end, so the
