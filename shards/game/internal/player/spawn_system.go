@@ -5,13 +5,14 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/team"
 )
 
 // bodyRow is a player Body: identity + team + the physics2d trio. Deliberately NO Health — the Body
 // is invincible; Health lives on the Echo (added with the echo feature).
 type bodyRow struct {
-	Player    cardinal.Ref[Player]
+	Player    cardinal.Ref[component.Player]
 	Team      cardinal.Ref[team.Team]
 	Transform cardinal.Ref[physics2d.Transform2D]
 	Velocity  cardinal.Ref[physics2d.Velocity2D]
@@ -35,7 +36,7 @@ func spawnBody(state *DevSpawnSystemState, id uint32, nickname string, teamID ui
 	_, b := state.Bodies.Create()
 	// Persona left empty: the Body is unclaimed until the first Move command from a persona claims it
 	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
-	b.Player.Set(Player{ID: id, Nickname: nickname})
+	b.Player.Set(component.Player{ID: id, Nickname: nickname})
 	b.Team.Set(team.Team{ID: teamID})
 	b.Transform.Set(physics2d.Transform2D{Position: pos})
 	b.Velocity.Set(physics2d.Velocity2D{})

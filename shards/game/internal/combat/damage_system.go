@@ -1,6 +1,18 @@
 package combat
 
-import "github.com/argus-labs/world-engine/pkg/cardinal"
+import (
+	"github.com/argus-labs/world-engine/pkg/cardinal"
+
+	"echo_image/shards/game/internal/combat/component"
+)
+
+// Damageable is the search row for entities that carry Health. DamageResolveSystem uses it to look a
+// damage target up by ID; any archetype containing Health matches, regardless of what else the entity
+// has (physics body, AI, etc.). It's a query projection over the Health component, so it lives with
+// the system that queries it, not in the component leaf.
+type Damageable struct {
+	Health cardinal.Ref[component.Health]
+}
 
 // DamageResolveSystemState drains DamageIntents and owns the Health mutation.
 type DamageResolveSystemState struct {

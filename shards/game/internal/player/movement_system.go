@@ -6,11 +6,13 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
+
+	"echo_image/shards/game/internal/player/component"
 )
 
 // movableRow is a player Body we can drive: identity (to match the command persona) + velocity.
 type movableRow struct {
-	Player   cardinal.Ref[Player]
+	Player   cardinal.Ref[component.Player]
 	Velocity cardinal.Ref[physics2d.Velocity2D]
 }
 
