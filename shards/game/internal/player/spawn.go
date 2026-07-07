@@ -33,6 +33,8 @@ func DevSpawnSystem(state *DevSpawnSystemState) {
 
 func spawnBody(state *DevSpawnSystemState, id uint32, nickname string, teamID uint8, pos physics2d.Vec2) {
 	_, b := state.Bodies.Create()
+	// Persona left empty: the Body is unclaimed until the first Move command from a persona claims it
+	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Player.Set(Player{ID: id, Nickname: nickname})
 	b.Team.Set(team.Team{ID: teamID})
 	b.Transform.Set(physics2d.Transform2D{Position: pos})

@@ -1,9 +1,15 @@
 # World Engine Configuration
 # All commented-out keys are optional with sensible defaults.
 
-# These fields are your project identifier.
-organization = "organization"
-project = "project"
+# These fields are your project identifier. Lowercase only — they must match ^[a-z0-9_-]+$ or the
+# operator rejects command/query addresses (e.g. "Argus" fails; "argus" is fine).
+organization = "argus"
+project = "echo-image"
+
+# The gateway is the DEV-auth front door: it serves /dev-auth-sign-in, which the MCP and editor use
+# to mint a persona before sending commands/queries. Without this section no gateway runs and
+# sign-in 404s.
+[gateway]
 
 [[shards]]
 id = "game"

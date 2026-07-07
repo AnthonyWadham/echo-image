@@ -11,6 +11,10 @@
 # Test binary, built with `go test -c`
 *.test
 
+# Stray shard binary: `go build ./shards/game` (no -o) drops a `game` ELF at the repo root.
+# Root-anchored so it never touches the shards/game/ source dir. Prefer `go build -o /tmp/...`.
+/game
+
 # Code coverage profiles and other test artifacts
 *.out
 coverage.*

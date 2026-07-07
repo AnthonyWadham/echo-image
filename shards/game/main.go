@@ -24,6 +24,7 @@ func main() {
 	// the tick loop starts.
 	dataPlugin := data.NewPlugin(data.Config{EmbeddedFS: content.FS})
 	data.Register[combat.CombatTuning](dataPlugin)
+	data.Register[player.MovementTuning](dataPlugin)
 	cardinal.RegisterPlugin(world, dataPlugin)
 
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick.
@@ -32,6 +33,8 @@ func main() {
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
 	cardinal.RegisterSystem(world, player.DevSpawnSystem, cardinal.WithHook(cardinal.Init))
+	// Movement (Update): drains Move commands and drives the sender's Body velocity.
+	cardinal.RegisterSystem(world, player.MovementSystem)
 
 	// Combat pipeline (Update). Order matters: CollisionSystem emits DamageIntents, then
 	// DamageResolveSystem drains them the same tick. System events are cleared at tick end, so the

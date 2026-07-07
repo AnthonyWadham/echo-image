@@ -4,7 +4,10 @@ go 1.26.0
 
 replace github.com/argus-labs/world-engine => ../world-engine
 
-require github.com/argus-labs/world-engine v0.14.0
+require (
+	github.com/argus-labs/world-engine v0.14.0
+	github.com/shamaton/msgpack/v3 v3.0.0
+)
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 // indirect
@@ -76,7 +79,6 @@ require (
 	github.com/posthog/posthog-go v1.5.14 // indirect
 	github.com/rotisserie/eris v0.5.4 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
-	github.com/shamaton/msgpack/v3 v3.0.0 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
