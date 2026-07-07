@@ -47,27 +47,38 @@ one is the *what*.
 
 ```
 shards/game/
-  main.go                     registration wiring ONLY
-  content/    package content   embedded JSON config (go:embed), namespaced content/<feature>/*.json
+  main.go                       registration wiring ONLY
+  content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json
   internal/
-    physics/  package physics  physics2d plugin wiring, collision categories (kind, not team), helpers
-    team/     package team      Team allegiance component + lookup Row (shared cross-cutting primitive)
-    combat/   package combat    Health, kind-based collision routing (DamageIntent) with team-aware
-                                friend/foe, damage resolution, CombatTuning (data.Definition)
-    player/   package player    Player + Team-tagged invincible Body, dev spawner, Move command +
-                                MovementSystem
+    physics/  package physics    plugin wiring (physics.go) + collision category bits
+                                  (categories.go — kind, never team) + NewBody2D helper
+    team/     package team        Team allegiance component + Row — a component-only leaf
+                                  (imports only cardinal; safe to read from any feature)
+    combat/   package combat      collision → damage pipeline (order-dependent):
+                                  collision_system.go → damage_system.go, damage_intent_event.go,
+                                  tuning.go, doc.go
+      component/  package component   Health — combat's damageable-state leaf
+    player/   package player      player Body: spawn_system.go, movement_system.go,
+                                  move_command.go, tuning.go, doc.go
+      component/  package component   Player — player's identity leaf
 ```
 
-Current dependency direction (must stay acyclic): feature packages depend on **physics** and the
-**team** primitive (`player → {physics, team}`, `combat → {physics, team, data}`); `team` imports
-only cardinal. `content` is a leaf (imported only by `main.go`); feature packages never import it —
-they name their JSON file by path string in `JSONFile()`.
+Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
+the **team** primitive, and any **`<feature>/component`** leaves it reads (`player → {physics, team,
+player/component}`, `combat → {physics, team, data, combat/component}`). Every `component` leaf and
+`team` import only cardinal, so they're dependency *sinks* — a feature can read another's components
+without ever closing a cycle. `content` is a leaf too (imported only by `main.go`); feature packages
+never import it — they name their JSON file by path string in `JSONFile()`.
 
 ### Conventions when adding systems
 
 1. **One package per feature, named after the feature.** New enemy code → `internal/enemy`
-   (`package enemy`); player code → `internal/player`. **Never** create a shared `system/` grab-bag
-   — that junk drawer is the exact anti-pattern we're avoiding (see rampage's 32-file `system/`).
+   (`package enemy`); player code → `internal/player`. **Never** create a top-level *layer* bucket —
+   no shared `system/`, `component/`, `event/`, or `command/` dir. That's the exact anti-pattern we're
+   avoiding: rampage has a 32-file `system/` junk drawer *and* a top-level `component/`, so one concept
+   like "game phase" ends up smeared across `component/game_phase.go`, `event/game_phase_events.go`,
+   and two files in `system/` — four files in three dirs, with no `internal/gamephase/` package at
+   all. Every component, system, event, and command lives in its owning feature package.
 2. **Colocate a feature's components, systems, and events in that one package.** Split into
    sub-packages only when a package genuinely gets large (~10+ files), and split **by sub-feature**
    (`combat/status`), **never by layer** (no `components/` `systems/` `events/` trio upfront).
@@ -75,27 +86,93 @@ they name their JSON file by path string in `JSONFile()`.
    `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `main.go` import-alias-free. The
    rule targets verb/function stutter; an eponymous type in a single-concept package (`team.Team`,
    like stdlib `list.List`) is fine.
-4. **A component/event lives in the package that owns it.** Promote to a `shared`/`core` package
-   only when ownership is genuinely ambiguous — not preemptively.
+4. **A component/event lives in the package that owns it.** Promote to a *cross-cutting* `shared`/`core`
+   package only when ownership is genuinely ambiguous — not preemptively. (This is about ambiguous
+   *ownership*; a feature's OWN `component/` leaf is a different, deliberately-early split — see File
+   layout rule 2.)
 5. **`main.go` is wiring only** — construct the world, register plugins/systems in order, no logic.
+
+### File layout within a package
+
+The five rules above govern *directories*; these govern the *files inside* a package, and cover two
+things that must both hold as a feature grows: you can tell a file's role at a glance, and one feature
+can read another's data without risking an import cycle.
+
+1. **Role goes in the filename suffix.** A behavior file is `<concept>_<role>.go` —
+   `movement_system.go`, `move_command.go`, `spawn_system.go`, `damage_intent_event.go`. `ls` alone
+   tells you what each file is; you never open `move.go` and `movement.go` to find out one's a command
+   and the other's a system. Config definitions are `tuning.go` (`<concept>_tuning.go` when a feature
+   has several); the package doc is `doc.go` or the namesake file. A search Row / query projection
+   lives in the system file that uses it, not its own file.
+2. **Components live in a `component/` leaf sub-package, so any feature can read them without importing
+   systems.** ECS data is a dependency *sink*: `player/component` and `combat/component` (both `package
+   component`) import only the engine. That's what lets a future `enemy` read `component.Player` or
+   attach `component.Health` with **zero** risk of an import cycle — the failure that bites hard the
+   first time two features reference each other's state. The leaf holds component *types* only — rows,
+   systems, events, commands, and tunings stay in the behavior package.
+   - **This is NOT the "split by layer" anti-pattern.** Separating *data* (a genuine leaf) from
+     *behavior* is a real dependency boundary; splitting *behavior* into `systems/`/`events/` dirs is
+     the cosmetic layering we still reject (directory rule 2).
+   - **A component-only feature skips the sub-package** — the feature package *is* the leaf
+     (`team.Team`; the bits in `physics/categories.go`). Components graduate into `component/` only
+     once the feature also owns systems a cross-feature importer would otherwise drag in.
+   - **Cross-importing two features' components** takes a one-word import alias (both are `package
+     component`): `import playercomp "…/player/component"`. That alias lives in the importing *system*
+     file — `main.go` imports feature packages, never their component leaves, so it stays alias-free.
+   - **Yes, the leaf goes in up front, before a second importer exists — deliberately.** This is the one
+     place we promote data *preemptively*: in ECS a component being read cross-feature is near-certain,
+     and retrofitting the leaf later means touching every importer. The leaf is one file and the
+     boundary is real, so we pay it early. (Contrast the `shared`/`core` promotion in directory rule 4,
+     which stays on-demand because cross-cutting *ownership* is genuinely uncertain until it happens.)
+3. **Split a concept's system into its own file only when two systems' registration ORDER is
+   load-bearing** — then the file boundary documents the pipeline. `collision_system.go` (classify →
+   emit `DamageIntent`) and `damage_system.go` (drain → the one place `Health` mutates) are separate
+   *because* `CollisionSystem` must register before `DamageResolveSystem`. Don't split just because a
+   file feels big.
+4. **A cross-cutting vocabulary many features import gets its own file, even when small**
+   (`physics/categories.go` — the collision category bits).
+5. **The package's front-door doc comment has one home:** a dedicated `doc.go` (`combat`, `player`),
+   or the namesake file for a component-only package (`team.go`). Never leave it on whichever file
+   sorts first.
 
 ---
 
 ## Architectural decisions
 
-### Collision handling: deferred intents, single classification pass
+### Collision handling: deferred intents, per-feature contact reactions
 - `physics2d` emits `ContactBegin/End` + `TriggerBegin/End` system events each tick (on PreUpdate).
-- **One** system (`combat.CollisionSystem`, Update) does a **single pass**, classifies each contact
-  by **Box2D category bits** (integer compare — *never* a reverse ECS type lookup), and **emits
-  intents** (`combat.DamageIntent`). It never mutates game state.
+  Physics resolves the *physical* contact (blocking, sliding) on its own; these events exist so
+  gameplay can react to what touched. They carry category bits, not meaning.
+- **A feature that reacts to contacts declares its own receiver** over that broadcast stream and does a
+  **single pass** for *its* kinds only, matching by **category bits** (`physics.Match` — integer
+  compare, *never* a reverse ECS type lookup) and **emitting intents**. `combat.CollisionSystem` is one
+  such reactor: it picks out damage-producing pairs and emits `combat.DamageIntent`, ignoring every
+  other contact. It is **not** a global router — don't teach it about pickups/triggers; give those
+  features their own reactor over the same stream.
+- **Know the cost of this model** (it's the price of not coupling combat to every contact kind): the
+  engine keeps ONE shared event queue per type, so each reactor re-scans the *whole* contact stream —
+  N reactors × C contacts/tick = **O(N·C)** `Match` calls where a single global router would do C.
+  Fine while reactors are few; if contact volume ever dominates, add a **narrowphase** (a dedicated
+  projectile-vs-target query) rather than more broadcast filters. And because no layer sees the whole
+  stream: a contact two reactors both match is handled by both (safe *only* because effects are
+  deferred commutative intents — confirm the double-handling is intended), and a contact **no** reactor
+  claims is silently dropped.
+- **There is no global "unclassified contact" net** — a reactor can't be one (it legitimately sees
+  mostly other features' contacts). To confirm masks are wired during bring-up, add a **Debug-level
+  contact logger in `physics`** (the gameplay-blind layer that sees *every* contact) and register it
+  only while debugging — do not recreate a catch-all inside a feature.
+- **Why the reaction lives in the feature, not physics:** deciding a contact's *meaning* needs gameplay
+  state — `Team` (friend/foe, via `team.SameTeam`), owner, tuning. `physics` is a reusable, gameplay-
+  blind plugin and must never import `team`/`combat`, so the meaning can only be decided up in feature
+  code. Physics knows *that* shapes touched; the feature knows what that touch *does*.
 - `combat.DamageResolveSystem` (Update, registered *after*) drains intents and is the **only** place
   `Health` changes.
-- **Why:** because all mutation is deferred to one resolver and damage sums commutatively, the order
-  contacts arrive in (and whether solid contacts and sensor triggers interleave) is irrelevant. So
-  we process everything in one interleaved pass with **no per-type event fan-out**. (Rampage
-  re-emitted a typed event per collision kind to control ordering; deferral makes that unnecessary.)
-- **Corollary:** add new collision effects as **new intents + resolver logic**, not inline
-  mutations, to preserve this order-independence.
+- **Why deferral:** because all mutation is deferred to the resolver and damage sums commutatively, the
+  order contacts arrive in — and whether solid contacts and sensor triggers interleave, or which
+  reactor emitted first — is irrelevant, so there's **no per-type event fan-out**. (Rampage re-emitted
+  a typed event per collision kind to control ordering; deferral makes that unnecessary.)
+- **Corollaries:** add a new collision *effect* as **new intents + resolver logic**, not an inline
+  mutation; add a new *kind* of contact reaction as a **new feature reactor**, not a branch in combat's.
 
 ### Collision filtering & teams
 - **Category bits describe what a shape IS (its kind)** — `Body`, `Echo`, `Projectile`,
@@ -106,7 +183,11 @@ they name their JSON file by path string in `JSONFile()`.
 - **Team allegiance is NOT a category bit.** "Enemy" is relational (team A's enemies are teams B and
   C, who aren't allies of each other) and teams are assigned dynamically at match start — you can't
   bake that into a fixed bit. Friend/foe is decided **in gameplay code** from `Team`/owner components
-  at collision time. This is *not* the "reverse type lookup" the classification rule forbids — that
+  at collision time — via the shared `team.SameTeam(search, a, b)` helper. Note `SameTeam` is a
+  friendly-fire *suppression* predicate (unknown allegiance ⇒ not allied); enemy *selection*
+  (damage-all-enemies) is **not** just `!SameTeam` — it needs its own predicate so teamless neutral
+  geometry isn't wrongly treated as a target. This is *not* the "reverse type lookup" the classification
+  rule forbids — that
   rule is about KIND (use bits); team is genuine game state (read the component).
 - **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match;
   friendly-fire prevention (projectile vs an allied Echo) is a **team** match. Echoes and projectiles

@@ -1,5 +1,5 @@
 // Package physics wires the physics2d plugin into the world and owns the collision vocabulary
-// (category bits) and body-construction helpers that gameplay packages build on.
+// (category bits, in categories.go) and the body-construction helpers that gameplay packages build on.
 package physics
 
 import (
@@ -9,18 +9,6 @@ import (
 
 // ServerTickRateHz is the fixed simulation rate shared by Cardinal ticks and the physics2d step.
 const ServerTickRateHz = 20
-
-// Collision category bits describe what a shape IS (its kind) — never its team. A shape's
-// CategoryBits says "what I am", MaskBits says "what I collide with"; two shapes interact only if
-// each one's category is in the other's mask (the cheapest place to stop pairs you'd otherwise
-// classify and discard). Friend/foe is decided from Team components in gameplay code, NOT baked into
-// these bits (see CLAUDE.md → Collision filtering & teams). Add a bit here per new kind.
-const (
-	CategoryEnvironment uint64 = 1 << iota // static walls / obstacles
-	CategoryBody                           // player Body: invincible, blocks shots, never a damage target
-	CategoryEcho                           // player Echo: carries Health; the damageable target
-	CategoryProjectile                     // shots
-)
 
 // Register wires the physics2d plugin (Box2D-backed 2D simulation) into the world. The plugin
 // registers its own systems: an Init rebuild and a PreUpdate step that runs before game logic
