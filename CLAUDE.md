@@ -7,6 +7,10 @@ This file records the conventions and architectural decisions we've committed to
 built the same way as the game grows. Read it before adding a system; update it when we make a new
 decision.
 
+**Game design** — what we're actually building and why — lives in [`docs/GDD.md`](docs/GDD.md).
+Read it for gameplay context (the Echo mechanic, win conditions, etc.); this file is the *how*, that
+one is the *what*.
+
 ---
 
 ## Build & run
