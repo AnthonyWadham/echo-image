@@ -1,0 +1,38 @@
+# If you prefer the allow list template instead of the deny list, see community template:
+# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Dependency directories.
+# vendor/ is intentionally ignored: the physics2d plugin compiles Box2D via cgo using relative
+# #include paths that don't survive `go mod vendor`, so we never commit a vendor tree and always
+# build with `-mod=mod`. See CLAUDE.md -> Build & run.
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# Editor/IDE
+# .idea/
+# .vscode/
+
+# Claude Code: machine-local permissions only. Shared .claude/commands/ IS committed.
+.claude/settings.local.json
