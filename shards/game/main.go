@@ -42,10 +42,15 @@ func main() {
 	// Movement (Update): drains Move commands and drives the sender's Body velocity.
 	cardinal.RegisterSystem(world, player.MovementSystem)
 
-	// Combat pipeline (Update). Order matters: CollisionSystem emits DamageIntents, then
-	// DamageResolveSystem drains them the same tick. System events are cleared at tick end, so the
-	// emitter must be registered before the receiver.
+	// Echo replay (Update): record the Body's post-step pose and drive the Echo to the pose from
+	// delay_seconds ago, ticking down each Echo's anti-camp warmup. Registered before AntiCampSystem so
+	// the Echo's transform and warmup are current when anti-camp reads them.
+	cardinal.RegisterSystem(world, echo.ReplaySystem)
+
+	// Combat pipeline (Update). Order matters: the emitters (CollisionSystem, AntiCampSystem) run before
+	// DamageResolveSystem drains their intents the same tick — system events are cleared at tick end.
 	cardinal.RegisterSystem(world, combat.CollisionSystem)
+	cardinal.RegisterSystem(world, combat.AntiCampSystem)
 	cardinal.RegisterSystem(world, combat.DamageResolveSystem)
 
 	world.StartGame()

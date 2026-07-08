@@ -11,11 +11,9 @@ import (
 // data.Get[EchoTuning](). Durations are in SECONDS and converted to ticks at runtime so the mechanic is
 // tick-rate independent (see CLAUDE.md → Tick-rate independence). Singleton.
 type EchoTuning struct {
-	DelaySeconds        float64 `json:"delay_seconds"`          // how far the Echo trails the Body
-	MaxHP               float64 `json:"max_hp"`                 // Echo starting / max health
-	HitRadius           float64 `json:"hit_radius"`             // Echo collider radius — its hurtbox, in world units
-	SelfDamagePerSecond float64 `json:"self_damage_per_second"` // anti-camp DoT while overlapping own Body (M3)
-	OverlapRadius       float64 `json:"overlap_radius"`         // Echo↔Body distance under which anti-camp bites (M3)
+	DelaySeconds float64 `json:"delay_seconds"` // how far the Echo trails the Body
+	MaxHP        float64 `json:"max_hp"`        // Echo starting / max health
+	HitRadius    float64 `json:"hit_radius"`    // Echo collider radius — its hurtbox, in world units
 }
 
 // Name is the data-catalog key used by data.Get[EchoTuning]().
@@ -34,8 +32,8 @@ func (t EchoTuning) DelayTicks() int {
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t EchoTuning) Validate() error {
-	if t.DelaySeconds < 0 || t.MaxHP <= 0 || t.HitRadius <= 0 || t.SelfDamagePerSecond < 0 || t.OverlapRadius < 0 {
-		return fmt.Errorf("echo_tuning: need delay/self_damage/overlap >= 0, max_hp > 0, hit_radius > 0, got %+v", t)
+	if t.DelaySeconds < 0 || t.MaxHP <= 0 || t.HitRadius <= 0 {
+		return fmt.Errorf("echo_tuning: need delay_seconds >= 0, max_hp > 0, hit_radius > 0, got %+v", t)
 	}
 	if d := t.DelayTicks(); d < 1 {
 		return fmt.Errorf("echo_tuning: delay_seconds %.3f rounds to %d ticks at %d Hz; need >= 1 tick",
