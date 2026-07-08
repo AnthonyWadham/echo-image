@@ -139,6 +139,28 @@ can read another's data without risking an import cycle.
 
 ## Architectural decisions
 
+### Tick-rate independence (fixed-timestep sim)
+The simulation must be **tick-rate agnostic**: changing `TickRate` changes only how finely we sample
+time — never how fast the game plays or how hard anything hits. A build at 60 Hz must be the *same
+game* as one at 20 Hz, just smoother. Every system honors this:
+- **Rates are per-second, scaled by `dt` at the point of use.** `dt = 1 / physics.ServerTickRateHz`.
+  Never bake a per-*tick* constant. A damage-over-time of 25/s is `25 * dt` this tick, not a hardcoded
+  `1.25`. Movement already complies: `Velocity2D` is world-units-per-*second* and Box2D integrates at
+  `dt`, so units/second is constant across tick rates — a faster tick rate must never move anything
+  faster.
+- **Durations & delays are configured in seconds and converted to ticks** (`ticks = round(seconds *
+  TickRate)`) — never stored as a raw tick count. The Echo delay, cooldowns, and any ring-buffer
+  sizing all derive from seconds so they hold their wall-clock meaning when the rate changes.
+- **Discrete vs continuous.** A discrete event (a projectile hit, a spawn) applies a fixed amount and is
+  already rate-independent. A continuous effect (DoT, regen, movement) must scale by `dt`.
+- **Integer HP vs sub-unit-per-tick.** `dt`-scaled continuous damage is fractional; if `Health.HP`
+  stays an int, a continuous source must accumulate the fraction and apply whole points as it crosses
+  them — never truncate per tick, or a DoT rounds toward zero at high tick rates. (Switching HP/damage
+  to a float or fixed-point removes the accumulator; decide per the combat model.)
+- **One source of truth for the rate.** Read `physics.ServerTickRateHz` (or a `physics` `dt` helper);
+  never hardcode `20`. `main.go` already feeds it to both the Cardinal `WorldOptions.TickRate` and the
+  physics2d step, so a single edit re-tunes the whole sim.
+
 ### Collision handling: deferred intents, per-feature contact reactions
 - `physics2d` emits `ContactBegin/End` + `TriggerBegin/End` system events each tick (on PreUpdate).
   Physics resolves the *physical* contact (blocking, sliding) on its own; these events exist so

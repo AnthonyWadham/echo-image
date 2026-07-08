@@ -48,8 +48,10 @@ func routeContact(state *CollisionSystemState, tuning CombatTuning, p *physics2d
 		return
 	}
 
-	// Anti-camp (GDD §3): an Echo overlapping its OWN Body self-damages. This is an OWNER match, not a
-	// team match — a teammate's Body touching your Echo is NOT self-damage — so it needs the Echo's
-	// owner ref, added when the Echo entity lands. The kind branch it will use:
-	//   if echo, body, ok := physics.Match(p, physics.CategoryEcho, physics.CategoryBody); ok { ...owner check... }
+	// Anti-camp (GDD §3, an Echo overlapping its OWN Body self-damages) is deliberately NOT handled here.
+	// The Echo (BodyTypeManual) and Body (kinematic) never form a solid contact — physics2d pairs only
+	// dynamic-involved bodies — and the Echo masks only projectiles, so no ContactBegin fires for the
+	// pair; it is also a sustained per-tick effect, not a one-shot begin event. M3 adds it as a per-tick
+	// distance check (dist(Echo, own Body) < radius) that emits a DamageIntent. Do NOT add a
+	// physics.Match(CategoryEcho, CategoryBody) branch here — it would never fire.
 }

@@ -44,8 +44,8 @@ func DamageResolveSystem(state *DamageResolveSystemState) {
 		state.Logger().Debug().
 			Uint32("target", uint32(intent.Target)).
 			Uint32("source", uint32(intent.Source)).
-			Int("amount", intent.Amount).
-			Int("hp", h.HP).
+			Float64("amount", intent.Amount).
+			Float64("hp", h.HP).
 			Msg("damage applied")
 
 		if h.HP <= 0 {

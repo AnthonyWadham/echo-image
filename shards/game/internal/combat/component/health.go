@@ -4,10 +4,13 @@
 // (see CLAUDE.md → File layout within a package).
 package component
 
-// Health is current/max hit points for any entity that can take damage.
+// Health is current/max hit points for any entity that can take damage. Float, not int: continuous
+// effects (the Echo's anti-camp DoT, future heals) apply per-second × dt each tick — a fractional
+// amount that would truncate to zero at high tick rates if HP were integer
+// (see CLAUDE.md → Tick-rate independence).
 type Health struct {
-	HP    int
-	MaxHP int
+	HP    float64
+	MaxHP float64
 }
 
 // Name is the ECS component name.

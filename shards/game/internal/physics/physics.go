@@ -10,6 +10,11 @@ import (
 // ServerTickRateHz is the fixed simulation rate shared by Cardinal ticks and the physics2d step.
 const ServerTickRateHz = 20
 
+// SecondsPerTick is dt — the wall-clock duration of one tick (1 / ServerTickRateHz). Scale per-second
+// rates by this to stay tick-rate independent; never hardcode 0.05 (see CLAUDE.md → Tick-rate
+// independence).
+const SecondsPerTick = 1.0 / float64(ServerTickRateHz)
+
 // Register wires the physics2d plugin (Box2D-backed 2D simulation) into the world. The plugin
 // registers its own systems: an Init rebuild and a PreUpdate step that runs before game logic
 // each tick, so contact/trigger events are ready for gameplay systems on Update.

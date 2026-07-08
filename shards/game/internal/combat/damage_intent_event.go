@@ -13,7 +13,7 @@ import "github.com/argus-labs/world-engine/pkg/cardinal"
 type DamageIntent struct {
 	Target cardinal.EntityID
 	Source cardinal.EntityID
-	Amount int
+	Amount float64
 }
 
 // Name is the system-event name.

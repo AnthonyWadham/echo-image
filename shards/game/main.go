@@ -6,6 +6,7 @@ import (
 
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/combat"
+	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 )
@@ -25,6 +26,7 @@ func main() {
 	dataPlugin := data.NewPlugin(data.Config{EmbeddedFS: content.FS})
 	data.Register[combat.CombatTuning](dataPlugin)
 	data.Register[player.MovementTuning](dataPlugin)
+	data.Register[echo.EchoTuning](dataPlugin)
 	cardinal.RegisterPlugin(world, dataPlugin)
 
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick.
@@ -33,6 +35,10 @@ func main() {
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
 	cardinal.RegisterSystem(world, player.DevSpawnSystem, cardinal.WithHook(cardinal.Init))
+	// Echo (Init, right after DevSpawn): give every Body one Echo that carries its Health. Registered on
+	// Init — not reactive-on-Update — so a destroyed Echo is never resurrected (see echo.SpawnSystem).
+	cardinal.RegisterSystem(world, echo.SpawnSystem, cardinal.WithHook(cardinal.Init))
+
 	// Movement (Update): drains Move commands and drives the sender's Body velocity.
 	cardinal.RegisterSystem(world, player.MovementSystem)
 
