@@ -8,6 +8,7 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo/component"
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/team"
 )
@@ -33,39 +34,43 @@ type echoRow struct {
 	Body      cardinal.Ref[physics2d.PhysicsBody2D]
 }
 
-// SpawnSystemState gives every player Body one Echo at world init.
+// SpawnSystemState spawns one Echo per Body the first time that Body is claimed.
 type SpawnSystemState struct {
 	cardinal.BaseSystemState
+	Claims cardinal.WithSystemEventReceiver[player.BodyClaimed]
 	Bodies cardinal.Contains[bodyRow]
 	Echoes cardinal.Contains[echoRow]
 }
 
-// SpawnSystem creates one Echo per Body, once, on Init (right after DevSpawnSystem). It is deliberately
-// NOT reactive-on-Update: a presence check ("Body has no Echo → spawn one") would RESURRECT a dead Echo
-// the tick after DamageResolveSystem destroys it — the invincible Body survives, so it would look
-// unpaired and get a fresh full-HP Echo, defeating "Echo death = elimination" (GDD §8). Init runs once
-// on a fresh world and NOT on snapshot restore (restore reconstructs the Echoes from state), so there's
-// no resurrection and no re-spawn.
+// SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.MovementSystem
+// applies the Body's first Move command and emits BodyClaimed. Registered on Update, right after
+// MovementSystem, so the claim event is visible the same tick.
 //
-// TODO(matchmaking): when Bodies can join mid-match, Echo spawn + elimination need a dedicated lifecycle
-// (spawn on join; a dead Echo must stay dead) — presence-reactivity is the wrong trigger for it.
+// Claim-triggered (not Init, not presence-reactive) for two reasons:
+//   - No resurrection. A presence check ("Body has no Echo → spawn one") would hand a fresh full-HP Echo
+//     to the invincible Body the tick after DamageResolveSystem destroys the old one, defeating "Echo
+//     death = elimination" (GDD §8). BodyClaimed fires exactly once per Body (Persona is set once and
+//     never cleared), so each Body gets exactly one Echo for the whole match, dead or alive.
+//   - No pre-death. Spawning at Init gave every dev Body an Echo that then warmed up and self-destructed
+//     to anti-camp DoT while the Body sat unclaimed at spawn — so a client connecting seconds later saw
+//     no Echoes. Tying spawn to the claim means an Echo exists only once a live player drives its Body,
+//     appearing fresh (full warmup) the moment they first move.
+//
+// On snapshot restore no BodyClaimed events replay (Bodies are already claimed), so Echoes are rebuilt
+// from saved state and none re-spawn — the no-resurrection guarantee holds across restore too.
+//
+// TODO(matchmaking): when Bodies join mid-match this generalizes cleanly — spawn stays edge-triggered on
+// the join/claim, and a dead Echo still stays dead.
 func SpawnSystem(state *SpawnSystemState) {
-	// Collect Body ids first, then create — don't mutate archetype storage while iterating the search.
-	var bodies []cardinal.EntityID
-	for bodyEID := range state.Bodies.Iter() {
-		bodies = append(bodies, bodyEID)
-	}
-	if len(bodies) == 0 {
-		return
-	}
-
-	tuning := data.Get[EchoTuning]() // catalog loads eagerly at RegisterPlugin, so this is valid on Init
-	for _, bodyEID := range bodies {
-		b, err := state.Bodies.GetByID(bodyEID)
+	for claim := range state.Claims.Iter() {
+		b, err := state.Bodies.GetByID(claim.Body)
 		if err != nil {
-			continue
+			continue // claimed Body vanished the same tick — nothing to shadow
 		}
-		state.spawnEcho(tuning, bodyEID, b)
+		// Read tuning only when a Body is actually claimed (rare) — this Update system runs every tick,
+		// but the common no-claim tick does no work. Eagerly loaded at RegisterPlugin, so always valid.
+		tuning := data.Get[EchoTuning]()
+		state.spawnEcho(tuning, claim.Body, b)
 	}
 }
 

@@ -21,6 +21,7 @@ type MovementSystemState struct {
 	cardinal.BaseSystemState
 	MoveCommands cardinal.WithCommand[Move]
 	Movables     cardinal.Contains[movableRow]
+	Claimed      cardinal.WithSystemEventEmitter[BodyClaimed]
 }
 
 // MovementSystem applies each Move command to the Body owned by the command's authenticated persona,
@@ -29,6 +30,13 @@ type MovementSystemState struct {
 func MovementSystem(state *MovementSystemState) {
 	speed := data.Get[MovementTuning]().MoveSpeed // read config once at system entry, not per command
 	for cmd := range state.MoveCommands.Iter() {
+		if cmd.Persona == "" {
+			// An empty persona matches any unclaimed Body in resolveBody and re-enters the claim branch
+			// every tick (setting Persona="" is a no-op), re-emitting BodyClaimed and spawning a fresh
+			// Echo each time. Authenticated commands always carry a persona; drop the malformed ones.
+			state.Logger().Warn().Msg("move: empty persona, ignoring command")
+			continue
+		}
 		eid, ok := state.resolveBody(cmd.Persona)
 		if !ok {
 			state.Logger().Warn().Str("persona", cmd.Persona).Msg("move: no free player Body to control")
@@ -38,9 +46,12 @@ func MovementSystem(state *MovementSystemState) {
 		if err != nil {
 			continue
 		}
-		if p := row.Player.Get(); p.Persona == "" { // claim a free Body for this persona (dev convenience)
+		if p := row.Player.Get(); p.Persona == "" { // first command from this persona claims a free Body
 			p.Persona = cmd.Persona
 			row.Player.Set(p)
+			// Edge-trigger echo.SpawnSystem: this branch runs once per Body (Persona is never cleared), so
+			// each Body gets exactly one Echo (see echo.SpawnSystem for why spawn is claim-triggered).
+			state.Claimed.Emit(BodyClaimed{Body: eid})
 			state.Logger().Info().Str("persona", cmd.Persona).Uint32("id", p.ID).Msg("player Body claimed")
 		}
 		vx, vy := normalize(cmd.Payload.DirX, cmd.Payload.DirY)

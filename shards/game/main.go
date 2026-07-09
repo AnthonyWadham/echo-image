@@ -35,12 +35,13 @@ func main() {
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
 	cardinal.RegisterSystem(world, player.DevSpawnSystem, cardinal.WithHook(cardinal.Init))
-	// Echo (Init, right after DevSpawn): give every Body one Echo that carries its Health. Registered on
-	// Init — not reactive-on-Update — so a destroyed Echo is never resurrected (see echo.SpawnSystem).
-	cardinal.RegisterSystem(world, echo.SpawnSystem, cardinal.WithHook(cardinal.Init))
-
-	// Movement (Update): drains Move commands and drives the sender's Body velocity.
+	// Movement (Update): drains Move commands, drives the sender's Body velocity, and emits BodyClaimed
+	// the first tick each Body is claimed.
 	cardinal.RegisterSystem(world, player.MovementSystem)
+
+	// Echo spawn (Update, right after Movement so this tick's BodyClaimed is still visible): give a
+	// newly-claimed Body its one Echo carrying its Health. Claim-triggered, not Init — see echo.SpawnSystem.
+	cardinal.RegisterSystem(world, echo.SpawnSystem)
 
 	// Echo replay (Update): record the Body's post-step pose and drive the Echo to the pose from
 	// delay_seconds ago, ticking down each Echo's anti-camp warmup. Registered before AntiCampSystem so
