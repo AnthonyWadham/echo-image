@@ -3,8 +3,7 @@ module echo_image
 go 1.27.1
 
 require (
-	github.com/argus-labs/world-engine v1.0.1
-	github.com/stretchr/testify v1.12.1
+	github.com/argus-labs/world-engine v0.21.0
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -67,12 +66,15 @@ require (
 	github.com/posthog/posthog-go v1.27.1 // indirect
 	github.com/rotisserie/eris v0.5.4 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.46.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.46.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.46.0 // indirect
 	go.opentelemetry.io/otel/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect

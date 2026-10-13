@@ -28,25 +28,26 @@ func (s *MovementSystem) Run(w *cardinal.World) {
 	speed := data.Get[MovementTuning](s.Data).MoveSpeed // read config once at system entry, not per command
 	movables := w.Contains[movableRow]()
 	for cmd := range w.Commands[Move]() {
-		if cmd.Persona == "" {
+		persona, ok := cmd.Player()
+		if !ok || persona == "" {
 			// An empty persona matches any unclaimed Body in resolveBody and re-enters the claim branch
 			// every tick (setting Persona="" is a no-op), re-emitting BodyClaimed and spawning a fresh
-			// Echo each time. Authenticated commands always carry a persona; drop the malformed ones.
-			w.Logger().Warn().Msg("move: empty persona, ignoring command")
+			// Echo each time. Only players move Bodies; drop shard-sent and malformed commands.
+			w.Logger().Warn().Str("sender", cmd.Sender()).Msg("move: not from a player, ignoring command")
 			continue
 		}
-		body, ok := resolveBody(movables, cmd.Persona)
+		body, ok := resolveBody(movables, persona)
 		if !ok {
-			w.Logger().Warn().Str("persona", cmd.Persona).Msg("move: no free player Body to control")
+			w.Logger().Warn().Str("persona", persona).Msg("move: no free player Body to control")
 			continue
 		}
 		if p := body.Get[component.Player](); p.Persona == "" { // first command from this persona claims a free Body
-			p.Persona = cmd.Persona
+			p.Persona = persona
 			body.Set(p)
 			// Edge-trigger echo.SpawnSystem: this branch runs once per Body (Persona is never cleared), so
 			// each Body gets exactly one Echo (see echo.SpawnSystem for why spawn is claim-triggered).
 			w.EmitSystemEvent(BodyClaimed{Body: body.ID()})
-			w.Logger().Info().Str("persona", cmd.Persona).Uint32("id", p.ID).Msg("player Body claimed")
+			w.Logger().Info().Str("persona", persona).Uint32("id", p.ID).Msg("player Body claimed")
 		}
 		vx, vy := normalize(cmd.Payload.DirX, cmd.Payload.DirY)
 		body.Set(physics2d.Velocity2D{Linear: physics2d.Vec2{X: vx * speed, Y: vy * speed}})
