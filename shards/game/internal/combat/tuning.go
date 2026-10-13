@@ -21,9 +21,6 @@ func (CombatTuning) Name() string { return "combat_tuning" }
 // JSONFile is the path within the content embed.FS.
 func (CombatTuning) JSONFile() string { return "combat/tuning.json" }
 
-// SingleObject marks this kind as a single JSON object rather than an array of records.
-func (CombatTuning) SingleObject() {}
-
 // Validate runs at load time; returning an error panics the boot — fail loud on bad content
 // rather than shipping a quietly-broken balance number into the tick loop.
 func (t CombatTuning) Validate() error {

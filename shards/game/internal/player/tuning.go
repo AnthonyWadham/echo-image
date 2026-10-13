@@ -16,9 +16,6 @@ func (MovementTuning) Name() string { return "movement_tuning" }
 // JSONFile is the path within the content embed.FS.
 func (MovementTuning) JSONFile() string { return "player/tuning.json" }
 
-// SingleObject marks this kind as one JSON object rather than an array of records.
-func (MovementTuning) SingleObject() {}
-
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t MovementTuning) Validate() error {
 	if t.MoveSpeed < 0 {

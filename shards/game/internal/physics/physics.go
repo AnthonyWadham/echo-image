@@ -5,6 +5,7 @@ package physics
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
+	"github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
 )
 
 // ServerTickRateHz is the fixed simulation rate shared by Cardinal ticks and the physics2d step.
@@ -22,23 +23,15 @@ const SecondsPerTick = 1.0 / float64(ServerTickRateHz)
 // Gravity is zero for a top-down game (physics is used for collision on the ground plane, not
 // falling). Set Gravity.Y negative for a side-view / platformer feel.
 func Register(world *cardinal.World) {
-	cardinal.RegisterPlugin(world, physics2d.NewPlugin(physics2d.Config{
+	world.RegisterPlugin(physics2d.NewPlugin(physics2d.Config{
 		Gravity:  physics2d.Vec2{X: 0, Y: 0},
 		TickRate: ServerTickRateHz,
 	}))
 }
 
-// NewBody2D returns a PhysicsBody2D with Box2D-compatible defaults (Active, Awake and
-// SleepingAllowed true; GravityScale 1) and the given collider shapes. Mirrors the plugin's
-// component.NewPhysicsBody2D, which isn't re-exported at the physics2d package root. Set fields
-// like Bullet or FixedRotation on the result before writing it to ECS.
+// NewBody2D returns a PhysicsBody2D with the plugin's Box2D defaults (Active, Awake and
+// SleepingAllowed true; GravityScale 1) and the given collider shapes. Set fields like Bullet or
+// FixedRotation on the result before writing it to ECS.
 func NewBody2D(bodyType physics2d.BodyType, shapes ...physics2d.ColliderShape) physics2d.PhysicsBody2D {
-	return physics2d.PhysicsBody2D{
-		BodyType:        bodyType,
-		GravityScale:    1,
-		Active:          true,
-		Awake:           true,
-		SleepingAllowed: true,
-		Shapes:          shapes,
-	}
+	return component.NewPhysicsBody2D(bodyType, shapes...)
 }

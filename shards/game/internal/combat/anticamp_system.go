@@ -12,24 +12,15 @@ import (
 
 // campingEchoRow is an Echo we test for the anti-camp overlap: its identity (Owner + Warmup) and pose.
 type campingEchoRow struct {
-	Echo      cardinal.Ref[echocomp.Echo]
-	Transform cardinal.Ref[physics2d.Transform2D]
+	Echo      echocomp.Echo
+	Transform physics2d.Transform2D
 }
 
 // bodyPoseRow reads an Echo owner's Body pose by id. Player qualifies the match to Bodies only, so
 // GetByID errors cleanly if Owner's id was recycled for a non-Body entity. Player is matched, never read.
 type bodyPoseRow struct {
-	Player    cardinal.Ref[playercomp.Player]
-	Transform cardinal.Ref[physics2d.Transform2D]
-}
-
-// AntiCampSystemState emits self-damage intents for Echoes overlapping their own Body.
-type AntiCampSystemState struct {
-	cardinal.BaseSystemState
-
-	Echoes cardinal.Contains[campingEchoRow]
-	Bodies cardinal.Contains[bodyPoseRow]
-	Damage cardinal.WithSystemEventEmitter[DamageIntent]
+	Player    playercomp.Player
+	Transform physics2d.Transform2D
 }
 
 // AntiCampSystem (GDD §3): an Echo overlapping its OWN Body self-damages, so you can never stand still.
@@ -41,28 +32,33 @@ type AntiCampSystemState struct {
 // warming up (Warmup > 0) is skipped: for the first delay window its trail replays the prefilled spawn
 // pose, so it sits on its Body at match start — this grace is what stops the spawn overlap from
 // instantly killing it.
-func AntiCampSystem(state *AntiCampSystemState) {
-	tuning := data.Get[CombatTuning]() // once at entry, not per Echo
+type AntiCampSystem struct {
+	Data *data.Plugin
+}
+
+func (s *AntiCampSystem) Run(w *cardinal.World) {
+	tuning := data.Get[CombatTuning](s.Data) // once at entry, not per Echo
 	perTick := tuning.SelfDamagePerSecond * physics.SecondsPerTick
 	if perTick <= 0 {
 		return // anti-camp disabled by tuning
 	}
 	overlapSq := tuning.OverlapRadius * tuning.OverlapRadius
 
-	for echoEID, e := range state.Echoes.Iter() {
-		ec := e.Echo.Get()
+	bodies := w.Contains[bodyPoseRow]()
+	for e := range w.Contains[campingEchoRow]().Iter() {
+		ec := e.Get[echocomp.Echo]()
 		if ec.Warmup > 0 {
 			continue // trail not yet real; spare the start-of-match spawn overlap
 		}
-		body, err := state.Bodies.GetByID(ec.Owner)
+		body, err := bodies.GetByID(ec.Owner)
 		if err != nil {
 			continue // owner Body gone
 		}
-		ep := e.Transform.Get().Position
-		bp := body.Transform.Get().Position
+		ep := e.Get[physics2d.Transform2D]().Position
+		bp := body.Get[physics2d.Transform2D]().Position
 		dx, dy := ep.X-bp.X, ep.Y-bp.Y
 		if dx*dx+dy*dy < overlapSq {
-			state.Damage.Emit(DamageIntent{Target: echoEID, Source: ec.Owner, Amount: perTick})
+			w.EmitSystemEvent(DamageIntent{Target: e.ID(), Source: ec.Owner, Amount: perTick})
 		}
 	}
 }

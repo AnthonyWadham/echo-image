@@ -22,9 +22,6 @@ func (EchoTuning) Name() string { return "echo_tuning" }
 // JSONFile is the path within the content embed.FS.
 func (EchoTuning) JSONFile() string { return "echo/tuning.json" }
 
-// SingleObject marks this kind as one JSON object rather than an array of records.
-func (EchoTuning) SingleObject() {}
-
 // DelayTicks converts the configured delay to whole ticks at the current server rate.
 func (t EchoTuning) DelayTicks() int {
 	return int(math.Round(t.DelaySeconds * float64(physics.ServerTickRateHz)))

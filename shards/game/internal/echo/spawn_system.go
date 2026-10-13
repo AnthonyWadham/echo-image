@@ -17,29 +17,21 @@ import (
 // PlayerID), team (copied onto the Echo for friendly-fire), and pose (the Echo's spawn point + first
 // recorded frame).
 type bodyRow struct {
-	Player    cardinal.Ref[playercomp.Player]
-	Team      cardinal.Ref[team.Team]
-	Transform cardinal.Ref[physics2d.Transform2D]
+	Player    playercomp.Player
+	Team      team.Team
+	Transform physics2d.Transform2D
 }
 
 // echoRow is the Echo entity: identity + trail, the Health it carries, team, and the physics2d trio.
 // BodyTypeManual means the replay owns the pose and Box2D is used only to detect hits against it.
 type echoRow struct {
-	Echo      cardinal.Ref[component.Echo]
-	History   cardinal.Ref[component.PathHistory]
-	Health    cardinal.Ref[combatcomp.Health]
-	Team      cardinal.Ref[team.Team]
-	Transform cardinal.Ref[physics2d.Transform2D]
-	Velocity  cardinal.Ref[physics2d.Velocity2D]
-	Body      cardinal.Ref[physics2d.PhysicsBody2D]
-}
-
-// SpawnSystemState spawns one Echo per Body the first time that Body is claimed.
-type SpawnSystemState struct {
-	cardinal.BaseSystemState
-	Claims cardinal.WithSystemEventReceiver[player.BodyClaimed]
-	Bodies cardinal.Contains[bodyRow]
-	Echoes cardinal.Contains[echoRow]
+	Echo      component.Echo
+	History   component.PathHistory
+	Health    combatcomp.Health
+	Team      team.Team
+	Transform physics2d.Transform2D
+	Velocity  physics2d.Velocity2D
+	Body      physics2d.PhysicsBody2D
 }
 
 // SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.MovementSystem
@@ -61,44 +53,45 @@ type SpawnSystemState struct {
 //
 // TODO(matchmaking): when Bodies join mid-match this generalizes cleanly — spawn stays edge-triggered on
 // the join/claim, and a dead Echo still stays dead.
-func SpawnSystem(state *SpawnSystemState) {
-	for claim := range state.Claims.Iter() {
-		b, err := state.Bodies.GetByID(claim.Body)
+type SpawnSystem struct {
+	Data *data.Plugin
+}
+
+func (s *SpawnSystem) Run(w *cardinal.World) {
+	bodies := w.Contains[bodyRow]()
+	for claim := range w.SystemEvents[player.BodyClaimed]() {
+		body, err := bodies.GetByID(claim.Body)
 		if err != nil {
 			continue // claimed Body vanished the same tick — nothing to shadow
 		}
 		// Read tuning only when a Body is actually claimed (rare) — this Update system runs every tick,
 		// but the common no-claim tick does no work. Eagerly loaded at RegisterPlugin, so always valid.
-		tuning := data.Get[EchoTuning]()
-		state.spawnEcho(tuning, claim.Body, b)
+		tuning := data.Get[EchoTuning](s.Data)
+		spawnEcho(w, tuning, body)
 	}
 }
 
-func (state *SpawnSystemState) spawnEcho(tuning EchoTuning, bodyEID cardinal.EntityID, b bodyRow) {
-	pose := b.Transform.Get()
-	playerID := b.Player.Get().ID
-	allegiance := b.Team.Get()
+func spawnEcho(w *cardinal.World, tuning EchoTuning, body cardinal.Entity) {
+	pose := body.Get[physics2d.Transform2D]()
+	playerID := body.Get[playercomp.Player]().ID
+	allegiance := body.Get[team.Team]()
 	delay := tuning.DelayTicks()
 
 	// Size the trail to exactly the configured delay (delay+1 so the read slot never collides with the
 	// write slot) and prefill it with the spawn pose: for the first delay window the Echo sits at spawn
 	// ("you were at spawn N seconds ago") instead of snapping in from the origin.
-	frame := component.EchoFrame{Pose: pose}
-	hist := component.PathHistory{Poses: make([]component.EchoFrame, delay+1)}
-	for i := range hist.Poses {
-		hist.Poses[i] = frame
-	}
+	hist := component.PathHistory{Poses: cardinal.SliceOf(component.EchoFrame{Pose: pose}).Repeat(delay + 1)}
 
-	_, e := state.Echoes.Create()
+	e := w.Create[echoRow]()
 	// Warmup = trail length: a full buffer of real frames must arrive before the read slot stops
 	// yielding the prefilled spawn pose, so anti-camp (M3) stays off until then (see component.Echo).
-	e.Echo.Set(component.Echo{Owner: bodyEID, PlayerID: playerID, Warmup: len(hist.Poses)})
-	e.History.Set(hist)
-	e.Health.Set(combatcomp.Health{HP: tuning.MaxHP, MaxHP: tuning.MaxHP})
-	e.Team.Set(allegiance)
-	e.Transform.Set(pose)
-	e.Velocity.Set(physics2d.Velocity2D{})
-	e.Body.Set(physics.NewBody2D(physics2d.BodyTypeManual, physics2d.ColliderShape{
+	e.Set(component.Echo{Owner: body.ID(), PlayerID: playerID, Warmup: hist.Poses.Len()})
+	e.Set(hist)
+	e.Set(combatcomp.Health{HP: tuning.MaxHP, MaxHP: tuning.MaxHP})
+	e.Set(allegiance)
+	e.Set(pose)
+	e.Set(physics2d.Velocity2D{})
+	e.Set(physics.NewBody2D(physics2d.BodyTypeManual, physics2d.ColliderShape{
 		ShapeType:    physics2d.ShapeTypeCircle,
 		Radius:       tuning.HitRadius,
 		Density:      1,
@@ -106,8 +99,8 @@ func (state *SpawnSystemState) spawnEcho(tuning EchoTuning, bodyEID cardinal.Ent
 		MaskBits:     physics.CategoryProjectile, // takes projectile hits; anti-camp is a gameplay distance check
 	}))
 
-	state.Logger().Info().
-		Uint32("owner", uint32(bodyEID)).Uint32("player", playerID).
+	w.Logger().Info().
+		Uint32("owner", uint32(body.ID())).Uint32("player", playerID).
 		Float64("x", pose.Position.X).Float64("y", pose.Position.Y).
 		Msg("echo spawned")
 }
