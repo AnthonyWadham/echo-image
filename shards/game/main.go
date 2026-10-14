@@ -7,6 +7,7 @@ import (
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/combat"
 	"echo_image/shards/game/internal/echo"
+	"echo_image/shards/game/internal/netsync"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/team"
@@ -35,25 +36,29 @@ func register(world *cardinal.World) {
 	data.Register[echo.EchoTuning](dataPlugin)
 	world.RegisterPlugin(dataPlugin)
 
-	// Physics plugin: PreUpdate step produces contact/trigger events each tick.
-	physics.Register(world)
-
 	// Every component, command and system event a system uses must be registered before StartGame;
 	// an unregistered one panics on first use.
 	team.RegisterTypes(world)
 	player.RegisterTypes(world)
 	echo.RegisterTypes(world)
 	combat.RegisterTypes(world)
+	netsync.RegisterTypes(world)
+
+	// Movement (PreUpdate): queues Move frames and applies one per Body per tick, and emits BodyClaimed
+	// the first tick each Body is claimed. Registered BEFORE the physics plugin so it runs before the
+	// step, and a frame moves the Body the same tick its ack is sent.
+	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
+
+	// Physics plugin: PreUpdate step produces contact/trigger events each tick.
+	physics.Register(world)
 
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
-	world.RegisterSystem(&player.DevSpawnSystem{}, cardinal.WithHook(cardinal.Init))
-	// Movement (Update): drains Move commands, drives the sender's Body velocity, and emits BodyClaimed
-	// the first tick each Body is claimed.
-	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin})
+	world.RegisterSystem(&player.DevSpawnSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.Init))
 
-	// Echo spawn (Update, right after Movement so this tick's BodyClaimed is still visible): give a
-	// newly-claimed Body its one Echo carrying its Health. Claim-triggered, not Init — see echo.SpawnSystem.
+	// Echo spawn (Update): give a newly-claimed Body its one Echo carrying its Health. BodyClaimed from
+	// PreUpdate is still visible (system events clear at tick end). Claim-triggered, not Init — see
+	// echo.SpawnSystem.
 	world.RegisterSystem(&echo.SpawnSystem{Data: dataPlugin})
 
 	// Echo replay (Update): record the Body's post-step pose and drive the Echo to the pose from
@@ -66,4 +71,7 @@ func register(world *cardinal.World) {
 	world.RegisterSystem(&combat.CollisionSystem{Data: dataPlugin})
 	world.RegisterSystem(&combat.AntiCampSystem{Data: dataPlugin})
 	world.RegisterSystem(&combat.DamageResolveSystem{})
+
+	// Net sync (Update, last): send each player this tick's final state.
+	world.RegisterSystem(&netsync.WorldStateSystem{})
 }

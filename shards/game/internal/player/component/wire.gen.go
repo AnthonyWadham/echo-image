@@ -6,11 +6,193 @@ package component
 
 import (
 	pbcomponent "echo_image/shards/game/gen/shards/game/internal_/player/component"
+	pkg_immutable "github.com/argus-labs/world-engine/pkg/immutable"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"math"
 	"unicode/utf8"
 )
+
+func (c Input) ToProto() *pbcomponent.Input {
+	p := &pbcomponent.Input{}
+	p.Session = uint32(c.Session)
+	for v := range c.Pending.Values() {
+		p.Pending = append(p.Pending, v.ToProto())
+	}
+	p.Ack = uint32(c.Ack)
+	p.Tick = uint64(c.Tick)
+	return p
+}
+
+func (c Input) FromProto(p *pbcomponent.Input) Input {
+	if p == nil {
+		return c
+	}
+	c.Session = uint32(p.Session)
+	if len(p.Pending) > 0 {
+		itemsPending := make([]MoveFrame, 0, len(p.Pending))
+		for _, e := range p.Pending {
+			var v MoveFrame
+			v = v.FromProto(e)
+			itemsPending = append(itemsPending, v)
+		}
+		c.Pending = pkg_immutable.SliceOf(itemsPending...)
+	}
+	c.Ack = uint32(p.Ack)
+	c.Tick = uint64(p.Tick)
+	return c
+}
+
+func (c Input) MarshalWire() []byte {
+	return c.AppendWire(make([]byte, 0, c.SizeWire()))
+}
+
+func (c Input) UnmarshalWire(data []byte) (any, error) {
+	var p pbcomponent.Input
+	if err := proto.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	return c.FromProto(&p), nil
+}
+
+func (c Input) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbcomponent.Input{}).ProtoReflect().Descriptor()
+}
+
+func (c Input) SizeWire() int {
+	n := 0
+	if c.Session != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Session))
+	}
+	for x := range c.Pending.Values() {
+		n += protowire.SizeTag(2) + protowire.SizeBytes(x.SizeWire())
+	}
+	if c.Ack != 0 {
+		n += protowire.SizeTag(3) + protowire.SizeVarint(uint64(c.Ack))
+	}
+	if c.Tick != 0 {
+		n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(c.Tick))
+	}
+	return n
+}
+
+func (c Input) AppendWire(b []byte) []byte {
+	if c.Session != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Session))
+	}
+	for x := range c.Pending.Values() {
+		b = protowire.AppendTag(b, 2, protowire.BytesType)
+		atPending := len(b)
+		b = append(b, 0)
+		b = x.AppendWire(b)
+		b = wireLenPrefix(b, atPending)
+	}
+	if c.Ack != 0 {
+		b = protowire.AppendTag(b, 3, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Ack))
+	}
+	if c.Tick != 0 {
+		b = protowire.AppendTag(b, 4, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Tick))
+	}
+	return b
+}
+
+func (c MoveFrame) ToProto() *pbcomponent.MoveFrame {
+	p := &pbcomponent.MoveFrame{}
+	p.Seq = uint32(c.Seq)
+	p.X = float64(c.X)
+	p.Y = float64(c.Y)
+	return p
+}
+
+func (c MoveFrame) FromProto(p *pbcomponent.MoveFrame) MoveFrame {
+	if p == nil {
+		return c
+	}
+	c.Seq = uint32(p.Seq)
+	c.X = float64(p.X)
+	c.Y = float64(p.Y)
+	return c
+}
+
+func (c MoveFrame) SizeWire() int {
+	n := 0
+	if c.Seq != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Seq))
+	}
+	if math.Float64bits(float64(c.X)) != 0 {
+		n += protowire.SizeTag(2) + protowire.SizeFixed64()
+	}
+	if math.Float64bits(float64(c.Y)) != 0 {
+		n += protowire.SizeTag(3) + protowire.SizeFixed64()
+	}
+	return n
+}
+
+func (c MoveFrame) AppendWire(b []byte) []byte {
+	if c.Seq != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Seq))
+	}
+	if math.Float64bits(float64(c.X)) != 0 {
+		b = protowire.AppendTag(b, 2, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.X)))
+	}
+	if math.Float64bits(float64(c.Y)) != 0 {
+		b = protowire.AppendTag(b, 3, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.Y)))
+	}
+	return b
+}
+
+func (c MoveSpeed) ToProto() *pbcomponent.MoveSpeed {
+	p := &pbcomponent.MoveSpeed{}
+	p.Value = float64(c.Value)
+	return p
+}
+
+func (c MoveSpeed) FromProto(p *pbcomponent.MoveSpeed) MoveSpeed {
+	if p == nil {
+		return c
+	}
+	c.Value = float64(p.Value)
+	return c
+}
+
+func (c MoveSpeed) MarshalWire() []byte {
+	return c.AppendWire(make([]byte, 0, c.SizeWire()))
+}
+
+func (c MoveSpeed) UnmarshalWire(data []byte) (any, error) {
+	var p pbcomponent.MoveSpeed
+	if err := proto.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	return c.FromProto(&p), nil
+}
+
+func (c MoveSpeed) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbcomponent.MoveSpeed{}).ProtoReflect().Descriptor()
+}
+
+func (c MoveSpeed) SizeWire() int {
+	n := 0
+	if math.Float64bits(float64(c.Value)) != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeFixed64()
+	}
+	return n
+}
+
+func (c MoveSpeed) AppendWire(b []byte) []byte {
+	if math.Float64bits(float64(c.Value)) != 0 {
+		b = protowire.AppendTag(b, 1, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.Value)))
+	}
+	return b
+}
 
 func (c Player) ToProto() *pbcomponent.Player {
 	p := &pbcomponent.Player{}
@@ -73,6 +255,21 @@ func (c Player) AppendWire(b []byte) []byte {
 		b = protowire.AppendTag(b, 3, protowire.BytesType)
 		b = protowire.AppendString(b, string(c.Nickname))
 	}
+	return b
+}
+
+// wireLenPrefix writes the length of the bytes appended after the placeholder at b[at].
+// The body is moved up only when the length needs more than the one byte reserved.
+func wireLenPrefix(b []byte, at int) []byte {
+	n := len(b) - at - 1
+	if n < 0x80 {
+		b[at] = byte(n)
+		return b
+	}
+	k := protowire.SizeVarint(uint64(n)) - 1
+	b = append(b, make([]byte, k)...)
+	copy(b[at+1+k:], b[at+1:at+1+n])
+	protowire.AppendVarint(b[at:at], uint64(n)) // in place: cap reaches the body
 	return b
 }
 

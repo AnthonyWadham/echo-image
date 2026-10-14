@@ -23,6 +23,180 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// wire name: "input"
+type Input struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Session       uint32                 `protobuf:"varint,1,opt,name=Session,proto3" json:"Session,omitempty"`
+	Pending       []*MoveFrame           `protobuf:"bytes,2,rep,name=Pending,proto3" json:"Pending,omitempty"`
+	Ack           uint32                 `protobuf:"varint,3,opt,name=Ack,proto3" json:"Ack,omitempty"`
+	Tick          uint64                 `protobuf:"varint,4,opt,name=Tick,proto3" json:"Tick,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Input) Reset() {
+	*x = Input{}
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Input) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Input) ProtoMessage() {}
+
+func (x *Input) ProtoReflect() protoreflect.Message {
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Input.ProtoReflect.Descriptor instead.
+func (*Input) Descriptor() ([]byte, []int) {
+	return file_shards_game_internal__player_component_component_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *Input) GetSession() uint32 {
+	if x != nil {
+		return x.Session
+	}
+	return 0
+}
+
+func (x *Input) GetPending() []*MoveFrame {
+	if x != nil {
+		return x.Pending
+	}
+	return nil
+}
+
+func (x *Input) GetAck() uint32 {
+	if x != nil {
+		return x.Ack
+	}
+	return 0
+}
+
+func (x *Input) GetTick() uint64 {
+	if x != nil {
+		return x.Tick
+	}
+	return 0
+}
+
+type MoveFrame struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seq           uint32                 `protobuf:"varint,1,opt,name=Seq,proto3" json:"Seq,omitempty"`
+	X             float64                `protobuf:"fixed64,2,opt,name=X,proto3" json:"X,omitempty"`
+	Y             float64                `protobuf:"fixed64,3,opt,name=Y,proto3" json:"Y,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MoveFrame) Reset() {
+	*x = MoveFrame{}
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MoveFrame) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MoveFrame) ProtoMessage() {}
+
+func (x *MoveFrame) ProtoReflect() protoreflect.Message {
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MoveFrame.ProtoReflect.Descriptor instead.
+func (*MoveFrame) Descriptor() ([]byte, []int) {
+	return file_shards_game_internal__player_component_component_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *MoveFrame) GetSeq() uint32 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *MoveFrame) GetX() float64 {
+	if x != nil {
+		return x.X
+	}
+	return 0
+}
+
+func (x *MoveFrame) GetY() float64 {
+	if x != nil {
+		return x.Y
+	}
+	return 0
+}
+
+// wire name: "move_speed"
+type MoveSpeed struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Value         float64                `protobuf:"fixed64,1,opt,name=Value,proto3" json:"Value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MoveSpeed) Reset() {
+	*x = MoveSpeed{}
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MoveSpeed) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MoveSpeed) ProtoMessage() {}
+
+func (x *MoveSpeed) ProtoReflect() protoreflect.Message {
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MoveSpeed.ProtoReflect.Descriptor instead.
+func (*MoveSpeed) Descriptor() ([]byte, []int) {
+	return file_shards_game_internal__player_component_component_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *MoveSpeed) GetValue() float64 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
+
 // wire name: "player"
 type Player struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -35,7 +209,7 @@ type Player struct {
 
 func (x *Player) Reset() {
 	*x = Player{}
-	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[0]
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -47,7 +221,7 @@ func (x *Player) String() string {
 func (*Player) ProtoMessage() {}
 
 func (x *Player) ProtoReflect() protoreflect.Message {
-	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[0]
+	mi := &file_shards_game_internal__player_component_component_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -60,7 +234,7 @@ func (x *Player) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Player.ProtoReflect.Descriptor instead.
 func (*Player) Descriptor() ([]byte, []int) {
-	return file_shards_game_internal__player_component_component_proto_rawDescGZIP(), []int{0}
+	return file_shards_game_internal__player_component_component_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Player) GetID() uint32 {
@@ -88,7 +262,18 @@ var File_shards_game_internal__player_component_component_proto protoreflect.Fil
 
 const file_shards_game_internal__player_component_component_proto_rawDesc = "" +
 	"\n" +
-	"6shards/game/internal_/player/component/component.proto\x120echo_image.shards.game.internal.player.component\"N\n" +
+	"6shards/game/internal_/player/component/component.proto\x120echo_image.shards.game.internal.player.component\"\x9e\x01\n" +
+	"\x05Input\x12\x18\n" +
+	"\aSession\x18\x01 \x01(\rR\aSession\x12U\n" +
+	"\aPending\x18\x02 \x03(\v2;.echo_image.shards.game.internal.player.component.MoveFrameR\aPending\x12\x10\n" +
+	"\x03Ack\x18\x03 \x01(\rR\x03Ack\x12\x12\n" +
+	"\x04Tick\x18\x04 \x01(\x04R\x04Tick\"9\n" +
+	"\tMoveFrame\x12\x10\n" +
+	"\x03Seq\x18\x01 \x01(\rR\x03Seq\x12\f\n" +
+	"\x01X\x18\x02 \x01(\x01R\x01X\x12\f\n" +
+	"\x01Y\x18\x03 \x01(\x01R\x01Y\"!\n" +
+	"\tMoveSpeed\x12\x14\n" +
+	"\x05Value\x18\x01 \x01(\x01R\x05Value\"N\n" +
 	"\x06Player\x12\x0e\n" +
 	"\x02ID\x18\x01 \x01(\rR\x02ID\x12\x18\n" +
 	"\aPersona\x18\x02 \x01(\tR\aPersona\x12\x1a\n" +
@@ -106,16 +291,20 @@ func file_shards_game_internal__player_component_component_proto_rawDescGZIP() [
 	return file_shards_game_internal__player_component_component_proto_rawDescData
 }
 
-var file_shards_game_internal__player_component_component_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_shards_game_internal__player_component_component_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_shards_game_internal__player_component_component_proto_goTypes = []any{
-	(*Player)(nil), // 0: echo_image.shards.game.internal.player.component.Player
+	(*Input)(nil),     // 0: echo_image.shards.game.internal.player.component.Input
+	(*MoveFrame)(nil), // 1: echo_image.shards.game.internal.player.component.MoveFrame
+	(*MoveSpeed)(nil), // 2: echo_image.shards.game.internal.player.component.MoveSpeed
+	(*Player)(nil),    // 3: echo_image.shards.game.internal.player.component.Player
 }
 var file_shards_game_internal__player_component_component_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	1, // 0: echo_image.shards.game.internal.player.component.Input.Pending:type_name -> echo_image.shards.game.internal.player.component.MoveFrame
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_shards_game_internal__player_component_component_proto_init() }
@@ -129,7 +318,7 @@ func file_shards_game_internal__player_component_component_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shards_game_internal__player_component_component_proto_rawDesc), len(file_shards_game_internal__player_component_component_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -35,8 +35,8 @@ type echoRow struct {
 }
 
 // SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.MovementSystem
-// applies the Body's first Move command and emits BodyClaimed. Registered on Update, right after
-// MovementSystem, so the claim event is visible the same tick.
+// applies the Body's first Move command and emits BodyClaimed. Registered on Update; MovementSystem
+// emits in PreUpdate, and system events last until the tick ends, so the claim is visible here.
 //
 // Claim-triggered (not Init, not presence-reactive) for two reasons:
 //   - No resurrection. A presence check ("Body has no Echo → spawn one") would hand a fresh full-HP Echo

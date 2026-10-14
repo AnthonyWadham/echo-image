@@ -22,8 +22,7 @@ coverage.*
 profile.cov
 
 # Dependency directories.
-# vendor/ is intentionally ignored: `go mod vendor` regenerates it for the operator's Docker build,
-# and local builds use `-mod=mod`. See CLAUDE.md -> Build & run.
+# vendor/ is not used (see CLAUDE.md -> Build & run); ignored so a stray one never gets committed.
 vendor/
 
 # Go workspace file

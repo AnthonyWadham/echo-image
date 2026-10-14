@@ -1,11 +1,17 @@
 package player
 
-// Move is a client command carrying the player's desired movement direction as a vector; the server
-// normalizes it. Sent whenever input changes, including a zero vector to stop. Routed to the sender's
-// Body by the authenticated persona on the command.
+import (
+	"github.com/argus-labs/world-engine/pkg/cardinal"
+
+	"echo_image/shards/game/internal/player/component"
+)
+
+// Move carries a client's unacked movement frames, newest last. Clients send one per tick, so a late
+// or lost message is covered by the next. Session is random per client run. Routed to the sender's
+// Body by the authenticated player ID on the command.
 type Move struct {
-	DirX float64
-	DirY float64
+	Session uint32
+	Frames  cardinal.Slice[component.MoveFrame]
 }
 
 // Name is the command name clients (and the MCP send_command) use.

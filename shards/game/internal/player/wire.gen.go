@@ -6,11 +6,12 @@ package player
 
 import (
 	pbplayer "echo_image/shards/game/gen/shards/game/internal_/player"
+	player_component "echo_image/shards/game/internal/player/component"
 	pkg_cardinal "github.com/argus-labs/world-engine/pkg/cardinal"
+	pkg_immutable "github.com/argus-labs/world-engine/pkg/immutable"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"math"
 )
 
 func (c BodyClaimed) ToProto() *pbplayer.BodyClaimed {
@@ -61,8 +62,10 @@ func (c BodyClaimed) AppendWire(b []byte) []byte {
 
 func (c Move) ToProto() *pbplayer.Move {
 	p := &pbplayer.Move{}
-	p.DirX = float64(c.DirX)
-	p.DirY = float64(c.DirY)
+	p.Session = uint32(c.Session)
+	for v := range c.Frames.Values() {
+		p.Frames = append(p.Frames, v.ToProto())
+	}
 	return p
 }
 
@@ -70,8 +73,16 @@ func (c Move) FromProto(p *pbplayer.Move) Move {
 	if p == nil {
 		return c
 	}
-	c.DirX = float64(p.DirX)
-	c.DirY = float64(p.DirY)
+	c.Session = uint32(p.Session)
+	if len(p.Frames) > 0 {
+		itemsFrames := make([]player_component.MoveFrame, 0, len(p.Frames))
+		for _, e := range p.Frames {
+			var v player_component.MoveFrame
+			v = v.FromProto(e)
+			itemsFrames = append(itemsFrames, v)
+		}
+		c.Frames = pkg_immutable.SliceOf(itemsFrames...)
+	}
 	return c
 }
 
@@ -93,23 +104,41 @@ func (c Move) ProtoDescriptor() protoreflect.MessageDescriptor {
 
 func (c Move) SizeWire() int {
 	n := 0
-	if math.Float64bits(float64(c.DirX)) != 0 {
-		n += protowire.SizeTag(1) + protowire.SizeFixed64()
+	if c.Session != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Session))
 	}
-	if math.Float64bits(float64(c.DirY)) != 0 {
-		n += protowire.SizeTag(2) + protowire.SizeFixed64()
+	for x := range c.Frames.Values() {
+		n += protowire.SizeTag(2) + protowire.SizeBytes(x.SizeWire())
 	}
 	return n
 }
 
 func (c Move) AppendWire(b []byte) []byte {
-	if math.Float64bits(float64(c.DirX)) != 0 {
-		b = protowire.AppendTag(b, 1, protowire.Fixed64Type)
-		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.DirX)))
+	if c.Session != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Session))
 	}
-	if math.Float64bits(float64(c.DirY)) != 0 {
-		b = protowire.AppendTag(b, 2, protowire.Fixed64Type)
-		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.DirY)))
+	for x := range c.Frames.Values() {
+		b = protowire.AppendTag(b, 2, protowire.BytesType)
+		atFrames := len(b)
+		b = append(b, 0)
+		b = x.AppendWire(b)
+		b = wireLenPrefix(b, atFrames)
 	}
+	return b
+}
+
+// wireLenPrefix writes the length of the bytes appended after the placeholder at b[at].
+// The body is moved up only when the length needs more than the one byte reserved.
+func wireLenPrefix(b []byte, at int) []byte {
+	n := len(b) - at - 1
+	if n < 0x80 {
+		b[at] = byte(n)
+		return b
+	}
+	k := protowire.SizeVarint(uint64(n)) - 1
+	b = append(b, make([]byte, k)...)
+	copy(b[at+1+k:], b[at+1:at+1+n])
+	protowire.AppendVarint(b[at:at], uint64(n)) // in place: cap reaches the body
 	return b
 }

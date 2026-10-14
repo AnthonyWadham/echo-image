@@ -9,6 +9,7 @@
 package player
 
 import (
+	component "echo_image/shards/game/gen/shards/game/internal_/player/component"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -71,8 +72,8 @@ func (x *BodyClaimed) GetBody() uint32 {
 // wire name: "move"
 type Move struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DirX          float64                `protobuf:"fixed64,1,opt,name=DirX,proto3" json:"DirX,omitempty"`
-	DirY          float64                `protobuf:"fixed64,2,opt,name=DirY,proto3" json:"DirY,omitempty"`
+	Session       uint32                 `protobuf:"varint,1,opt,name=Session,proto3" json:"Session,omitempty"`
+	Frames        []*component.MoveFrame `protobuf:"bytes,2,rep,name=Frames,proto3" json:"Frames,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -107,30 +108,30 @@ func (*Move) Descriptor() ([]byte, []int) {
 	return file_shards_game_internal__player_player_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *Move) GetDirX() float64 {
+func (x *Move) GetSession() uint32 {
 	if x != nil {
-		return x.DirX
+		return x.Session
 	}
 	return 0
 }
 
-func (x *Move) GetDirY() float64 {
+func (x *Move) GetFrames() []*component.MoveFrame {
 	if x != nil {
-		return x.DirY
+		return x.Frames
 	}
-	return 0
+	return nil
 }
 
 var File_shards_game_internal__player_player_proto protoreflect.FileDescriptor
 
 const file_shards_game_internal__player_player_proto_rawDesc = "" +
 	"\n" +
-	")shards/game/internal_/player/player.proto\x12&echo_image.shards.game.internal.player\"!\n" +
+	")shards/game/internal_/player/player.proto\x12&echo_image.shards.game.internal.player\x1a6shards/game/internal_/player/component/component.proto\"!\n" +
 	"\vBodyClaimed\x12\x12\n" +
-	"\x04Body\x18\x01 \x01(\rR\x04Body\".\n" +
-	"\x04Move\x12\x12\n" +
-	"\x04DirX\x18\x01 \x01(\x01R\x04DirX\x12\x12\n" +
-	"\x04DirY\x18\x02 \x01(\x01R\x04DirYBiZ>echo_image/shards/game/gen/shards/game/internal_/player;player\xaa\x02&Echo_image.Shards.Game.Internal.Playerb\x06proto3"
+	"\x04Body\x18\x01 \x01(\rR\x04Body\"u\n" +
+	"\x04Move\x12\x18\n" +
+	"\aSession\x18\x01 \x01(\rR\aSession\x12S\n" +
+	"\x06Frames\x18\x02 \x03(\v2;.echo_image.shards.game.internal.player.component.MoveFrameR\x06FramesBiZ>echo_image/shards/game/gen/shards/game/internal_/player;player\xaa\x02&Echo_image.Shards.Game.Internal.Playerb\x06proto3"
 
 var (
 	file_shards_game_internal__player_player_proto_rawDescOnce sync.Once
@@ -146,15 +147,17 @@ func file_shards_game_internal__player_player_proto_rawDescGZIP() []byte {
 
 var file_shards_game_internal__player_player_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shards_game_internal__player_player_proto_goTypes = []any{
-	(*BodyClaimed)(nil), // 0: echo_image.shards.game.internal.player.BodyClaimed
-	(*Move)(nil),        // 1: echo_image.shards.game.internal.player.Move
+	(*BodyClaimed)(nil),         // 0: echo_image.shards.game.internal.player.BodyClaimed
+	(*Move)(nil),                // 1: echo_image.shards.game.internal.player.Move
+	(*component.MoveFrame)(nil), // 2: echo_image.shards.game.internal.player.component.MoveFrame
 }
 var file_shards_game_internal__player_player_proto_depIdxs = []int32{
-	0, // [0:0] is the sub-list for method output_type
-	0, // [0:0] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	2, // 0: echo_image.shards.game.internal.player.Move.Frames:type_name -> echo_image.shards.game.internal.player.component.MoveFrame
+	1, // [1:1] is the sub-list for method output_type
+	1, // [1:1] is the sub-list for method input_type
+	1, // [1:1] is the sub-list for extension type_name
+	1, // [1:1] is the sub-list for extension extendee
+	0, // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_shards_game_internal__player_player_proto_init() }

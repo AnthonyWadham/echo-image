@@ -2,6 +2,7 @@ package player
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
+	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/physics"
@@ -9,11 +10,13 @@ import (
 	"echo_image/shards/game/internal/team"
 )
 
-// bodyRow is a player Body: identity + team + the physics2d trio. Deliberately NO Health — the Body
-// is invincible; Health lives on the Echo (added with the echo feature).
+// bodyRow is a player Body: identity, team, movement input and speed, and the physics2d trio.
+// Deliberately NO Health — the Body is invincible; Health lives on the Echo.
 type bodyRow struct {
 	Player    component.Player
 	Team      team.Team
+	Input     component.Input
+	Speed     component.MoveSpeed
 	Transform physics2d.Transform2D
 	Velocity  physics2d.Velocity2D
 	Body      physics2d.PhysicsBody2D
@@ -22,19 +25,25 @@ type bodyRow struct {
 // DevSpawnSystem drops two players on opposing teams (a 1v1) at fixed spawn points at world init.
 // This is dev scaffolding — real spawning will be command-driven (matchmaking / client join). Replace
 // this system when that lands.
-type DevSpawnSystem struct{}
-
-func (s *DevSpawnSystem) Run(w *cardinal.World) {
-	spawnBody(w, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0})
-	spawnBody(w, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0})
+type DevSpawnSystem struct {
+	Data *data.Plugin
 }
 
-func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos physics2d.Vec2) {
+func (s *DevSpawnSystem) Run(w *cardinal.World) {
+	speed := data.Get[MovementTuning](s.Data).MoveSpeed
+	spawnBody(w, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0}, speed)
+	spawnBody(w, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0}, speed)
+}
+
+// spawnBody is the one constructor for a player Body; every spawn path uses it, so no Body is
+// missing a component another system needs.
+func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos physics2d.Vec2, speed float64) {
 	b := w.Create[bodyRow]()
 	// Persona left empty: the Body is unclaimed until the first Move command from a persona claims it
 	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Set(component.Player{ID: id, Nickname: nickname})
 	b.Set(team.Team{ID: teamID})
+	b.Set(component.MoveSpeed{Value: speed})
 	b.Set(physics2d.Transform2D{Position: pos})
 	b.Set(physics2d.Velocity2D{})
 	// Kinematic: the Body is driven by player input later, not by physics forces. No Health component
