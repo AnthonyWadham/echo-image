@@ -15,10 +15,10 @@ import (
 // imports it — so it lives in its own file, kept out of the plugin wiring in physics.go
 // (see CLAUDE.md → File layout within a package).
 const (
-	CategoryEnvironment uint64 = 1 << iota // static walls / obstacles
+	CategoryEnvironment uint64 = 1 << iota // static walls / obstacles; mask CategoryProjectile to stop shots
 	CategoryBody                           // player Body: invincible, blocks shots, never a damage target
 	CategoryEcho                           // player Echo: carries Health; the damageable target
-	CategoryProjectile                     // shots
+	CategoryProjectile                     // shots: not Box2D bodies; projectile sweeps them (query filter only)
 )
 
 // Match reports whether a contact is between category kinds x and y in either fixture order, testing

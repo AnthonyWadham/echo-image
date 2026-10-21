@@ -16,17 +16,20 @@ const ServerTickRateHz = 20
 // independence).
 const SecondsPerTick = 1.0 / float64(ServerTickRateHz)
 
-// Register wires the physics2d plugin (Box2D-backed 2D simulation) into the world. The plugin
-// registers its own systems: an Init rebuild and a PreUpdate step that runs before game logic
-// each tick, so contact/trigger events are ready for gameplay systems on Update.
+// Register wires the physics2d plugin (Box2D-backed 2D simulation) into the world and returns it for
+// queries (CircleSweep, Raycast). The plugin registers its own systems: an Init rebuild and a
+// PreUpdate step that runs before game logic each tick, so contact/trigger events are ready for
+// gameplay systems on Update.
 //
 // Gravity is zero for a top-down game (physics is used for collision on the ground plane, not
 // falling). Set Gravity.Y negative for a side-view / platformer feel.
-func Register(world *cardinal.World) {
-	world.RegisterPlugin(physics2d.NewPlugin(physics2d.Config{
+func Register(world *cardinal.World) *physics2d.Plugin {
+	plugin := physics2d.NewPlugin(physics2d.Config{
 		Gravity:  physics2d.Vec2{X: 0, Y: 0},
 		TickRate: ServerTickRateHz,
-	}))
+	})
+	world.RegisterPlugin(plugin)
+	return plugin
 }
 
 // NewBody2D returns a PhysicsBody2D with the plugin's Box2D defaults (Active, Awake and

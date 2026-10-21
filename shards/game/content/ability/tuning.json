@@ -1,0 +1,6 @@
+{
+  "default_kit": ["bolt"],
+  "abilities": {
+    "bolt": {"cooldown_seconds": 2.0, "aimed": true}
+  }
+}

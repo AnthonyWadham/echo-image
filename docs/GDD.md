@@ -3,7 +3,7 @@
 > **Living document.** Every section is tagged with its status so we always know what's real:
 > **[Locked]** decided · **[Draft]** proposed / likely · **[Open]** undecided, needs a call.
 >
-> Working title: **Echo Image**. Revision **0.4** · Last updated **2026-07-06**.
+> Working title: **Echo Image**. Revision **0.5** · Last updated **2026-10-14**.
 > This doc is the *what/why* (design). The *how* (engine, systems, conventions) lives in
 > [`CLAUDE.md`](../CLAUDE.md) and the code.
 
@@ -130,16 +130,22 @@ Rough seeds to build on later; none are balanced or final:
 Moment-to-moment combat is a **top-down shooter with abilities**:
 
 - **Primary fire** — aimed, shooter-style; the main tool for damaging the enemy Echo. [Locked]
+  First pass [Draft]: a projectile on a **2 s cooldown**. **Your team sees your cooldown; enemies
+  never receive it** (they can still guess it from seeing you shoot). It is the `bolt` ability:
+  its cooldown lives in `content/ability/tuning.json` and its shot in `content/projectile/tuning.json`.
 - **The shot-vs-block duel is the core exchange.** Both players actively interpose their invincible
   bodies to block incoming shots aimed at their own (or an ally's) Echo, while trying to land theirs.
   Bodies **physically block projectiles** — that interplay is fundamental to the loop. [Locked]
+  - A shot is **destroyed by the first enemy Body or wall** it touches. [Draft]
+  - Shots **pass through your own team**: your Body, your teammates' Bodies, and allied Echoes, so you
+    can shoot past the Echo you're guarding. [Draft]
 - **Abilities** — maneuver, utility, and kit identity layered on top of primary fire (§4). [Locked — structure]
 - **Echoes** — carry `Health`; the **only valid damage target**, including **self-damage** when
   overlapping their own Body (§3). [Locked]
 - **Tuning** — data-driven; balance numbers live in JSON, not code (`CombatTuning`). [Locked — infra]
 
-Still open (§9): exactly how a body blocks a shot (does the projectile die on contact?), and whether
-Echoes are one-shot or an HP pool (the Echo-Medic concept leans toward a pool).
+Still open (§9): whether Echoes are one-shot or an HP pool (the Echo-Medic concept leans toward a
+pool), and whether a body also blocks *movement*.
 
 ---
 
@@ -170,9 +176,9 @@ Ranked by how much they shape the rest. Answer top-down.
 2. **Echo HP & death.** One-shot-and-down, or an HP pool over several hits? Leaning **pool** (the
    Echo-Medic archetype needs something to heal). Death already means out-for-the-round per §8 — this
    is about how much punishment an Echo absorbs first.
-3. **How bodies block.** Bodies blocking projectiles is now core (§7); the open detail is the
-   *resolution* — does a blocked shot die on the body, get absorbed up to a cap, deflect? — and
-   whether a body also blocks *movement* (can you wall someone off?).
+3. **How bodies block.** Bodies blocking projectiles is now core (§7). First pass: a blocked shot dies
+   on the body [Draft]; absorb-up-to-a-cap or deflect stay possible later. Still open: whether a body
+   also blocks *movement* (can you wall someone off?).
 4. **Self-damage tuning.** When the Echo overlaps you, how punishing — a flat tick, or a ramping DoT
    that worsens the longer you overlap? (Balances how hard the anti-camp rule bites.)
 5. **Echo delay.** Fixed ~5s for everyone, per-champion, or ability-modifiable?
@@ -212,6 +218,9 @@ Light mapping only; detailed tech design stays in code + `CLAUDE.md`.
 
 ## Changelog
 
+- **0.5** — 2026-10-14 — First pass of primary fire [Draft]: projectiles on a 2 s cooldown; a shot dies
+  on the first enemy Body or wall; shots pass through your own team; cooldowns are visible to your
+  team only.
 - **0.4** — 2026-07-06 — Locked combat as a **top-down hero-shooter** (primary fire + abilities; the
   shot-vs-block duel is the core exchange; bodies physically block projectiles). Added first champion
   seeds — **Echo-Swap** (with its re-sync complication flagged), **Echo-Medic** support, **Assassin**

@@ -8,7 +8,6 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo/component"
 	"echo_image/shards/game/internal/physics"
-	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/team"
 )
@@ -23,7 +22,8 @@ type bodyRow struct {
 }
 
 // echoRow is the Echo entity: identity + trail, the Health it carries, team, and the physics2d trio.
-// BodyTypeManual means the replay owns the pose and Box2D is used only to detect hits against it.
+// BodyTypeManual means the replay owns the pose; the collider is the hurtbox projectile tests shots
+// against.
 type echoRow struct {
 	Echo      component.Echo
 	History   component.PathHistory
@@ -34,9 +34,9 @@ type echoRow struct {
 	Body      physics2d.PhysicsBody2D
 }
 
-// SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.MovementSystem
-// applies the Body's first Move command and emits BodyClaimed. Registered on Update; MovementSystem
-// emits in PreUpdate, and system events last until the tick ends, so the claim is visible here.
+// SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.InputSystem takes
+// the Body's first Input command and emits BodyClaimed. Registered on Update; InputSystem emits in
+// PreUpdate, and system events last until the tick ends, so the claim is visible here.
 //
 // Claim-triggered (not Init, not presence-reactive) for two reasons:
 //   - No resurrection. A presence check ("Body has no Echo → spawn one") would hand a fresh full-HP Echo
@@ -59,7 +59,7 @@ type SpawnSystem struct {
 
 func (s *SpawnSystem) Run(w *cardinal.World) {
 	bodies := w.Contains[bodyRow]()
-	for claim := range w.SystemEvents[player.BodyClaimed]() {
+	for claim := range w.SystemEvents[playercomp.BodyClaimed]() {
 		body, err := bodies.GetByID(claim.Body)
 		if err != nil {
 			continue // claimed Body vanished the same tick — nothing to shadow
@@ -96,7 +96,7 @@ func spawnEcho(w *cardinal.World, tuning EchoTuning, body cardinal.Entity) {
 		Radius:       tuning.HitRadius,
 		Density:      1,
 		CategoryBits: physics.CategoryEcho,
-		MaskBits:     physics.CategoryProjectile, // takes projectile hits; anti-camp is a gameplay distance check
+		MaskBits:     physics.CategoryProjectile, // projectile reads this circle; anti-camp is a distance check
 	}))
 
 	w.Logger().Info().

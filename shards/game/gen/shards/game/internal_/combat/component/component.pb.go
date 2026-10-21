@@ -23,6 +23,67 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// wire name: "damage_intent"
+type DamageIntent struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Target        uint32                 `protobuf:"varint,1,opt,name=Target,proto3" json:"Target,omitempty"`
+	Source        uint32                 `protobuf:"varint,2,opt,name=Source,proto3" json:"Source,omitempty"`
+	Amount        float64                `protobuf:"fixed64,3,opt,name=Amount,proto3" json:"Amount,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DamageIntent) Reset() {
+	*x = DamageIntent{}
+	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DamageIntent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DamageIntent) ProtoMessage() {}
+
+func (x *DamageIntent) ProtoReflect() protoreflect.Message {
+	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DamageIntent.ProtoReflect.Descriptor instead.
+func (*DamageIntent) Descriptor() ([]byte, []int) {
+	return file_shards_game_internal__combat_component_component_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DamageIntent) GetTarget() uint32 {
+	if x != nil {
+		return x.Target
+	}
+	return 0
+}
+
+func (x *DamageIntent) GetSource() uint32 {
+	if x != nil {
+		return x.Source
+	}
+	return 0
+}
+
+func (x *DamageIntent) GetAmount() float64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
+}
+
 // wire name: "health"
 type Health struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -34,7 +95,7 @@ type Health struct {
 
 func (x *Health) Reset() {
 	*x = Health{}
-	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[0]
+	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -46,7 +107,7 @@ func (x *Health) String() string {
 func (*Health) ProtoMessage() {}
 
 func (x *Health) ProtoReflect() protoreflect.Message {
-	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[0]
+	mi := &file_shards_game_internal__combat_component_component_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -59,7 +120,7 @@ func (x *Health) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Health.ProtoReflect.Descriptor instead.
 func (*Health) Descriptor() ([]byte, []int) {
-	return file_shards_game_internal__combat_component_component_proto_rawDescGZIP(), []int{0}
+	return file_shards_game_internal__combat_component_component_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *Health) GetHP() float64 {
@@ -80,7 +141,11 @@ var File_shards_game_internal__combat_component_component_proto protoreflect.Fil
 
 const file_shards_game_internal__combat_component_component_proto_rawDesc = "" +
 	"\n" +
-	"6shards/game/internal_/combat/component/component.proto\x120echo_image.shards.game.internal.combat.component\".\n" +
+	"6shards/game/internal_/combat/component/component.proto\x120echo_image.shards.game.internal.combat.component\"V\n" +
+	"\fDamageIntent\x12\x16\n" +
+	"\x06Target\x18\x01 \x01(\rR\x06Target\x12\x16\n" +
+	"\x06Source\x18\x02 \x01(\rR\x06Source\x12\x16\n" +
+	"\x06Amount\x18\x03 \x01(\x01R\x06Amount\".\n" +
 	"\x06Health\x12\x0e\n" +
 	"\x02HP\x18\x01 \x01(\x01R\x02HP\x12\x14\n" +
 	"\x05MaxHP\x18\x02 \x01(\x01R\x05MaxHPB\x80\x01ZKecho_image/shards/game/gen/shards/game/internal_/combat/component;component\xaa\x020Echo_image.Shards.Game.Internal.Combat.Componentb\x06proto3"
@@ -97,9 +162,10 @@ func file_shards_game_internal__combat_component_component_proto_rawDescGZIP() [
 	return file_shards_game_internal__combat_component_component_proto_rawDescData
 }
 
-var file_shards_game_internal__combat_component_component_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_shards_game_internal__combat_component_component_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_shards_game_internal__combat_component_component_proto_goTypes = []any{
-	(*Health)(nil), // 0: echo_image.shards.game.internal.combat.component.Health
+	(*DamageIntent)(nil), // 0: echo_image.shards.game.internal.combat.component.DamageIntent
+	(*Health)(nil),       // 1: echo_image.shards.game.internal.combat.component.Health
 }
 var file_shards_game_internal__combat_component_component_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -120,7 +186,7 @@ func file_shards_game_internal__combat_component_component_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shards_game_internal__combat_component_component_proto_rawDesc), len(file_shards_game_internal__combat_component_component_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

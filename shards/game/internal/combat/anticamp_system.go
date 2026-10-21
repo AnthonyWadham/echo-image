@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/shards/game/internal/combat/component"
 	echocomp "echo_image/shards/game/internal/echo/component"
 	"echo_image/shards/game/internal/physics"
 	playercomp "echo_image/shards/game/internal/player/component"
@@ -58,7 +59,7 @@ func (s *AntiCampSystem) Run(w *cardinal.World) {
 		bp := body.Get[physics2d.Transform2D]().Position
 		dx, dy := ep.X-bp.X, ep.Y-bp.Y
 		if dx*dx+dy*dy < overlapSq {
-			w.EmitSystemEvent(DamageIntent{Target: e.ID(), Source: ec.Owner, Amount: perTick})
+			w.EmitSystemEvent(component.DamageIntent{Target: e.ID(), Source: ec.Owner, Amount: perTick})
 		}
 	}
 }

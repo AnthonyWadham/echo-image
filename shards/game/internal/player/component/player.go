@@ -7,7 +7,7 @@ package component
 // Player identifies a player-controlled Body.
 type Player struct {
 	ID       uint32 // stable player id
-	Persona  string // authenticated identity; Move commands route to this Body by matching persona
+	Persona  string // authenticated identity; Input commands route to this Body by matching persona
 	Nickname string // display / debug name
 }
 

@@ -10,12 +10,12 @@ import (
 	"echo_image/shards/game/internal/team"
 )
 
-// bodyRow is a player Body: identity, team, movement input and speed, and the physics2d trio.
+// bodyRow is a player Body: identity, team, input, speed, and the physics2d trio.
 // Deliberately NO Health — the Body is invincible; Health lives on the Echo.
 type bodyRow struct {
 	Player    component.Player
 	Team      team.Team
-	Input     component.Input
+	Input     component.InputQueue
 	Speed     component.MoveSpeed
 	Transform physics2d.Transform2D
 	Velocity  physics2d.Velocity2D
@@ -39,7 +39,7 @@ func (s *DevSpawnSystem) Run(w *cardinal.World) {
 // missing a component another system needs.
 func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos physics2d.Vec2, speed float64) {
 	b := w.Create[bodyRow]()
-	// Persona left empty: the Body is unclaimed until the first Move command from a persona claims it
+	// Persona left empty: the Body is unclaimed until the first Input command from a persona claims it
 	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Set(component.Player{ID: id, Nickname: nickname})
 	b.Set(team.Team{ID: teamID})

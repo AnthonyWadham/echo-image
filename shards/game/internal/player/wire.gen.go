@@ -7,61 +7,176 @@ package player
 import (
 	pbplayer "echo_image/shards/game/gen/shards/game/internal_/player"
 	player_component "echo_image/shards/game/internal/player/component"
-	pkg_cardinal "github.com/argus-labs/world-engine/pkg/cardinal"
 	pkg_immutable "github.com/argus-labs/world-engine/pkg/immutable"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"math"
+	"unicode/utf8"
 )
 
-func (c BodyClaimed) ToProto() *pbplayer.BodyClaimed {
-	p := &pbplayer.BodyClaimed{}
-	p.Body = uint32(c.Body)
+func (c BodyState) ToProto() *pbplayer.BodyState {
+	p := &pbplayer.BodyState{}
+	p.EntityID = uint32(c.EntityID)
+	p.PlayerID = uint32(c.PlayerID)
+	p.Nickname = string(c.Nickname)
+	p.Team = uint32(c.Team)
+	p.X = float64(c.X)
+	p.Y = float64(c.Y)
 	return p
 }
 
-func (c BodyClaimed) FromProto(p *pbplayer.BodyClaimed) BodyClaimed {
+func (c BodyState) FromProto(p *pbplayer.BodyState) BodyState {
 	if p == nil {
 		return c
 	}
-	c.Body = pkg_cardinal.EntityID(p.Body)
+	c.EntityID = uint32(p.EntityID)
+	c.PlayerID = uint32(p.PlayerID)
+	c.Nickname = string(p.Nickname)
+	c.Team = uint8(p.Team)
+	c.X = float64(p.X)
+	c.Y = float64(p.Y)
 	return c
 }
 
-func (c BodyClaimed) MarshalWire() []byte {
+func (c BodyState) SizeWire() int {
+	n := 0
+	if c.EntityID != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.EntityID))
+	}
+	if c.PlayerID != 0 {
+		n += protowire.SizeTag(2) + protowire.SizeVarint(uint64(c.PlayerID))
+	}
+	if len(c.Nickname) > 0 {
+		n += protowire.SizeTag(3) + wireStringSize("BodyState.Nickname", string(c.Nickname))
+	}
+	if c.Team != 0 {
+		n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(c.Team))
+	}
+	if math.Float64bits(float64(c.X)) != 0 {
+		n += protowire.SizeTag(5) + protowire.SizeFixed64()
+	}
+	if math.Float64bits(float64(c.Y)) != 0 {
+		n += protowire.SizeTag(6) + protowire.SizeFixed64()
+	}
+	return n
+}
+
+func (c BodyState) AppendWire(b []byte) []byte {
+	if c.EntityID != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.EntityID))
+	}
+	if c.PlayerID != 0 {
+		b = protowire.AppendTag(b, 2, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.PlayerID))
+	}
+	if len(c.Nickname) > 0 {
+		b = protowire.AppendTag(b, 3, protowire.BytesType)
+		b = protowire.AppendString(b, string(c.Nickname))
+	}
+	if c.Team != 0 {
+		b = protowire.AppendTag(b, 4, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Team))
+	}
+	if math.Float64bits(float64(c.X)) != 0 {
+		b = protowire.AppendTag(b, 5, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.X)))
+	}
+	if math.Float64bits(float64(c.Y)) != 0 {
+		b = protowire.AppendTag(b, 6, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.Y)))
+	}
+	return b
+}
+
+func (c BodySync) ToProto() *pbplayer.BodySync {
+	p := &pbplayer.BodySync{}
+	p.Tick = uint64(c.Tick)
+	p.TickSeconds = float64(c.TickSeconds)
+	p.You = c.You.ToProto()
+	for v := range c.Bodies.Values() {
+		p.Bodies = append(p.Bodies, v.ToProto())
+	}
+	return p
+}
+
+func (c BodySync) FromProto(p *pbplayer.BodySync) BodySync {
+	if p == nil {
+		return c
+	}
+	c.Tick = uint64(p.Tick)
+	c.TickSeconds = float64(p.TickSeconds)
+	c.You = c.You.FromProto(p.You)
+	if len(p.Bodies) > 0 {
+		itemsBodies := make([]BodyState, 0, len(p.Bodies))
+		for _, e := range p.Bodies {
+			var v BodyState
+			v = v.FromProto(e)
+			itemsBodies = append(itemsBodies, v)
+		}
+		c.Bodies = pkg_immutable.SliceOf(itemsBodies...)
+	}
+	return c
+}
+
+func (c BodySync) MarshalWire() []byte {
 	return c.AppendWire(make([]byte, 0, c.SizeWire()))
 }
 
-func (c BodyClaimed) UnmarshalWire(data []byte) (any, error) {
-	var p pbplayer.BodyClaimed
+func (c BodySync) UnmarshalWire(data []byte) (any, error) {
+	var p pbplayer.BodySync
 	if err := proto.Unmarshal(data, &p); err != nil {
 		return nil, err
 	}
 	return c.FromProto(&p), nil
 }
 
-func (c BodyClaimed) ProtoDescriptor() protoreflect.MessageDescriptor {
-	return (&pbplayer.BodyClaimed{}).ProtoReflect().Descriptor()
+func (c BodySync) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbplayer.BodySync{}).ProtoReflect().Descriptor()
 }
 
-func (c BodyClaimed) SizeWire() int {
+func (c BodySync) SizeWire() int {
 	n := 0
-	if c.Body != 0 {
-		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Body))
+	if c.Tick != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Tick))
+	}
+	if math.Float64bits(float64(c.TickSeconds)) != 0 {
+		n += protowire.SizeTag(2) + protowire.SizeFixed64()
+	}
+	n += protowire.SizeTag(3) + protowire.SizeBytes(c.You.SizeWire())
+	for x := range c.Bodies.Values() {
+		n += protowire.SizeTag(4) + protowire.SizeBytes(x.SizeWire())
 	}
 	return n
 }
 
-func (c BodyClaimed) AppendWire(b []byte) []byte {
-	if c.Body != 0 {
+func (c BodySync) AppendWire(b []byte) []byte {
+	if c.Tick != 0 {
 		b = protowire.AppendTag(b, 1, protowire.VarintType)
-		b = protowire.AppendVarint(b, uint64(c.Body))
+		b = protowire.AppendVarint(b, uint64(c.Tick))
+	}
+	if math.Float64bits(float64(c.TickSeconds)) != 0 {
+		b = protowire.AppendTag(b, 2, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.TickSeconds)))
+	}
+	b = protowire.AppendTag(b, 3, protowire.BytesType)
+	atYou := len(b)
+	b = append(b, 0)
+	b = c.You.AppendWire(b)
+	b = wireLenPrefix(b, atYou)
+	for x := range c.Bodies.Values() {
+		b = protowire.AppendTag(b, 4, protowire.BytesType)
+		atBodies := len(b)
+		b = append(b, 0)
+		b = x.AppendWire(b)
+		b = wireLenPrefix(b, atBodies)
 	}
 	return b
 }
 
-func (c Move) ToProto() *pbplayer.Move {
-	p := &pbplayer.Move{}
+func (c Input) ToProto() *pbplayer.Input {
+	p := &pbplayer.Input{}
 	p.Session = uint32(c.Session)
 	for v := range c.Frames.Values() {
 		p.Frames = append(p.Frames, v.ToProto())
@@ -69,15 +184,15 @@ func (c Move) ToProto() *pbplayer.Move {
 	return p
 }
 
-func (c Move) FromProto(p *pbplayer.Move) Move {
+func (c Input) FromProto(p *pbplayer.Input) Input {
 	if p == nil {
 		return c
 	}
 	c.Session = uint32(p.Session)
 	if len(p.Frames) > 0 {
-		itemsFrames := make([]player_component.MoveFrame, 0, len(p.Frames))
+		itemsFrames := make([]player_component.InputFrame, 0, len(p.Frames))
 		for _, e := range p.Frames {
-			var v player_component.MoveFrame
+			var v player_component.InputFrame
 			v = v.FromProto(e)
 			itemsFrames = append(itemsFrames, v)
 		}
@@ -86,23 +201,23 @@ func (c Move) FromProto(p *pbplayer.Move) Move {
 	return c
 }
 
-func (c Move) MarshalWire() []byte {
+func (c Input) MarshalWire() []byte {
 	return c.AppendWire(make([]byte, 0, c.SizeWire()))
 }
 
-func (c Move) UnmarshalWire(data []byte) (any, error) {
-	var p pbplayer.Move
+func (c Input) UnmarshalWire(data []byte) (any, error) {
+	var p pbplayer.Input
 	if err := proto.Unmarshal(data, &p); err != nil {
 		return nil, err
 	}
 	return c.FromProto(&p), nil
 }
 
-func (c Move) ProtoDescriptor() protoreflect.MessageDescriptor {
-	return (&pbplayer.Move{}).ProtoReflect().Descriptor()
+func (c Input) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbplayer.Input{}).ProtoReflect().Descriptor()
 }
 
-func (c Move) SizeWire() int {
+func (c Input) SizeWire() int {
 	n := 0
 	if c.Session != 0 {
 		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Session))
@@ -113,7 +228,7 @@ func (c Move) SizeWire() int {
 	return n
 }
 
-func (c Move) AppendWire(b []byte) []byte {
+func (c Input) AppendWire(b []byte) []byte {
 	if c.Session != 0 {
 		b = protowire.AppendTag(b, 1, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(c.Session))
@@ -124,6 +239,63 @@ func (c Move) AppendWire(b []byte) []byte {
 		b = append(b, 0)
 		b = x.AppendWire(b)
 		b = wireLenPrefix(b, atFrames)
+	}
+	return b
+}
+
+func (c YouState) ToProto() *pbplayer.YouState {
+	p := &pbplayer.YouState{}
+	p.Body = uint32(c.Body)
+	p.InputSession = uint32(c.InputSession)
+	p.InputAck = uint32(c.InputAck)
+	p.MoveSpeed = float64(c.MoveSpeed)
+	return p
+}
+
+func (c YouState) FromProto(p *pbplayer.YouState) YouState {
+	if p == nil {
+		return c
+	}
+	c.Body = uint32(p.Body)
+	c.InputSession = uint32(p.InputSession)
+	c.InputAck = uint32(p.InputAck)
+	c.MoveSpeed = float64(p.MoveSpeed)
+	return c
+}
+
+func (c YouState) SizeWire() int {
+	n := 0
+	if c.Body != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Body))
+	}
+	if c.InputSession != 0 {
+		n += protowire.SizeTag(2) + protowire.SizeVarint(uint64(c.InputSession))
+	}
+	if c.InputAck != 0 {
+		n += protowire.SizeTag(3) + protowire.SizeVarint(uint64(c.InputAck))
+	}
+	if math.Float64bits(float64(c.MoveSpeed)) != 0 {
+		n += protowire.SizeTag(4) + protowire.SizeFixed64()
+	}
+	return n
+}
+
+func (c YouState) AppendWire(b []byte) []byte {
+	if c.Body != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Body))
+	}
+	if c.InputSession != 0 {
+		b = protowire.AppendTag(b, 2, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.InputSession))
+	}
+	if c.InputAck != 0 {
+		b = protowire.AppendTag(b, 3, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.InputAck))
+	}
+	if math.Float64bits(float64(c.MoveSpeed)) != 0 {
+		b = protowire.AppendTag(b, 4, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.MoveSpeed)))
 	}
 	return b
 }
@@ -141,4 +313,14 @@ func wireLenPrefix(b []byte, at int) []byte {
 	copy(b[at+1+k:], b[at+1:at+1+n])
 	protowire.AppendVarint(b[at:at], uint64(n)) // in place: cap reaches the body
 	return b
+}
+
+// wireStringSize is protowire.SizeBytes(len(s)) plus the UTF-8 check proto.Marshal
+// performs: a proto3 string holding invalid UTF-8 cannot be decoded, so the size pass
+// fails.
+func wireStringSize(field, s string) int {
+	if !utf8.ValidString(s) {
+		panic("failed to encode " + field + ": string field contains invalid UTF-8")
+	}
+	return protowire.SizeBytes(len(s))
 }

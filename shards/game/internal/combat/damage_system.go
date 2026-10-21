@@ -15,16 +15,16 @@ type Damageable struct {
 }
 
 // DamageResolveSystem is the single place game state actually changes in response to combat. It
-// runs on Update, registered after CollisionSystem so this tick's intents are visible. Applying
-// intents here — rather than in the collision handlers — is what makes collision ordering
-// irrelevant: subtraction commutes, so any order of intents against the same target yields the
-// same HP. If two intents kill a target, the first destroys it and the second's GetByID simply
-// misses. This is also the natural home for future rules (armor, i-frames, on-death loot).
+// runs on Update, registered after every intent emitter (projectile.FlightSystem, AntiCampSystem) so
+// this tick's intents are visible. Applying intents here — rather than where damage is detected — is
+// what makes hit ordering irrelevant: subtraction commutes, so any order of intents against the same
+// target yields the same HP. If two intents kill a target, the first destroys it and the second's
+// GetByID simply misses. This is also the natural home for future rules (armor, i-frames, loot).
 type DamageResolveSystem struct{}
 
 func (s *DamageResolveSystem) Run(w *cardinal.World) {
 	targets := w.Contains[Damageable]()
-	for intent := range w.SystemEvents[DamageIntent]() {
+	for intent := range w.SystemEvents[component.DamageIntent]() {
 		target, err := targets.GetByID(intent.Target)
 		if err != nil {
 			continue // target despawned this tick, or has no Health — nothing to apply
@@ -35,7 +35,7 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 		target.Set(h)
 
 		// Debug, not Info: this is the combat hot path (one line per damage event per tick). The
-		// client-facing signal for a hit belongs in an event (World.Broadcast / SendTo), not the server log.
+		// client-facing signal for a hit belongs in an event sent with SendTo, not the server log.
 		w.Logger().Debug().
 			Uint32("target", uint32(intent.Target)).
 			Uint32("source", uint32(intent.Source)).

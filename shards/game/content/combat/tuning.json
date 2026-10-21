@@ -1,5 +1,4 @@
 {
-  "projectile_damage": 25,
   "self_damage_per_second": 25,
   "overlap_radius": 1.0
 }

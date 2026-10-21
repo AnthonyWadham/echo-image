@@ -6,13 +6,13 @@ import (
 	"echo_image/shards/game/internal/player/component"
 )
 
-// Move carries a client's unacked movement frames, newest last. Clients send one per tick, so a late
+// Input carries a client's unacked input frames, newest last. Clients send one per tick, so a late
 // or lost message is covered by the next. Session is random per client run. Routed to the sender's
 // Body by the authenticated player ID on the command.
-type Move struct {
+type Input struct {
 	Session uint32
-	Frames  cardinal.Slice[component.MoveFrame]
+	Frames  cardinal.Slice[component.InputFrame]
 }
 
 // Name is the command name clients (and the MCP send_command) use.
-func (Move) Name() string { return "move" }
+func (Input) Name() string { return "input" }

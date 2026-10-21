@@ -6,6 +6,7 @@ package component
 
 import (
 	pbcomponent "echo_image/shards/game/gen/shards/game/internal_/player/component"
+	pkg_cardinal "github.com/argus-labs/world-engine/pkg/cardinal"
 	pkg_immutable "github.com/argus-labs/world-engine/pkg/immutable"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -14,53 +15,174 @@ import (
 	"unicode/utf8"
 )
 
-func (c Input) ToProto() *pbcomponent.Input {
-	p := &pbcomponent.Input{}
-	p.Session = uint32(c.Session)
-	for v := range c.Pending.Values() {
-		p.Pending = append(p.Pending, v.ToProto())
-	}
-	p.Ack = uint32(c.Ack)
-	p.Tick = uint64(c.Tick)
+func (c BodyClaimed) ToProto() *pbcomponent.BodyClaimed {
+	p := &pbcomponent.BodyClaimed{}
+	p.Body = uint32(c.Body)
 	return p
 }
 
-func (c Input) FromProto(p *pbcomponent.Input) Input {
+func (c BodyClaimed) FromProto(p *pbcomponent.BodyClaimed) BodyClaimed {
 	if p == nil {
 		return c
 	}
-	c.Session = uint32(p.Session)
-	if len(p.Pending) > 0 {
-		itemsPending := make([]MoveFrame, 0, len(p.Pending))
-		for _, e := range p.Pending {
-			var v MoveFrame
-			v = v.FromProto(e)
-			itemsPending = append(itemsPending, v)
-		}
-		c.Pending = pkg_immutable.SliceOf(itemsPending...)
-	}
-	c.Ack = uint32(p.Ack)
-	c.Tick = uint64(p.Tick)
+	c.Body = pkg_cardinal.EntityID(p.Body)
 	return c
 }
 
-func (c Input) MarshalWire() []byte {
+func (c BodyClaimed) MarshalWire() []byte {
 	return c.AppendWire(make([]byte, 0, c.SizeWire()))
 }
 
-func (c Input) UnmarshalWire(data []byte) (any, error) {
-	var p pbcomponent.Input
+func (c BodyClaimed) UnmarshalWire(data []byte) (any, error) {
+	var p pbcomponent.BodyClaimed
 	if err := proto.Unmarshal(data, &p); err != nil {
 		return nil, err
 	}
 	return c.FromProto(&p), nil
 }
 
-func (c Input) ProtoDescriptor() protoreflect.MessageDescriptor {
-	return (&pbcomponent.Input{}).ProtoReflect().Descriptor()
+func (c BodyClaimed) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbcomponent.BodyClaimed{}).ProtoReflect().Descriptor()
 }
 
-func (c Input) SizeWire() int {
+func (c BodyClaimed) SizeWire() int {
+	n := 0
+	if c.Body != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Body))
+	}
+	return n
+}
+
+func (c BodyClaimed) AppendWire(b []byte) []byte {
+	if c.Body != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Body))
+	}
+	return b
+}
+
+func (c InputFrame) ToProto() *pbcomponent.InputFrame {
+	p := &pbcomponent.InputFrame{}
+	p.Seq = uint32(c.Seq)
+	p.MoveX = float64(c.MoveX)
+	p.MoveY = float64(c.MoveY)
+	p.AimX = float64(c.AimX)
+	p.AimY = float64(c.AimY)
+	p.Buttons = uint32(c.Buttons)
+	return p
+}
+
+func (c InputFrame) FromProto(p *pbcomponent.InputFrame) InputFrame {
+	if p == nil {
+		return c
+	}
+	c.Seq = uint32(p.Seq)
+	c.MoveX = float64(p.MoveX)
+	c.MoveY = float64(p.MoveY)
+	c.AimX = float64(p.AimX)
+	c.AimY = float64(p.AimY)
+	c.Buttons = uint32(p.Buttons)
+	return c
+}
+
+func (c InputFrame) SizeWire() int {
+	n := 0
+	if c.Seq != 0 {
+		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Seq))
+	}
+	if math.Float64bits(float64(c.MoveX)) != 0 {
+		n += protowire.SizeTag(2) + protowire.SizeFixed64()
+	}
+	if math.Float64bits(float64(c.MoveY)) != 0 {
+		n += protowire.SizeTag(3) + protowire.SizeFixed64()
+	}
+	if math.Float64bits(float64(c.AimX)) != 0 {
+		n += protowire.SizeTag(4) + protowire.SizeFixed64()
+	}
+	if math.Float64bits(float64(c.AimY)) != 0 {
+		n += protowire.SizeTag(5) + protowire.SizeFixed64()
+	}
+	if c.Buttons != 0 {
+		n += protowire.SizeTag(6) + protowire.SizeVarint(uint64(c.Buttons))
+	}
+	return n
+}
+
+func (c InputFrame) AppendWire(b []byte) []byte {
+	if c.Seq != 0 {
+		b = protowire.AppendTag(b, 1, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Seq))
+	}
+	if math.Float64bits(float64(c.MoveX)) != 0 {
+		b = protowire.AppendTag(b, 2, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.MoveX)))
+	}
+	if math.Float64bits(float64(c.MoveY)) != 0 {
+		b = protowire.AppendTag(b, 3, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.MoveY)))
+	}
+	if math.Float64bits(float64(c.AimX)) != 0 {
+		b = protowire.AppendTag(b, 4, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.AimX)))
+	}
+	if math.Float64bits(float64(c.AimY)) != 0 {
+		b = protowire.AppendTag(b, 5, protowire.Fixed64Type)
+		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.AimY)))
+	}
+	if c.Buttons != 0 {
+		b = protowire.AppendTag(b, 6, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(c.Buttons))
+	}
+	return b
+}
+
+func (c InputQueue) ToProto() *pbcomponent.InputQueue {
+	p := &pbcomponent.InputQueue{}
+	p.Session = uint32(c.Session)
+	for v := range c.Pending.Values() {
+		p.Pending = append(p.Pending, v.ToProto())
+	}
+	p.Last = c.Last.ToProto()
+	p.LastTick = uint64(c.LastTick)
+	return p
+}
+
+func (c InputQueue) FromProto(p *pbcomponent.InputQueue) InputQueue {
+	if p == nil {
+		return c
+	}
+	c.Session = uint32(p.Session)
+	if len(p.Pending) > 0 {
+		itemsPending := make([]InputFrame, 0, len(p.Pending))
+		for _, e := range p.Pending {
+			var v InputFrame
+			v = v.FromProto(e)
+			itemsPending = append(itemsPending, v)
+		}
+		c.Pending = pkg_immutable.SliceOf(itemsPending...)
+	}
+	c.Last = c.Last.FromProto(p.Last)
+	c.LastTick = uint64(p.LastTick)
+	return c
+}
+
+func (c InputQueue) MarshalWire() []byte {
+	return c.AppendWire(make([]byte, 0, c.SizeWire()))
+}
+
+func (c InputQueue) UnmarshalWire(data []byte) (any, error) {
+	var p pbcomponent.InputQueue
+	if err := proto.Unmarshal(data, &p); err != nil {
+		return nil, err
+	}
+	return c.FromProto(&p), nil
+}
+
+func (c InputQueue) ProtoDescriptor() protoreflect.MessageDescriptor {
+	return (&pbcomponent.InputQueue{}).ProtoReflect().Descriptor()
+}
+
+func (c InputQueue) SizeWire() int {
 	n := 0
 	if c.Session != 0 {
 		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Session))
@@ -68,16 +190,14 @@ func (c Input) SizeWire() int {
 	for x := range c.Pending.Values() {
 		n += protowire.SizeTag(2) + protowire.SizeBytes(x.SizeWire())
 	}
-	if c.Ack != 0 {
-		n += protowire.SizeTag(3) + protowire.SizeVarint(uint64(c.Ack))
-	}
-	if c.Tick != 0 {
-		n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(c.Tick))
+	n += protowire.SizeTag(3) + protowire.SizeBytes(c.Last.SizeWire())
+	if c.LastTick != 0 {
+		n += protowire.SizeTag(4) + protowire.SizeVarint(uint64(c.LastTick))
 	}
 	return n
 }
 
-func (c Input) AppendWire(b []byte) []byte {
+func (c InputQueue) AppendWire(b []byte) []byte {
 	if c.Session != 0 {
 		b = protowire.AppendTag(b, 1, protowire.VarintType)
 		b = protowire.AppendVarint(b, uint64(c.Session))
@@ -89,61 +209,14 @@ func (c Input) AppendWire(b []byte) []byte {
 		b = x.AppendWire(b)
 		b = wireLenPrefix(b, atPending)
 	}
-	if c.Ack != 0 {
-		b = protowire.AppendTag(b, 3, protowire.VarintType)
-		b = protowire.AppendVarint(b, uint64(c.Ack))
-	}
-	if c.Tick != 0 {
+	b = protowire.AppendTag(b, 3, protowire.BytesType)
+	atLast := len(b)
+	b = append(b, 0)
+	b = c.Last.AppendWire(b)
+	b = wireLenPrefix(b, atLast)
+	if c.LastTick != 0 {
 		b = protowire.AppendTag(b, 4, protowire.VarintType)
-		b = protowire.AppendVarint(b, uint64(c.Tick))
-	}
-	return b
-}
-
-func (c MoveFrame) ToProto() *pbcomponent.MoveFrame {
-	p := &pbcomponent.MoveFrame{}
-	p.Seq = uint32(c.Seq)
-	p.X = float64(c.X)
-	p.Y = float64(c.Y)
-	return p
-}
-
-func (c MoveFrame) FromProto(p *pbcomponent.MoveFrame) MoveFrame {
-	if p == nil {
-		return c
-	}
-	c.Seq = uint32(p.Seq)
-	c.X = float64(p.X)
-	c.Y = float64(p.Y)
-	return c
-}
-
-func (c MoveFrame) SizeWire() int {
-	n := 0
-	if c.Seq != 0 {
-		n += protowire.SizeTag(1) + protowire.SizeVarint(uint64(c.Seq))
-	}
-	if math.Float64bits(float64(c.X)) != 0 {
-		n += protowire.SizeTag(2) + protowire.SizeFixed64()
-	}
-	if math.Float64bits(float64(c.Y)) != 0 {
-		n += protowire.SizeTag(3) + protowire.SizeFixed64()
-	}
-	return n
-}
-
-func (c MoveFrame) AppendWire(b []byte) []byte {
-	if c.Seq != 0 {
-		b = protowire.AppendTag(b, 1, protowire.VarintType)
-		b = protowire.AppendVarint(b, uint64(c.Seq))
-	}
-	if math.Float64bits(float64(c.X)) != 0 {
-		b = protowire.AppendTag(b, 2, protowire.Fixed64Type)
-		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.X)))
-	}
-	if math.Float64bits(float64(c.Y)) != 0 {
-		b = protowire.AppendTag(b, 3, protowire.Fixed64Type)
-		b = protowire.AppendFixed64(b, math.Float64bits(float64(c.Y)))
+		b = protowire.AppendVarint(b, uint64(c.LastTick))
 	}
 	return b
 }

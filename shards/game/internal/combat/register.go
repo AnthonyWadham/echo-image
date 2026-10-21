@@ -9,5 +9,5 @@ import (
 // RegisterTypes registers the combat feature's component and system event with the world.
 func RegisterTypes(w *cardinal.World) {
 	w.RegisterComponent[component.Health]()
-	w.RegisterSystemEvent[DamageIntent]()
+	w.RegisterSystemEvent[component.DamageIntent]()
 }

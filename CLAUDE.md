@@ -24,7 +24,8 @@ one is the *what*.
 
 - **Plain local build/vet/test:** `go build ./...` / `go vet ./shards/... ./pkg/...` / `go test ./...`.
   `shards/game/main_test.go` runs real ticks through `main.go`'s `register` with `cardinal.NewTestWorld`,
-  so a missing registration fails there; it also pins the client-sync and prediction rules below.
+  so a missing registration fails there; it also pins the client-sync, prediction, ability and shot
+  rules below.
 - **world-engine is a published release** (`v0.21.0` in `go.mod`), no `replace`. The shard's Docker
   build is a plain `go build` that downloads modules itself, so **no `vendor/`**. Don't create one:
   `go build` picks it up automatically and fails once it goes stale. A local
@@ -38,8 +39,7 @@ one is the *what*.
   it doesn't compile. After adding a type or changing its fields, run
   `world sdk generate ./shards/game --go-out ./shards/game/gen --cs-out /mnt/z/Echo/Assets/Scripts/WorldNetwork/Generated`
   (needs Docker; use a `world` CLI built from the same world-engine version you build against). Its
-  report lists the three tuning types as "orphans" — expected, they're data-plugin configs, not wire
-  types.
+  report lists the tuning types as "orphans" — expected, they're data-plugin configs, not wire types.
 
 ---
 
@@ -54,25 +54,40 @@ shards/game/
                                   (categories.go — kind, never team) + NewBody2D helper
     team/     package team        Team allegiance component + SameTeam — a component-only leaf
                                   (imports only cardinal; safe to read from any feature)
-    combat/   package combat      collision → damage pipeline (order-dependent):
-                                  collision_system.go → damage_system.go, damage_intent_event.go,
-                                  tuning.go, doc.go
-      component/  package component   Health — combat's damageable-state leaf
+    combat/   package combat      damage: anticamp_system.go (an intent emitter) → damage_system.go
+                                  (the one writer of Health), tuning.go
+      component/  package component   Health, DamageIntent — combat's leaf; any damage source emits
+                                      DamageIntent without importing combat's systems
     player/   package player      player Body: spawn_system.go (the one Body constructor),
-                                  movement_system.go, move_command.go, tuning.go
-      component/  package component   Player, Input (frame queue + ack), MoveSpeed — player's leaf
-    echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, tuning.go, doc.go
+                                  input_system.go, movement_system.go, input_command.go,
+                                  sync_system.go, tuning.go
+      component/  package component   Player, InputQueue + InputFrame, MoveSpeed, BodyClaimed — player's
+                                      leaf
+    echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
+                                  tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
-    netsync/  package netsync     per-player world_state: world_state_event.go, world_state_system.go
+    ability/  package ability     whether a Body can cast: equip_system.go (default kit on claim) →
+                                  cast_system.go (the one writer of cooldowns), sync_system.go,
+                                  tuning.go, doc.go
+      component/  package component   Abilities (kit + cooldowns), AbilityCast — ability's leaf
+    projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
+                                  flight_system.go (move + first hit), sync_system.go, tuning.go, doc.go
+      component/  package component   Projectile — projectile's leaf
+    netsync/  package netsync     who may receive what: Viewers, Items (audience + seenBy). No events
+                                  of its own; each feature sends its own
 ```
 
 Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
-the **team** primitive, and any **`<feature>/component`** leaves it reads (`player → {physics, team,
-player/component}`, `combat → {physics, team, data, combat/component}`, `netsync → {physics, team,
-player/component, echo/component, combat/component}`). Every `component` leaf and
-`team` import only cardinal, so they're dependency *sinks* — a feature can read another's components
-without ever closing a cycle. `content` is a leaf too (imported only by `main.go`); feature packages
-never import it — they name their JSON file by path string in `JSONFile()`.
+the **team** primitive, **netsync**, and any **`<feature>/component`** leaves it reads — never another
+feature's behavior package (`player → {physics, team, netsync, player/component}`, `ability →
+{physics, team, netsync, player/component, ability/component}`, `projectile → {physics, team, netsync,
+ability/component, combat/component, projectile/component}`, `combat → {physics, data,
+combat/component, echo/component, player/component}`). `netsync` imports only `team` and
+`player/component`, so any feature can sync through it. Every `component` leaf and `team` import only
+cardinal (and the physics2d component types), so they're dependency *sinks* — a feature can read
+another's components without ever closing a cycle. `content` is a leaf too (imported only by
+`main.go`); feature packages never import it — they name their JSON file by path string in
+`JSONFile()`.
 
 ### Conventions when adding systems
 
@@ -106,7 +121,7 @@ things that must both hold as a feature grows: you can tell a file's role at a g
 can read another's data without risking an import cycle.
 
 1. **Role goes in the filename suffix.** A behavior file is `<concept>_<role>.go` —
-   `movement_system.go`, `move_command.go`, `spawn_system.go`, `damage_intent_event.go`. `ls` alone
+   `movement_system.go`, `input_command.go`, `spawn_system.go`, `damage_intent_event.go`. `ls` alone
    tells you what each file is; you never open `move.go` and `movement.go` to find out one's a command
    and the other's a system. Config definitions are `tuning.go` (`<concept>_tuning.go` when a feature
    has several); the package doc is `doc.go` or the namesake file. A search Row / query projection
@@ -116,7 +131,10 @@ can read another's data without risking an import cycle.
    component`) import only the engine. That's what lets a future `enemy` read `component.Player` or
    attach `component.Health` with **zero** risk of an import cycle — the failure that bites hard the
    first time two features reference each other's state. The leaf holds component *types* only — rows,
-   systems, events, commands, and tunings stay in the behavior package.
+   systems, client events, commands, and tunings stay in the behavior package. One exception: a system
+   event another feature emits or reads lives in the owner's leaf too — an intent sent into it
+   (`combat/component.DamageIntent`) or a fact others react to (`player/component.BodyClaimed`,
+   `ability/component.AbilityCast`) — so no feature imports another's systems.
    - **This is NOT the "split by layer" anti-pattern.** Separating *data* (a genuine leaf) from
      *behavior* is a real dependency boundary; splitting *behavior* into `systems/`/`events/` dirs is
      the cosmetic layering we still reject (directory rule 2).
@@ -132,13 +150,13 @@ can read another's data without risking an import cycle.
      boundary is real, so we pay it early. (Contrast the `shared`/`core` promotion in directory rule 4,
      which stays on-demand because cross-cutting *ownership* is genuinely uncertain until it happens.)
 3. **Split a concept's system into its own file only when two systems' registration ORDER is
-   load-bearing** — then the file boundary documents the pipeline. `collision_system.go` (classify →
-   emit `DamageIntent`) and `damage_system.go` (drain → the one place `Health` mutates) are separate
-   *because* `CollisionSystem` must register before `DamageResolveSystem`. Don't split just because a
-   file feels big.
+   load-bearing** — then the file boundary documents the pipeline. `anticamp_system.go` (emit
+   `DamageIntent`) and `damage_system.go` (drain → the one place `Health` mutates) are separate
+   *because* `AntiCampSystem` must register before `DamageResolveSystem`; likewise projectile's
+   `launch_system.go` → `flight_system.go`. Don't split just because a file feels big.
 4. **A cross-cutting vocabulary many features import gets its own file, even when small**
    (`physics/categories.go` — the collision category bits).
-5. **The package's front-door doc comment has one home:** a dedicated `doc.go` (`combat`, `player`),
+5. **The package's front-door doc comment has one home:** a dedicated `doc.go` (`echo`, `ability`),
    or the namesake file for a component-only package (`team.go`). Never leave it on whichever file
    sorts first.
 
@@ -168,40 +186,43 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   never hardcode `20`. `main.go` already feeds it to both the Cardinal `WorldOptions.TickRate` and the
   physics2d step, so a single edit re-tunes the whole sim.
 
-### Collision handling: deferred intents, per-feature contact reactions
-- `physics2d` emits `ContactBegin/End` + `TriggerBegin/End` system events each tick (on PreUpdate).
-  Physics resolves the *physical* contact (blocking, sliding) on its own; these events exist so
-  gameplay can react to what touched. They carry category bits, not meaning.
-- **A feature that reacts to contacts declares its own receiver** over that broadcast stream and does a
-  **single pass** for *its* kinds only, matching by **category bits** (`physics.Match` — integer
-  compare, *never* a reverse ECS type lookup) and **emitting intents**. `combat.CollisionSystem` is one
-  such reactor: it picks out damage-producing pairs and emits `combat.DamageIntent`, ignoring every
-  other contact. It is **not** a global router — don't teach it about pickups/triggers; give those
-  features their own reactor over the same stream.
-- **Know the cost of this model** (it's the price of not coupling combat to every contact kind): the
-  engine keeps ONE shared event queue per type, so each reactor re-scans the *whole* contact stream —
-  N reactors × C contacts/tick = **O(N·C)** `Match` calls where a single global router would do C.
-  Fine while reactors are few; if contact volume ever dominates, add a **narrowphase** (a dedicated
-  projectile-vs-target query) rather than more broadcast filters. And because no layer sees the whole
-  stream: a contact two reactors both match is handled by both (safe *only* because effects are
-  deferred commutative intents — confirm the double-handling is intended), and a contact **no** reactor
-  claims is silently dropped.
-- **There is no global "unclassified contact" net** — a reactor can't be one (it legitimately sees
-  mostly other features' contacts). To confirm masks are wired during bring-up, add a **Debug-level
-  contact logger in `physics`** (the gameplay-blind layer that sees *every* contact) and register it
-  only while debugging — do not recreate a catch-all inside a feature.
-- **Why the reaction lives in the feature, not physics:** deciding a contact's *meaning* needs gameplay
-  state — `Team` (friend/foe, via `team.SameTeam`), owner, tuning. `physics` is a reusable, gameplay-
-  blind plugin and must never import `team`/`combat`, so the meaning can only be decided up in feature
-  code. Physics knows *that* shapes touched; the feature knows what that touch *does*.
-- `combat.DamageResolveSystem` (Update, registered *after*) drains intents and is the **only** place
-  `Health` changes.
+### Collision handling: deferred intents, first-hit shots, per-feature contact reactions
+- **Damage is deferred.** A damage source emits `DamageIntent` (in the `combat/component` leaf, so a
+  source never imports combat's systems). `combat.DamageResolveSystem` (Update, registered *after*
+  every emitter) drains them and is the **only** place `Health` changes. Sources today:
+  `projectile.FlightSystem` (shot hits) and `combat.AntiCampSystem`.
 - **Why deferral:** because all mutation is deferred to the resolver and damage sums commutatively, the
-  order contacts arrive in — and whether solid contacts and sensor triggers interleave, or which
-  reactor emitted first — is irrelevant, so there's **no per-type event fan-out**. (Rampage re-emitted
-  a typed event per collision kind to control ordering; deferral makes that unnecessary.)
+  order hits arrive in — or which source emitted first — is irrelevant, so there's **no per-type event
+  fan-out**. (Rampage re-emitted a typed event per collision kind to control ordering; deferral makes
+  that unnecessary.)
+- **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
+  each shot every tick and resolves the **first** thing on its path: walls with the physics2d
+  `CircleSweep` (category `Environment`, which must mask `CategoryProjectile`), Bodies and Echoes with
+  its own swept-circle test. Box2D's sweep returns only the closest hit and can't skip allies (team
+  isn't a collision bit), so the team-aware part lives in gameplay code. Kind still comes from category
+  bits: `CategoryBody` blocks, `CategoryEcho` takes damage.
+  - First hit wins, which is what makes body-blocking exact, and a swept path can't tunnel at any
+    speed. A Body wins a tie with an Echo, so a Body standing on its own Echo shields it.
+  - Cost is O(S·T) per tick (shots × Bodies and Echoes). If counts grow, gather candidates with
+    `OverlapAABB` first.
+- **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
+  `TriggerBegin/End` system events each tick (on PreUpdate). Physics resolves the *physical* contact
+  (blocking, sliding) on its own; these events carry category bits, not meaning. **A feature that
+  reacts to contacts declares its own receiver** over that stream and does a **single pass** for *its*
+  kinds only, matching by **category bits** (`physics.Match` — integer compare, *never* a reverse ECS
+  type lookup) and **emitting intents**. It is **not** a global router.
+- **Know the cost of that model:** the engine keeps ONE shared event queue per type, so each reactor
+  re-scans the *whole* contact stream — N reactors × C contacts/tick = **O(N·C)** `Match` calls. Fine
+  while reactors are few. Because no layer sees the whole stream, a contact two reactors both match is
+  handled by both (safe *only* because effects are deferred commutative intents), and a contact **no**
+  reactor claims is silently dropped. To confirm masks during bring-up, register a **Debug-level
+  contact logger in `physics`** only while debugging — never a catch-all inside a feature.
+- **Why the reaction lives in the feature, not physics:** deciding a contact's *meaning* needs gameplay
+  state — `Team` (friend/foe), owner, tuning. `physics` is a reusable, gameplay-blind plugin and must
+  never import `team`/`combat`. Physics knows *that* shapes touched; the feature knows what that touch
+  *does*.
 - **Corollaries:** add a new collision *effect* as **new intents + resolver logic**, not an inline
-  mutation; add a new *kind* of contact reaction as a **new feature reactor**, not a branch in combat's.
+  mutation; add a new *kind* of contact reaction as a **new feature reactor**.
 
 ### Collision filtering & teams
 - **Category bits describe what a shape IS (its kind)** — `Body`, `Echo`, `Projectile`,
@@ -219,19 +240,29 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   rule forbids — that
   rule is about KIND (use bits); team is genuine game state (read the component).
 - **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match;
-  friendly-fire prevention (projectile vs an allied Echo) is a **team** match. Echoes and projectiles
-  carry their owner; team derives from owner. A "same-team = don't collide" bit/`groupIndex` scheme
-  is therefore wrong for damage — it would suppress the owner-match self-collision.
+  friendly fire (a shot passing through everything on its own team) is a **team** match. Echoes and
+  projectiles carry their owner (`Echo.Owner`, `Projectile.Source`) and the owner's `Team`. A
+  "same-team = don't collide" bit/`groupIndex` scheme is therefore wrong for damage — it would
+  suppress the owner-match self-collision.
 - `groupIndex` *may* later express purely-physical same-team pass-through (movement), never damage rules.
 
 ### System registration ordering (`main.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
-  before the receiver**: `combat.CollisionSystem` (emit) before `combat.DamageResolveSystem` (drain).
-- **`player.MovementSystem` runs in PreUpdate, registered before the physics plugin**, so an input
-  moves the Body in the same tick its `InputAck` is sent. Client prediction depends on this
-  (`TestFrameMovesBodySameTickAsAck`).
+  before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem` and
+  `ability.EquipSystem`, `ability.CastSystem` (emits `AbilityCast`) before `projectile.LaunchSystem`,
+  and every `DamageIntent` emitter (`projectile.FlightSystem`, `combat.AntiCampSystem`) before
+  `combat.DamageResolveSystem`.
+- **`player.InputSystem` then `player.MovementSystem` run in PreUpdate, registered before the physics
+  plugin**, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
+  depends on this (`TestFrameMovesBodySameTickAsAck`).
+- **Abilities and shots run after the Echo replay:** `ability.EquipSystem` → `ability.CastSystem` →
+  `projectile.LaunchSystem` → `projectile.FlightSystem`, after `echo.ReplaySystem`, so shots test
+  against this tick's Echo poses. A Body can cast the tick it is claimed, and a shot launched this tick
+  moves this tick, its path starting at the shooter.
+- **Sync systems run last** (`player`, `echo`, `ability`, `projectile`), so each sends the tick's final
+  state.
 
 ### Game data / definitions (data plugin)
 - **Use the engine's `pkg/plugin/data` plugin** for all data-driven config — it gives a typed
@@ -260,28 +291,49 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 ### Client sync (`netsync`)
 - **Events are the only way to push data to clients.** Cardinal has no client queries (removed in
   world-engine #915) and no automatic component sync.
-- **`netsync.WorldStateSystem` sends each player the full state they may see, every tick**, with
-  `w.SendTo(playerID, …)`. It's registered last, so it sends the tick's final state. Clients
-  interpolate on `Tick * TickSeconds`. Each state is complete, so joining or reconnecting needs nothing
-  else.
-- **netsync only reads other features' component leaves**, never their behavior packages, and needs only
-  `Player`, `Team` and `Transform2D` to show a Body.
+- **Each feature sends its own sync event** from its own `SyncSystem`, registered last:
+  `player.BodySync`, `echo.EchoSync`, `ability.AbilitySync`, `projectile.ProjectileSync`. Each goes to
+  every player with `w.SendTo` every tick and is complete — an entity missing from it is gone or
+  hidden — so joining or reconnecting needs nothing else. Clients interpolate each stream on
+  `Tick * TickSeconds`. A new synced feature adds its own event and `SyncSystem`; `netsync` doesn't
+  change.
+- **`netsync` decides who may receive what, never what is sent.** `netsync.Viewers(w)` lists the
+  players with a Body. `netsync.Items[S]` collects a feature's per-entity state with an **audience**
+  and filters it once per viewer team (`Lists`). It imports only `team` and `player/component`.
+- **Audience:** `Everyone` (every team `seenBy` allows) or `Allies` (only the entity's own team, e.g.
+  ability cooldowns — enemies never receive them).
 - **Never `Broadcast` game state.** Any client can subscribe to any event name, so a broadcast is
   public. Anything the server sends, a cheater can read.
 - **Hidden info is decided in one place, `netsync.seenBy(entity, team)`** (invisibility, line of
-  sight). Views are built per team, since allies share vision. That includes what reveals a hidden
+  sight). Lists are built per team, since allies share vision. That includes what reveals a hidden
   entity indirectly, e.g. an invisible Body's Echo replaying its path 5s later.
-- **Per-player sending is cheap.** Bandwidth equals a broadcast (each client gets its own copy
-  either way); only serialization repeats, once per player.
+- **Cost.** Cardinal writes one stream message per event, so each synced feature adds one message per
+  player per tick. Serialization repeats once per player; bandwidth equals a broadcast.
 - **Player IDs are only trustworthy with Argus auth.** DEV auth trusts the `X-Player-ID` header.
-- **Clients predict their own Body.** Each tick a client sends `Move{Session, Frames}` with its recent
-  unacked frames, and replays the frames newer than `WorldState.You.InputAck` (when `InputSession`
-  is its own).
+- **Clients predict their own Body.** Each tick a client sends `Input{Session, Frames}` with its recent
+  unacked frames — each frame is move, aim and buttons — and replays the frames newer than
+  `BodySync.You.InputAck` (when `InputSession` is its own).
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
-  (`player/component.Input`). Duplicates and applied frames are dropped, at most
-  `input_buffer_seconds` of frames are kept, and a Body with no input for `input_timeout_seconds`
+  (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, at
+  most `input_buffer_seconds` of frames are kept, and a Body with no input for `input_timeout_seconds`
   stops. One step per tick keeps the Body, and the Echo replaying it, smooth when frames arrive late
   or bunched. A new `Session` (a restarted client) starts the stream over.
+- **Systems act on input through `InputQueue.Applied(tick)`**, so each frame acts once: movement sets
+  velocity from it, abilities cast from it. Buttons ride in the frame (like a Source or Overwatch
+  user command), so a shot leaves from where the client predicted its Body when it fired.
+- **Cooldowns are server ticks** (`Slot.ReadyTick`), never a client count, so a client can't speed
+  them up. Shots aren't predicted on the client yet; they appear when the server confirms them.
+
+### Abilities and their effects
+- **`ability` only decides whether a cast happens.** It holds each Body's kit (equipped from
+  `default_kit` when the Body is claimed), checks the button, cooldown and aim, starts the cooldown,
+  and emits `AbilityCast{Caster, Ability, Aim}`. It never does the effect.
+- **An effect lives in the feature it changes and reacts to `AbilityCast` by ability ID,** with its
+  own numbers under that ID: `launchers.bolt` in `content/projectile/tuning.json` is the shot `bolt`
+  launches. A new shot ability is one JSON entry in each file. A new kind of effect (dash, shield) is a
+  new reactor in its own feature. Neither changes `ability`.
+- **`InputFrame.Buttons` bit N casts kit slot N**, so a new ability never changes the input type.
+  `TestLaunchersAreAimedAbilities` checks the content IDs line up.
 
 ---
 
