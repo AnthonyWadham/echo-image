@@ -10,7 +10,7 @@ import (
 // Projectile is a shot in flight. Source is the Body that launched it, credited with its damage.
 type Projectile struct {
 	Source    cardinal.EntityID
-	Velocity  physics2dcomp.Vec2 // units per second; not the physics2d.Vec2 alias, which sdk generate rejects
+	Velocity  physics2dcomp.Vec2 // units per second
 	Radius    float64
 	Damage    float64
 	Remaining float64 // distance left before it expires

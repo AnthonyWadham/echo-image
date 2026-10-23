@@ -12,7 +12,7 @@ import (
 // the tick's OUTCOME, not the input that caused it. Grow it only when the Echo must re-enact more than
 // movement (a Fired flag, an ability id, …).
 type EchoFrame struct {
-	Pose physics2dcomp.Transform2D // not the physics2d.Transform2D alias: sdk generate rejects aliased field types
+	Pose physics2dcomp.Transform2D
 }
 
 // PathHistory is the Echo's ring buffer of the Body's recent poses, driving the delayed replay. Poses is

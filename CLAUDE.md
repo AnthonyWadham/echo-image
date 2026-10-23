@@ -19,27 +19,23 @@ one is the *what*.
 > / `world reload`, and never call the Cardinal MCP tools (`send_command`, `query`, `introspect`,
 > `get_shard_logs`, …). **The user starts, stops, and runs the game manually.** Only use the MCP
 > *after* the user explicitly says the game is running. Building/vetting the Go code locally
-> (`go build ./...`) and running the codegen (`world sdk generate`) are fine; spinning up the
-> cluster is the user's job.
+> (`go build ./...`) is fine; spinning up the cluster is the user's job.
 
 - **Plain local build/vet/test:** `go build ./...` / `go vet ./shards/... ./pkg/...` / `go test ./...`.
   `shards/game/main_test.go` runs real ticks through `main.go`'s `register` with `cardinal.NewTestWorld`,
   so a missing registration fails there; it also pins the client-sync, prediction, ability and shot
   rules below.
-- **world-engine is a published release** (`v0.21.0` in `go.mod`), no `replace`. The shard's Docker
-  build is a plain `go build` that downloads modules itself, so **no `vendor/`**. Don't create one:
-  `go build` picks it up automatically and fails once it goes stale. A local
-  `replace => ../world-engine` would bring the need back, since Docker can't see outside the project.
+- **world-engine is the local checkout** (`replace => ../world-engine` in `go.mod`), currently a
+  branch where codegen is reverted. The shard's Docker build only mounts this project, so it can't
+  see `../world-engine`: `world start` needs a fresh `go mod vendor` first (and a re-vendor whenever
+  world-engine changes), or a published world-engine release in place of the `replace`.
 - **Toolchain:** Go 1.27.1 (`GOTOOLCHAIN=auto` to auto-fetch if the local go is older).
 - `world.toml` declares the shards.
-- **Client pairing.** The Unity client (`/mnt/z/Echo`) uses `dev.world.sdk` v0.6.0, which matches
-  world-engine ≥ v0.21.0. Bump both together.
-- **Wire code is generated.** Every registered component, command, event and system event needs
-  generated protobuf methods (`wire.gen.go` beside the type, plus `shards/game/gen/`); without them
-  it doesn't compile. After adding a type or changing its fields, run
-  `world sdk generate ./shards/game --go-out ./shards/game/gen --cs-out /mnt/z/Echo/Assets/Scripts/WorldNetwork/Generated`
-  (needs Docker; use a `world` CLI built from the same world-engine version you build against). Its
-  report lists the tuning types as "orphans" — expected, they're data-plugin configs, not wire types.
+- **No codegen.** Commands, events, components and system events are encoded as MessagePack by
+  reflection; a type only needs `Name()` and a registration.
+- **Client pairing.** The Unity client (`/mnt/z/Echo`) still uses `dev.world.sdk` v0.6.0 and its
+  generated protobuf C#, which doesn't match the MessagePack payloads. It needs updating before it
+  can talk to this shard again.
 
 ---
 
@@ -354,20 +350,18 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Registration is explicit.** Every component, command, event and system event must be registered
   before `StartGame` (the owning feature's `RegisterTypes`); an unregistered one panics on first use.
 - **Components, commands & system events** implement `Name() string` — unique, stable across runs, and
-  `[A-Za-z_][A-Za-z0-9_]*` (no hyphens/dots/spaces) — and get their wire methods from
-  `world sdk generate` (see Build & run).
-- **Wire field rules (the generator enforces them):** no Go slices, maps, pointers or interfaces in a
-  wire type. Use `cardinal.Slice[T]` for a variable-length list (`With` writes through, so always
-  `Set` the component after). In fields, use the plugin's own types (`physics2d/component`), not the
-  `physics2d.X` root aliases — the generator rejects aliased field types.
+  `[A-Za-z_][A-Za-z0-9_]*` (no hyphens/dots/spaces).
+- **Field rules:** values only — no Go slices, maps, pointers or interfaces in a component, command
+  or event (a plain slice shares its backing array, so writes skip `Set`). Use `cardinal.Slice[T]`
+  for a variable-length list (`With` writes through, so always `Set` the component after). Component
+  leaves use the plugin's own types (`physics2d/component`), so they don't import the plugin.
 - **Physics body = a trio of components:** `Transform2D` (pose, authoritative) + `Velocity2D` +
   `PhysicsBody2D` (Box2D body + collider shapes). Use `physics.NewBody2D` for correct Box2D defaults
   (bare `PhysicsBody2D{}` literals are inactive/asleep with zero gravity scale — almost never right).
 - **System hooks:** `cardinal.Init` (once), `cardinal.PreUpdate`, `cardinal.Update` (default),
   `cardinal.PostUpdate`. Registration order within a hook = execution order.
-- **Commands** are protobuf on the wire, via the generated code; the dev MCP `send_command` encodes
-  the payload against the command's proto descriptor. Route commands by the authenticated
-  `cmd.Player()`, not a client-supplied id.
+- **Commands** are MessagePack on the wire. Route commands by the authenticated `cmd.Player()`, not a
+  client-supplied id.
 
 ---
 

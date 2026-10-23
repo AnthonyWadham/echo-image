@@ -2,10 +2,7 @@ module echo_image
 
 go 1.27.1
 
-require (
-	github.com/argus-labs/world-engine v0.21.0
-	google.golang.org/protobuf v1.36.12
-)
+require github.com/argus-labs/world-engine v0.21.0
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2 // indirect
@@ -39,6 +36,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1 // indirect
 	github.com/aws/smithy-go v1.28.2 // indirect
+	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/caarlos0/env/v11 v11.4.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -51,10 +50,12 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/kelindar/bitmap v1.5.7 // indirect
 	github.com/kelindar/simd v1.2.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/minio/highwayhash v1.0.4 // indirect
@@ -67,6 +68,9 @@ require (
 	github.com/rotisserie/eris v0.5.4 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
+	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
+	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
+	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.46.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.46.0 // indirect
@@ -87,4 +91,8 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/argus-labs/world-engine => ../world-engine
