@@ -212,7 +212,7 @@ func TestSilentClientStops(t *testing.T) {
 
 func TestBadFrameDoesNotMove(t *testing.T) {
 	w := cardinal.NewTestWorld(t, register)
-	// Start moving: Box2D won't wake a sleeping Body for a NaN velocity, which would hide the bug.
+	// Start moving, so a bad frame that was skipped instead would leave the Body coasting.
 	w.Command("alice", input(1, frame(1, 1, 0)))
 	w.Tick()
 	before := bodiesFor(t, w, "alice")
@@ -568,19 +568,7 @@ func TestWallStopsShot(t *testing.T) {
 
 	// A wall halfway between them.
 	a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
-	type wallRow struct {
-		Transform physics2d.Transform2D
-		Velocity  physics2d.Velocity2D
-		Body      physics2d.PhysicsBody2D
-	}
-	wall := w.Create[wallRow]()
-	wall.Set(physics2d.Transform2D{Position: physics2d.Vec2{X: (a.X + b.X) / 2, Y: 0}})
-	wall.Set(physics.NewBody2D(physics2d.BodyTypeStatic, physics2d.ColliderShape{
-		ShapeType:    physics2d.ShapeTypeBox,
-		HalfExtents:  physics2d.Vec2{X: 0.5, Y: 5},
-		CategoryBits: physics.CategoryEnvironment,
-		MaskBits:     physics.CategoryBody | physics.CategoryProjectile,
-	}))
+	addWall(w, physics2d.Vec2{X: (a.X + b.X) / 2, Y: 0}, physics2d.Vec2{X: 0.5, Y: 5})
 	w.Tick() // physics picks the wall up
 
 	flyFor(w, fireAtEcho(t, w, alice))
@@ -639,6 +627,90 @@ func TestLaunchersAreAimedAbilities(t *testing.T) {
 		if def, ok := abilities[id]; !ok || !def.Aimed {
 			t.Errorf("launcher %q: ability found %v, aimed %v; want an aimed ability", id, ok, def.Aimed)
 		}
+	}
+}
+
+// --- Movement and walls ---
+
+// addWall builds a static box wall that blocks Bodies and shots.
+func addWall(w *cardinal.TestWorld, center, halfExtents physics2d.Vec2) {
+	type wallRow struct {
+		Transform physics2d.Transform2D
+		Velocity  physics2d.Velocity2D
+		Body      physics2d.PhysicsBody2D
+	}
+	wall := w.Create[wallRow]()
+	wall.Set(physics2d.Transform2D{Position: center})
+	wall.Set(physics.NewBody2D(physics2d.BodyTypeStatic, physics2d.ColliderShape{
+		ShapeType:    physics2d.ShapeTypeBox,
+		HalfExtents:  halfExtents,
+		CategoryBits: physics.CategoryEnvironment,
+		MaskBits:     physics.CategoryBody | physics.CategoryProjectile,
+	}))
+}
+
+// radiusOf returns the radius of b's collider circle.
+func radiusOf(w *cardinal.TestWorld, b player.BodyState) float64 {
+	return w.Entity(cardinal.EntityID(b.EntityID)).Get[physics2d.PhysicsBody2D]().Shapes.At(0).Radius
+}
+
+func TestWallStopsBody(t *testing.T) {
+	w, alice, _ := duel(t)
+	a := yourBody(t, bodiesFor(t, w, "alice"))
+	r := radiusOf(w, a)
+	face := a.X + r + 1 // 1 unit ahead of her
+	addWall(w, physics2d.Vec2{X: face + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
+	w.Tick() // physics picks the wall up
+
+	// She walks into it, then keeps pushing.
+	step := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
+	for range int(math.Ceil(1/step)) + 1 {
+		alice.move(1, 0)
+		w.Tick()
+	}
+	before := bodiesFor(t, w, "alice")
+	alice.move(1, 0)
+	w.Tick()
+	after := bodiesFor(t, w, "alice")
+	requireMoved(t, before, after, 0, 0)
+	// The mover rests up to LinearSlop (5 mm) inside a face.
+	if edge := yourBody(t, after).X + r; math.Abs(edge-face) > 0.01 {
+		t.Fatalf("her edge stopped at x = %.4f, want the wall's face at %.4f", edge, face)
+	}
+}
+
+// Pressing diagonally into a wall slides along it at the part of the input along the wall.
+func TestBodySlidesAlongWall(t *testing.T) {
+	w, alice, _ := duel(t)
+	a := yourBody(t, bodiesFor(t, w, "alice"))
+	addWall(w, physics2d.Vec2{X: a.X + radiusOf(w, a) + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
+	w.Tick() // physics picks the wall up; its face touches her right side
+
+	alice.move(1, 1)
+	w.Tick() // settles against the wall
+	for range 5 {
+		before := bodiesFor(t, w, "alice")
+		alice.move(1, 1)
+		w.Tick()
+		requireMoved(t, before, bodiesFor(t, w, "alice"), 0, math.Sqrt2/2)
+	}
+}
+
+// Bodies don't block each other, for now: two walking into each other pass straight through.
+func TestBodiesPassThroughEachOther(t *testing.T) {
+	w, alice, bob := duel(t)
+	a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
+	if a.Y != b.Y || a.X >= b.X {
+		t.Fatalf("alice at (%.2f, %.2f) doesn't face bob at (%.2f, %.2f) along +x", a.X, a.Y, b.X, b.Y)
+	}
+	step := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
+	for range int(math.Ceil((b.X-a.X)/step)) + 1 { // until they've swapped sides
+		aliceBefore, bobBefore := bodiesFor(t, w, "alice"), bodiesFor(t, w, "bob")
+		alice.move(1, 0)
+		bob.move(-1, 0)
+		w.Tick()
+		requireMoved(t, aliceBefore, bodiesFor(t, w, "alice"), 1, 0)
+		requireMoved(t, bobBefore, bodiesFor(t, w, "bob"), -1, 0)
 	}
 }
 

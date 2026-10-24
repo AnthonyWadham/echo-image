@@ -25,7 +25,7 @@ type bodyPoseRow struct {
 }
 
 // AntiCampSystem (GDD §3): an Echo overlapping its OWN Body self-damages, so you can never stand still.
-// It's a per-tick distance check, not a physics contact — an Echo (BodyTypeManual) and Body (kinematic)
+// It's a per-tick distance check, not a physics contact — an Echo and a Body (both BodyTypeManual)
 // generate no solid contact — that emits a DamageIntent, keeping DamageResolveSystem the single writer
 // of Health. The overlap is an OWNER match (the Echo vs its own Owner Body), never a team match.
 //

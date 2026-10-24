@@ -46,8 +46,10 @@ shards/game/
   main.go                       registration wiring ONLY
   content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json
   internal/
-    physics/  package physics    plugin wiring (physics.go) + collision category bits
+    physics/  package physics    plugin config (physics.go) + collision category bits
                                   (categories.go — kind, never team) + NewBody2D helper
+      mover/  package mover      Box2D's geometric mover (walls stop a circle, it slides along them):
+                                  a pure function over *box2d.World, no Cardinal import
     team/     package team        Team allegiance component + SameTeam — a component-only leaf
                                   (imports only cardinal; safe to read from any feature)
     combat/   package combat      damage: anticamp_system.go (an intent emitter) → damage_system.go
@@ -75,13 +77,14 @@ shards/game/
 
 Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
 the **team** primitive, **netsync**, and any **`<feature>/component`** leaves it reads — never another
-feature's behavior package (`player → {physics, team, netsync, player/component}`, `ability →
-{physics, team, netsync, player/component, ability/component}`, `projectile → {physics, team, netsync,
-ability/component, combat/component, projectile/component}`, `combat → {physics, data,
+feature's behavior package (`player → {physics, physics/mover, team, netsync, player/component}`,
+`ability → {physics, team, netsync, player/component, ability/component}`, `projectile → {physics,
+team, netsync, ability/component, combat/component, projectile/component}`, `combat → {physics, data,
 combat/component, echo/component, player/component}`). `netsync` imports only `team` and
 `player/component`, so any feature can sync through it. Every `component` leaf and `team` import only
 cardinal (and the physics2d component types), so they're dependency *sinks* — a feature can read
-another's components without ever closing a cycle. `content` is a leaf too (imported only by
+another's components without ever closing a cycle. `physics/mover` imports only box2d, so a client
+predictor built for wasm can import it too. `content` is a leaf too (imported only by
 `main.go`); feature packages never import it — they name their JSON file by path string in
 `JSONFile()`.
 
@@ -97,7 +100,7 @@ another's components without ever closing a cycle. `content` is a leaf too (impo
 2. **Colocate a feature's components, systems, and events in that one package.** Split into
    sub-packages only when a package genuinely gets large (~10+ files), and split **by sub-feature**
    (`combat/status`), **never by layer** (no `components/` `systems/` `events/` trio upfront).
-3. **Descriptive package names, no stutter.** `physics.Register` not `physics.RegisterPhysics`;
+3. **Descriptive package names, no stutter.** `physics.NewPlugin` not `physics.NewPhysicsPlugin`;
    `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `main.go` import-alias-free. The
    rule targets verb/function stutter; an eponymous type in a single-concept package (`team.Team`,
    like stdlib `list.List`) is fine.
@@ -166,9 +169,9 @@ time — never how fast the game plays or how hard anything hits. A build at 60 
 game* as one at 20 Hz, just smoother. Every system honors this:
 - **Rates are per-second, scaled by `dt` at the point of use.** `dt = 1 / physics.ServerTickRateHz`.
   Never bake a per-*tick* constant. A damage-over-time of 25/s is `25 * dt` this tick, not a hardcoded
-  `1.25`. Movement already complies: `Velocity2D` is world-units-per-*second* and Box2D integrates at
-  `dt`, so units/second is constant across tick rates — a faster tick rate must never move anything
-  faster.
+  `1.25`. Movement already complies: `Velocity2D` is world-units-per-*second* and
+  `player.MovementSystem` moves a Body by `velocity * dt`, so units/second is constant across tick
+  rates — a faster tick rate must never move anything faster.
 - **Durations & delays are configured in seconds and converted to ticks** (`ticks = round(seconds *
   TickRate)`) — never stored as a raw tick count. The Echo delay, cooldowns, and any ring-buffer
   sizing all derive from seconds so they hold their wall-clock meaning when the rate changes.
@@ -202,11 +205,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   - Cost is O(S·T) per tick (shots × Bodies and Echoes). If counts grow, gather candidates with
     `OverlapAABB` first.
 - **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
-  `TriggerBegin/End` system events each tick (on PreUpdate). Physics resolves the *physical* contact
-  (blocking, sliding) on its own; these events carry category bits, not meaning. **A feature that
-  reacts to contacts declares its own receiver** over that stream and does a **single pass** for *its*
-  kinds only, matching by **category bits** (`physics.Match` — integer compare, *never* a reverse ECS
-  type lookup) and **emitting intents**. It is **not** a global router.
+  `TriggerBegin/End` system events each tick (on PreUpdate). Blocking and sliding aren't reactions
+  (a Body's happen in `player.MovementSystem`, see Movement and walls); these events carry category
+  bits, not meaning. **A feature that reacts to contacts declares its own receiver** over that stream
+  and does a **single pass** for *its* kinds only, matching by **category bits** (`physics.Match` —
+  integer compare, *never* a reverse ECS type lookup) and **emitting intents**. It is **not** a global
+  router.
 - **Know the cost of that model:** the engine keeps ONE shared event queue per type, so each reactor
   re-scans the *whole* contact stream — N reactors × C contacts/tick = **O(N·C)** `Match` calls. Fine
   while reactors are few. Because no layer sees the whole stream, a contact two reactors both match is
@@ -240,7 +244,31 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   projectiles carry their owner (`Echo.Owner`, `Projectile.Source`) and the owner's `Team`. A
   "same-team = don't collide" bit/`groupIndex` scheme is therefore wrong for damage — it would
   suppress the owner-match self-collision.
-- `groupIndex` *may* later express purely-physical same-team pass-through (movement), never damage rules.
+- `groupIndex` can't express same-team pass-through for movement: the mover uses Box2D queries, and
+  their filter ignores `groupIndex`. If Bodies ever block each other, decide that in the mover's planes,
+  and skip the Body's own shape: queries don't, and the mover would push itself away from where it was.
+  Never use it for damage rules.
+
+### Movement and walls
+- **Bodies are `BodyTypeManual`, and `player.MovementSystem` moves them itself.** Box2D never pairs a
+  kinematic or Manual body with a static or kinematic one, so its step can't stop a Body.
+- **The move is Box2D's geometric mover,** `physics/mover.Move`: up to 5 passes of collide → solve
+  planes → cast, then the velocity is clipped. It writes `Transform2D`. Walls stop a Body and it
+  slides along them.
+- **The mover's query filter decides what blocks a Body:** `{Category: CategoryBody, Mask:
+  CategoryEnvironment}`. The filter is two-way, so a wall's `MaskBits` must include `CategoryBody`.
+  The Body's own `MaskBits` doesn't drive the mover.
+- **Bodies don't block each other, for now,** and walk through Echoes (anti-camp needs that overlap).
+- **`Velocity2D` stays the Body's velocity** in units per second, clipped against the walls it touched.
+  A Body coasting through a late frame slides instead of pushing into the wall. The physics plugin
+  also needs the component on every physics body.
+- **A Body gets no `ContactBegin/End`** with walls or other Bodies. A static sensor still fires
+  `TriggerBegin/End` for it.
+- **Never place a Body with its center inside a wall.** The mover can't push it out, so it walks out
+  the far side. Spawns and teleports must land clear of walls.
+- **The mover is shared sim code** for a later wasm predictor, so it must stay deterministic: no
+  Cardinal import, FMA-free arithmetic (`float64(a*b)`, or box2d helpers like `box2d.MulAdd`), and
+  planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID.
 
 ### System registration ordering (`main.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
@@ -251,8 +279,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   and every `DamageIntent` emitter (`projectile.FlightSystem`, `combat.AntiCampSystem`) before
   `combat.DamageResolveSystem`.
 - **`player.InputSystem` then `player.MovementSystem` run in PreUpdate, registered before the physics
-  plugin**, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
-  depends on this (`TestFrameMovesBodySameTickAsAck`).
+  plugin.** Movement moves each Body by the frame Input just applied, so a frame moves the Body in the
+  same tick its `InputAck` is sent. Client prediction depends on this (`TestFrameMovesBodySameTickAsAck`).
+  - Before the plugin, the step sees each Body where it moved to this tick. The mover sees walls as of
+    the last step, so a wall created this tick blocks from the next one.
+  - `physics.NewPlugin()` builds the plugin first so Movement can hold it. Where `world.RegisterPlugin`
+    is called is what places its step.
 - **Abilities and shots run after the Echo replay:** `ability.EquipSystem` → `ability.CastSystem` →
   `projectile.LaunchSystem` → `projectile.FlightSystem`, after `echo.ReplaySystem`, so shots test
   against this tick's Echo poses. A Body can cast the tick it is claimed, and a shot launched this tick
@@ -328,6 +360,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   own numbers under that ID: `launchers.bolt` in `content/projectile/tuning.json` is the shot `bolt`
   launches. A new shot ability is one JSON entry in each file. A new kind of effect (dash, shield) is a
   new reactor in its own feature. Neither changes `ability`.
+- **Planned foundation for champions, effects and movement abilities:**
+  `docs/research/character-foundation.md`. Read it before adding a champion or a movement ability. Abilities never move
+  a Body; they feed the one mover a forced move, a speed change or a pass.
 - **`InputFrame.Buttons` bit N casts kit slot N**, so a new ability never changes the input type.
   `TestLaunchersAreAimedAbilities` checks the content IDs line up.
 
@@ -371,4 +406,6 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   useful reference but **not a style authority** — we deliberately diverge from it (see the
   package-per-feature vs. its `system/` junk drawer, and deferred intents vs. its typed-event
   fan-out). Compare against general best practice, not just what rampage did.
+- **Research findings** (not source of truth; this file and the code win) live in `docs/research/`.
+  Map system: [`docs/research/map-system-findings.md`](docs/research/map-system-findings.md).
 - World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`; this project builds against the published release, not that checkout.

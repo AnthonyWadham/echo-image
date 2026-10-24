@@ -1,9 +1,8 @@
-// Package physics wires the physics2d plugin into the world and owns the collision vocabulary
+// Package physics configures the physics2d plugin for the game and owns the collision vocabulary
 // (category bits, in categories.go) and the body-construction helpers that gameplay packages build on.
 package physics
 
 import (
-	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
 )
@@ -16,20 +15,19 @@ const ServerTickRateHz = 20
 // independence).
 const SecondsPerTick = 1.0 / float64(ServerTickRateHz)
 
-// Register wires the physics2d plugin (Box2D-backed 2D simulation) into the world and returns it for
-// queries (CircleSweep, Raycast). The plugin registers its own systems: an Init rebuild and a
+// NewPlugin returns the physics2d plugin (Box2D-backed 2D simulation) for world.RegisterPlugin; keep
+// it for queries (CircleSweep, Raycast, Engine). It is built apart from registering so a system
+// registered before it can hold it. On RegisterPlugin it adds its own systems: an Init rebuild and a
 // PreUpdate step that runs before game logic each tick, so contact/trigger events are ready for
 // gameplay systems on Update.
 //
 // Gravity is zero for a top-down game (physics is used for collision on the ground plane, not
 // falling). Set Gravity.Y negative for a side-view / platformer feel.
-func Register(world *cardinal.World) *physics2d.Plugin {
-	plugin := physics2d.NewPlugin(physics2d.Config{
+func NewPlugin() *physics2d.Plugin {
+	return physics2d.NewPlugin(physics2d.Config{
 		Gravity:  physics2d.Vec2{X: 0, Y: 0},
 		TickRate: ServerTickRateHz,
 	})
-	world.RegisterPlugin(plugin)
-	return plugin
 }
 
 // NewBody2D returns a PhysicsBody2D with the plugin's Box2D defaults (Active, Awake and

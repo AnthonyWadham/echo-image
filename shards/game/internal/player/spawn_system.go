@@ -46,14 +46,15 @@ func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos 
 	b.Set(component.MoveSpeed{Value: speed})
 	b.Set(physics2d.Transform2D{Position: pos})
 	b.Set(physics2d.Velocity2D{})
-	// Kinematic: the Body is driven by player input later, not by physics forces. No Health component
-	// is set, which is what makes it invincible (never a combat damage target).
-	b.Set(physics.NewBody2D(physics2d.BodyTypeKinematic, physics2d.ColliderShape{
+	// Manual: MovementSystem owns the pose and stops it at walls with Box2D's mover. Box2D itself never
+	// moves or blocks it. No Health component is set, which is what makes it invincible (never a combat
+	// damage target).
+	b.Set(physics.NewBody2D(physics2d.BodyTypeManual, physics2d.ColliderShape{
 		ShapeType:    physics2d.ShapeTypeCircle,
 		Radius:       0.5,
 		Density:      1,
 		CategoryBits: physics.CategoryBody,
-		MaskBits:     physics.CategoryBody | physics.CategoryEnvironment, // solid vs. other bodies and walls
+		MaskBits:     physics.CategoryEnvironment, // walls; Bodies pass through each other, for now
 	}))
 	w.Logger().Info().
 		Uint32("id", id).Str("nickname", nickname).Uint8("team", teamID).

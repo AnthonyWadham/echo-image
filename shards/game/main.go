@@ -48,14 +48,19 @@ func register(world *cardinal.World) {
 	projectile.RegisterTypes(world)
 	combat.RegisterTypes(world)
 
+	// Physics plugin: built here so movement can query it, registered after movement.
+	physicsPlugin := physics.NewPlugin()
+
 	// Input (PreUpdate, first): queues Input frames and applies one per Body per tick, and emits
-	// BodyClaimed the first tick each Body is claimed. Movement then sets velocity from that frame.
-	// Both run BEFORE the physics plugin, so a frame moves the Body the same tick its ack is sent.
+	// BodyClaimed the first tick each Body is claimed. Movement then moves each Body by that frame,
+	// stopping at walls, so a frame moves the Body the same tick its ack is sent. Both run BEFORE the
+	// physics plugin, so its step sees each Body where it moved to this tick.
 	world.RegisterSystem(&player.InputSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
-	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin, Physics: physicsPlugin},
+		cardinal.WithHook(cardinal.PreUpdate))
 
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick. Kept for queries.
-	physicsPlugin := physics.Register(world)
+	world.RegisterPlugin(physicsPlugin)
 
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
