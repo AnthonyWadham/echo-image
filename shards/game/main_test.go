@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"flag"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
+	"github.com/vmihailenco/msgpack/v5"
 
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
@@ -635,4 +640,88 @@ func TestLaunchersAreAimedAbilities(t *testing.T) {
 			t.Errorf("launcher %q: ability found %v, aimed %v; want an aimed ability", id, ok, def.Aimed)
 		}
 	}
+}
+
+// --- Wire format ---
+
+var update = flag.Bool("update", false, "rewrite testdata/wire from the TestWireFixtures samples")
+
+// TestWireFixtures pins each payload's bytes in testdata/wire, which the client checks too
+// (client/src/game/wire_fixtures.test.ts). A renamed field fails here instead of silently zeroing on
+// the other side.
+func TestWireFixtures(t *testing.T) {
+	in := player.Input{Session: 305419896, Frames: cardinal.SliceOf(
+		playercomp.InputFrame{Seq: 1, MoveX: 1},
+		playercomp.InputFrame{
+			Seq: 2, MoveX: 0.7071067811865476, MoveY: -0.7071067811865476, AimX: 3.5, AimY: -1.25, Buttons: 1,
+		},
+	)}
+	samples := []struct {
+		name    string
+		payload any
+	}{
+		{"body_sync", player.BodySync{
+			Tick:        9007199254740993, // 2^53+1, past float64 precision
+			TickSeconds: 0.05,
+			You:         player.YouState{Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5},
+			Bodies: cardinal.SliceOf(
+				player.BodyState{EntityID: 1, PlayerID: 1, Nickname: "Player One", Team: 0, X: 1.5, Y: -2},
+				player.BodyState{EntityID: 2, PlayerID: 2, Nickname: "Échø ✦", Team: 1, X: -0.25, Y: 3.75},
+			),
+		}},
+		{"echo_sync", echo.EchoSync{Tick: 7, Echoes: cardinal.SliceOf(
+			echo.EchoState{EntityID: 3, PlayerID: 1, Team: 0, X: -4.5, Y: 0.5, HP: 62.5, MaxHP: 100},
+		)}},
+		{"ability_sync", ability.AbilitySync{Tick: 7, Abilities: cardinal.SliceOf(
+			ability.AbilityState{Body: 1, Slot: 0, Ability: "bolt", ReadyTick: 18446744073709551615},
+		)}},
+		{"projectile_sync", projectile.ProjectileSync{Tick: 8, Projectiles: cardinal.SliceOf(
+			projectile.ProjectileState{EntityID: 9, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15},
+		)}},
+		{"projectile_sync_empty", projectile.ProjectileSync{Tick: 9}},
+		{"input", in},
+	}
+	for _, s := range samples {
+		t.Run(s.name, func(t *testing.T) {
+			got, err := msgpack.Marshal(s.payload) // as Cardinal's schema.Serialize does
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join("testdata", "wire", s.name+".msgpack")
+			if *update {
+				if err := os.WriteFile(path, got, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			want, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("%T no longer encodes as %s. If intended, run "+
+					"`go test ./shards/game -run TestWireFixtures -update` and update its type in client/src/game",
+					s.payload, path)
+			}
+		})
+	}
+
+	// The client's own encoding of the input sample, written by client/src/game/wire_fixtures.test.ts.
+	t.Run("input_client", func(t *testing.T) {
+		raw, err := os.ReadFile(filepath.Join("testdata", "wire", "input_client.msgpack"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got player.Input
+		if err := msgpack.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		gotFrames, wantFrames := slices.Collect(got.Frames.Values()), slices.Collect(in.Frames.Values())
+		if got.Session != in.Session || !slices.Equal(gotFrames, wantFrames) {
+			t.Fatalf("the client's Input decodes as Session %d, Frames %+v; want %d, %+v. Update "+
+				"client/src/game/player/input_command.ts, then run "+
+				"`UPDATE_FIXTURES=1 bun x vitest run src/game/wire_fixtures.test.ts` in client",
+				got.Session, gotFrames, in.Session, wantFrames)
+		}
+	})
 }

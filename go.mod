@@ -2,7 +2,10 @@ module echo_image
 
 go 1.27.1
 
-require github.com/argus-labs/world-engine v0.21.0
+require (
+	github.com/argus-labs/world-engine v0.21.0
+	github.com/vmihailenco/msgpack/v5 v5.4.1
+)
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2 // indirect
@@ -68,7 +71,6 @@ require (
 	github.com/rotisserie/eris v0.5.4 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/stretchr/testify v1.12.1 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

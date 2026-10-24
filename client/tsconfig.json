@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    // The SDK is the local go-ecs checkout, like go.mod's replace. Keep in step with vite.config.ts.
+    "paths": {
+      "@argus-labs/sdk": ["../../go-ecs/pkg/sdk-ts/src/index.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}
