@@ -21,12 +21,14 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	var shots netsync.Items[ProjectileState]
 	for e := range w.Contains[projectileRow]().Iter() {
 		pos := e.Get[physics2d.Transform2D]().Position
+		p := e.Get[component.Projectile]()
 		shots.Add(e, netsync.Everyone, ProjectileState{
 			EntityID: uint32(e.ID()),
+			Type:     p.Type,
 			Team:     e.Get[team.Team]().ID,
 			X:        pos.X,
 			Y:        pos.Y,
-			Radius:   e.Get[component.Projectile]().Radius,
+			Radius:   p.Radius,
 		})
 	}
 	lists := shots.Lists(viewers)

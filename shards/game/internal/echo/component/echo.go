@@ -1,5 +1,5 @@
 // Package component holds the echo feature's ECS data — the leaf other features import to read an
-// Echo's Owner/health without depending on echo's systems, so no import cycle is possible
+// Echo without depending on echo's systems, so no import cycle is possible
 // (see CLAUDE.md → File layout within a package).
 package component
 
@@ -28,14 +28,9 @@ type PathHistory struct {
 // Name is the ECS component name.
 func (PathHistory) Name() string { return "path_history" }
 
-// Echo marks a delayed replay of a Body. Owner is the Body it shadows — and the only Body it
-// self-damages against (anti-camp is an owner match, not a team match). Warmup is initialized to the
-// trail length and decremented once per replayed tick (M2); anti-camp (M3) stays off until it reaches
-// 0 — the first tick the read slot yields real history rather than the prefilled spawn pose.
+// Echo marks a delayed replay of a Body: the Body in its team.Owner.
 type Echo struct {
-	Owner    cardinal.EntityID
 	PlayerID uint32
-	Warmup   int
 }
 
 // Name is the ECS component name.

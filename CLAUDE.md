@@ -23,8 +23,8 @@ one is the *what*.
 
 - **Plain local build/vet/test:** `go build ./...` / `go vet ./shards/... ./pkg/...` / `go test ./...`.
   `shards/game/main_test.go` runs real ticks through `main.go`'s `register` with `cardinal.NewTestWorld`,
-  so a missing registration fails there; it also pins the client-sync, prediction, ability and shot
-  rules below.
+  so a missing registration fails there; it also pins the client-sync, prediction, ability, shot,
+  Echo, area, damage and effect rules below.
 - **world-engine is the local checkout** (`replace => ../world-engine` in `go.mod`), currently a
   branch where codegen is reverted. The shard's Docker build only mounts this project, so it can't
   see `../world-engine`: `world start` needs a fresh `go mod vendor` first (and a re-vendor whenever
@@ -46,45 +46,68 @@ shards/game/
   main.go                       registration wiring ONLY
   content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json
   internal/
-    physics/  package physics    plugin config (physics.go) + collision category bits
-                                  (categories.go — kind, never team) + NewBody2D helper
-      mover/  package mover      Box2D's geometric mover (walls stop a circle, it slides along them):
-                                  a pure function over *box2d.World, no Cardinal import
-    team/     package team        Team allegiance component + SameTeam — a component-only leaf
-                                  (imports only cardinal; safe to read from any feature)
-    combat/   package combat      damage: anticamp_system.go (an intent emitter) → damage_system.go
-                                  (the one writer of Health), tuning.go
-      component/  package component   Health, DamageIntent — combat's leaf; any damage source emits
-                                      DamageIntent without importing combat's systems
+    interact/ package interact    the rule vocabulary: Kind (the Box2D category bits), Tags, Relation,
+                                  Side, Filter, First — standard library only
+    physics/  package physics    plugin config (physics.go) + MoveBlockers and Match (categories.go)
+                                  + NewBody2D, WorldPoint helpers
+      mover/  package mover      Box2D's geometric mover (walls stop a circle, it slides along them)
+                                  and the landing rule: pure functions over *box2d.World, no Cardinal
+                                  import
+    team/     package team        Team and Owner allegiance components + SameTeam, SideOf — a
+                                  component-only leaf (imports only cardinal and interact)
+    combat/   package combat      damage: damage_system.go (the one writer of Health)
+      component/  package component   Health, DamageIntent, HealIntent — combat's leaf; any damage or
+                                      heal source emits an intent without importing combat's systems
+    area/     package area        areas: area_system.go (each area acts on what overlaps its holder,
+                                  by rules), tuning.go (area kinds), doc.go
+      component/  package component   Area — area's leaf; a constructor gives its entity an area
     player/   package player      player Body: spawn_system.go (the one Body constructor),
                                   input_system.go, movement_system.go, input_command.go,
-                                  sync_system.go, tuning.go
-      component/  package component   Player, InputQueue + InputFrame, MoveSpeed, BodyClaimed — player's
-                                      leaf
+                                  sync_system.go, tuning.go (champions)
+      component/  package component   Player, Champion, InputQueue + InputFrame, MoveSpeed, BodyClaimed
+                                      — player's leaf
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
                                   tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
-    ability/  package ability     whether a Body can cast: equip_system.go (default kit on claim) →
-                                  cast_system.go (the one writer of cooldowns), sync_system.go,
-                                  tuning.go, doc.go
-      component/  package component   Abilities (kit + cooldowns), AbilityCast — ability's leaf
+    ability/  package ability     casting: equip_system.go (cooldowns on claim) → cast_system.go (the
+                                  gate; the one writer of cooldowns) → cast_hook_system.go (runs each
+                                  cast's hook, turns its requests into intents), sync_system.go,
+                                  tuning.go (kits, abilities and their hooks), doc.go
+      component/  package component   Abilities (cooldowns by ability ID), AbilityCast + Cause —
+                                      ability's leaf
+      hooks/      package hooks       what abilities do: one hook per name (launch_hook.go,
+                                      dash_hook.go), Bind, Out — standard library only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
-                                  flight_system.go (move + first hit), sync_system.go, tuning.go, doc.go
-      component/  package component   Projectile — projectile's leaf
+                                  flight_system.go (move + meets rules), sync_system.go, tuning.go
+                                  (shot types and the default rules), doc.go
+      component/  package component   Projectile, LaunchIntent — projectile's leaf
+    effect/   package effect      timed effects on any entity: resolve_system.go (the one writer of
+                                  Effects), tuning.go (what each effect kind does), doc.go
+      component/  package component   Effects, EffectIntent — effect's leaf; any feature reads a status
+                                      or asks for an effect without importing effect's systems
+      status/     package status      the rules: Entry, Add, Fold, Speed — standard library and
+                                      interact only
     netsync/  package netsync     who may receive what: Viewers, Items (audience + seenBy). No events
                                   of its own; each feature sends its own
 ```
 
 Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
-the **team** primitive, **netsync**, and any **`<feature>/component`** leaves it reads — never another
-feature's behavior package (`player → {physics, physics/mover, team, netsync, player/component}`,
-`ability → {physics, team, netsync, player/component, ability/component}`, `projectile → {physics,
-team, netsync, ability/component, combat/component, projectile/component}`, `combat → {physics, data,
-combat/component, echo/component, player/component}`). `netsync` imports only `team` and
-`player/component`, so any feature can sync through it. Every `component` leaf and `team` import only
-cardinal (and the physics2d component types), so they're dependency *sinks* — a feature can read
-another's components without ever closing a cycle. `physics/mover` imports only box2d, so a client
-predictor built for wasm can import it too. `content` is a leaf too (imported only by
+the **team** and **interact** primitives, **netsync**, and any **`<feature>/component`** leaves it
+reads — never another feature's behavior package (`player → {physics, physics/mover, interact, team,
+netsync, player/component, effect/component, effect/status}`, `ability → {ability/hooks, physics,
+interact, team, netsync, player/component, ability/component, effect/component,
+projectile/component}`, `projectile → {physics, interact, team, netsync, combat/component,
+effect/component, projectile/component}`, `area → {physics, interact, team, area/component,
+combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
+{physics, interact, team, netsync, echo/component, area/component, combat/component,
+player/component, effect/component}`, `effect → {data, interact, effect/component, effect/status}`).
+`netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
+`component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
+also imports `effect/status`, team imports `interact`, and combat's and projectile's leaves import
+ability's leaf for `Cause`), so they're dependency *sinks* — a feature can read another's components
+without ever closing a cycle.
+`physics/mover` imports only box2d, and `interact`, `effect/status` and `ability/hooks` only the
+standard library (and `interact`), so a client predictor built for wasm can import them too. `content` is a leaf too (imported only by
 `main.go`); feature packages never import it — they name their JSON file by path string in
 `JSONFile()`.
 
@@ -149,12 +172,12 @@ can read another's data without risking an import cycle.
      boundary is real, so we pay it early. (Contrast the `shared`/`core` promotion in directory rule 4,
      which stays on-demand because cross-cutting *ownership* is genuinely uncertain until it happens.)
 3. **Split a concept's system into its own file only when two systems' registration ORDER is
-   load-bearing** — then the file boundary documents the pipeline. `anticamp_system.go` (emit
-   `DamageIntent`) and `damage_system.go` (drain → the one place `Health` mutates) are separate
-   *because* `AntiCampSystem` must register before `DamageResolveSystem`; likewise projectile's
-   `launch_system.go` → `flight_system.go`. Don't split just because a file feels big.
-4. **A cross-cutting vocabulary many features import gets its own file, even when small**
-   (`physics/categories.go` — the collision category bits).
+   load-bearing** — then the file boundary documents the pipeline. ability's `cast_system.go` (the
+   gate, emits `AbilityCast`) and `cast_hook_system.go` (runs the hooks) are separate *because* the
+   gate runs in PreUpdate and the hooks in Update; likewise projectile's `launch_system.go` →
+   `flight_system.go`. Don't split just because a file feels big.
+4. **A cross-cutting vocabulary many features import gets its own home, even when small**
+   (`interact` — the kinds, tags and relations every rule uses).
 5. **The package's front-door doc comment has one home:** a dedicated `doc.go` (`echo`, `ability`),
    or the namesake file for a component-only package (`team.go`). Never leave it on whichever file
    sorts first.
@@ -185,25 +208,56 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   never hardcode `20`. `main.go` already feeds it to both the Cardinal `WorldOptions.TickRate` and the
   physics2d step, so a single edit re-tunes the whole sim.
 
-### Collision handling: deferred intents, first-hit shots, per-feature contact reactions
-- **Damage is deferred.** A damage source emits `DamageIntent` (in the `combat/component` leaf, so a
-  source never imports combat's systems). `combat.DamageResolveSystem` (Update, registered *after*
-  every emitter) drains them and is the **only** place `Health` changes. Sources today:
-  `projectile.FlightSystem` (shot hits) and `combat.AntiCampSystem`.
-- **Why deferral:** because all mutation is deferred to the resolver and damage sums commutatively, the
-  order hits arrive in — or which source emitted first — is irrelevant, so there's **no per-type event
-  fan-out**. (Rampage re-emitted a typed event per collision kind to control ordering; deferral makes
-  that unnecessary.)
+### Rules: what happens when X meets Y (`interact`)
+- **Every "X meets Y" is data: a filter plus a response, and the first rule that matches wins.** The
+  vocabulary is `interact`: `Kind` (what a thing is — the Box2D category bits), `Tags` (states effects
+  grant, e.g. `stunned`), `Relation` (`own`, `ally`, `enemy`, `neutral`, from each side's `team.Owner`
+  and `team.Team`), and `Filter{Kinds, Relations, Require, Forbid}` (an empty field matches anything).
+  Content names them in JSON lists; an unknown name fails the boot.
+- **The GDD's rules are default content, not code.** A shot type's own `meets` rules are checked first,
+  then `defaults` in `content/projectile/tuning.json` (walls and bounds stop, own and ally pass, Bodies
+  stop, Echoes take the payload). So "some shots pass Bodies" is one rule on that shot type. Order is
+  the only priority; the rule index breaks ties between things met at the same point.
+- **Executors switch on responses and options, never on content IDs.** `projectile.FlightSystem` (shot
+  `meets`: `stop`, `pass`, payload yes or no) and `area.AreaSystem` (area rules) are the executors
+  today. A new response is an enum value with a JSON name plus one branch in its executor, tested
+  against the others.
+- **Tags are a closed Go list, append only** (snapshots keep the bits). Add one only when several
+  features read it; state one champion alone reads stays in its own component.
+- **Areas test who is inside every tick.** An `area/component.Area{Kind, Start}` makes its entity's
+  first shape act on what overlaps it: one `OverlapAABB` query, an exact circle test, then the first
+  matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
+  the Echo's area (`content/area/tuning.json`, kind `anticamp`), and its `Start` is the warmup.
+
+### Collision handling: deferred intents, rule-driven shots, per-feature contact reactions
+- **Damage is deferred.** A damage source emits `DamageIntent`, and a heal `HealIntent` (both in the
+  `combat/component` leaf, so a source never imports combat's systems). `combat.DamageResolveSystem`
+  (Update, registered *after* every emitter) drains them and is the **only** place `Health` changes.
+  Sources today: `projectile.FlightSystem` (shot hits) and `area.AreaSystem` (anti-camp); no heals yet.
+- **HP stays between 0 and `MaxHP`.** For each target the resolver takes the tick's damage, then its
+  heals, and writes HP once, never above `MaxHP`. At 0 or below the target dies instead, so HP is never
+  stored below 0. Overkill counts, so a small heal can't save a target from a much bigger hit. Intents
+  are summed in sorted order, so the order they arrive in — or which source emitted first — never
+  changes the result, and there's **no per-type event fan-out**. (Rampage re-emitted a typed event per
+  collision kind to control ordering; deferral makes that unnecessary.)
+- **Credit vs cause.** An intent's `Credit` is the Body credited with it (kills, lifesteal): the
+  `team.Owner` of what dealt it. Its `Cause` is the cast that started it
+  (`ability/component.Cause{Caster, Ability, Tick}`, which `AbilityCast` embeds), carried by shots. A
+  reflect would change the shot's Owner and keep Cause. An area's damage has no cause.
 - **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
-  each shot every tick and resolves the **first** thing on its path: walls with the physics2d
-  `CircleSweep` (category `Environment`, which must mask `CategoryProjectile`), Bodies and Echoes with
-  its own swept-circle test. Box2D's sweep returns only the closest hit and can't skip allies (team
-  isn't a collision bit), so the team-aware part lives in gameplay code. Kind still comes from category
-  bits: `CategoryBody` blocks, `CategoryEcho` takes damage.
+  each shot every tick and resolves the **first** thing on its path that its rules don't pass: the map
+  with one physics2d `CircleSweep` (masked to the map kinds its rules stop at), Bodies and Echoes with
+  its own swept-circle test, with each target's relation and tags. Box2D's sweep returns only the
+  closest hit and can't skip allies (team isn't a collision bit), so the rule part lives in gameplay
+  code. A shot's `Type` names its shot type, whose rules are looked up each tick; its numbers are copied
+  at launch.
   - First hit wins, which is what makes body-blocking exact, and a swept path can't tunnel at any
-    speed. A Body wins a tie with an Echo, so a Body standing on its own Echo shields it.
-  - Cost is O(S·T) per tick (shots × Bodies and Echoes). If counts grow, gather candidates with
-    `OverlapAABB` first.
+    speed. At the same point the earlier rule wins, then the lower entity ID, so by default a Body
+    standing on its own Echo shields it.
+  - `pass` with a payload is rejected at load: with no hit list yet, it would hit the same thing every
+    tick. Pierce, bounce and the rest come with their first users and a `Hits` list.
+  - Cost is O(S·T·R) per tick (shots × Bodies and Echoes × rules). If counts grow, gather candidates
+    with `OverlapAABB` first.
 - **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
   `TriggerBegin/End` system events each tick (on PreUpdate). Blocking and sliding aren't reactions
   (a Body's happen in `player.MovementSystem`, see Movement and walls); these events carry category
@@ -225,8 +279,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   mutation; add a new *kind* of contact reaction as a **new feature reactor**.
 
 ### Collision filtering & teams
-- **Category bits describe what a shape IS (its kind)** — `Body`, `Echo`, `Projectile`,
-  `Environment` — never whose side it's on.
+- **Category bits describe what a shape IS (its kind, `interact.Kind`)** — `Body`, `Echo`, `Shot`,
+  `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
+  the bits, so never renumber one.
+- **A map shape's category is its map kind, and its mask is all bits.** Each query's mask lists the
+  kinds that stop it (`physics.MoveBlockers`, or the map kinds a shot's rules stop at). A per-Body rule,
+  like a pass through walls, changes that Body's query mask, never a shape's bits.
 - **Filter at the source with mask bits** so pairs you'll never act on don't even generate events —
   cheaper than classify-and-discard. Two shapes interact only if each one's category is in the
   other's mask.
@@ -239,11 +297,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   geometry isn't wrongly treated as a target. This is *not* the "reverse type lookup" the classification
   rule forbids — that
   rule is about KIND (use bits); team is genuine game state (read the component).
-- **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match;
-  friendly fire (a shot passing through everything on its own team) is a **team** match. Echoes and
-  projectiles carry their owner (`Echo.Owner`, `Projectile.Source`) and the owner's `Team`. A
-  "same-team = don't collide" bit/`groupIndex` scheme is therefore wrong for damage — it would
-  suppress the owner-match self-collision.
+- **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match
+  (relation `own`); friendly fire (a shot passing through everything on its own team) is a **team**
+  match (`own` or `ally`). Bodies (themselves), Echoes and shots carry `team.Owner` and the owner's
+  `Team`, and `team.SideOf` turns them into an `interact.Side` for `Relation`. A "same-team = don't
+  collide" bit/`groupIndex` scheme is therefore wrong for damage — it would suppress the owner-match
+  self-collision.
 - `groupIndex` can't express same-team pass-through for movement: the mover uses Box2D queries, and
   their filter ignores `groupIndex`. If Bodies ever block each other, decide that in the mover's planes,
   and skip the Body's own shape: queries don't, and the mover would push itself away from where it was.
@@ -255,40 +314,57 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **The move is Box2D's geometric mover,** `physics/mover.Move`: up to 5 passes of collide → solve
   planes → cast, then the velocity is clipped. It writes `Transform2D`. Walls stop a Body and it
   slides along them.
-- **The mover's query filter decides what blocks a Body:** `{Category: CategoryBody, Mask:
-  CategoryEnvironment}`. The filter is two-way, so a wall's `MaskBits` must include `CategoryBody`.
-  The Body's own `MaskBits` doesn't drive the mover.
+- **The mover's query filter decides what blocks a Body:** `{Category: interact.Body, Mask:
+  MoveBlockers &^ passes}`. The filter is two-way, which is why map shapes mask all bits. The Body's own
+  `MaskBits` doesn't drive the mover.
+- **Effects feed the mover and never move a Body.** `MovementSystem` folds the Body's `Effects` each
+  tick: a forced velocity (dash, push) replaces input, the folded speed scales input (slows; a stun is
+  zero), and a pass drops map kinds from the mask (`"passes": ["wall"]`). Bounds have no pass name, so
+  nothing passes them.
 - **Bodies don't block each other, for now,** and walk through Echoes (anti-camp needs that overlap).
-- **`Velocity2D` stays the Body's velocity** in units per second, clipped against the walls it touched.
-  A Body coasting through a late frame slides instead of pushing into the wall. The physics plugin
-  also needs the component on every physics body.
+  Rules for what blocks a Body (`blocked_by`) come with the first rule beyond walls and bounds.
+- **`Velocity2D` is the Body's velocity this tick** in units per second, clipped against the walls it
+  touched. Coasting through a late frame uses the last frame, never `Velocity2D`, so a dash doesn't leak
+  into the coast. The physics plugin also needs the component on every physics body.
 - **A Body gets no `ContactBegin/End`** with walls or other Bodies. A static sensor still fires
   `TriggerBegin/End` for it.
-- **Never place a Body with its center inside a wall.** The mover can't push it out, so it walks out
-  the far side. Spawns and teleports must land clear of walls.
+- **A Body whose center is inside a blocker lands first** (`mover.Land`: the nearest spot on a 0.25 m
+  grid within `mover.LandReach` where the whole circle is clear, and the straight way there doesn't
+  cross the map edge). The mover can't push a center out, so it would walk out the far side. This
+  covers a phase ending inside a wall. Map walls must be thinner than twice `LandReach`, with no sealed
+  pockets.
 - **The mover is shared sim code** for a later wasm predictor, so it must stay deterministic: no
   Cardinal import, FMA-free arithmetic (`float64(a*b)`, or box2d helpers like `box2d.MulAdd`), and
-  planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID.
+  planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID. `TestSharedCoreIsDeterministic`
+  checks `physics/mover`, `effect/status`, `interact` and `ability/hooks` for both: no Cardinal import,
+  and no FMA instruction on arm64, amd64/v3 or wasm.
 
 ### System registration ordering (`main.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
   before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem` and
-  `ability.EquipSystem`, `ability.CastSystem` (emits `AbilityCast`) before `projectile.LaunchSystem`,
-  and every `DamageIntent` emitter (`projectile.FlightSystem`, `combat.AntiCampSystem`) before
-  `combat.DamageResolveSystem`.
-- **`player.InputSystem` then `player.MovementSystem` run in PreUpdate, registered before the physics
-  plugin.** Movement moves each Body by the frame Input just applied, so a frame moves the Body in the
-  same tick its `InputAck` is sent. Client prediction depends on this (`TestFrameMovesBodySameTickAsAck`).
+  `ability.EquipSystem`, `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
+  which emits `LaunchIntent` before `projectile.LaunchSystem`; every `DamageIntent` and `HealIntent`
+  emitter (`projectile.FlightSystem`, `area.AreaSystem`) before `combat.DamageResolveSystem`; and every
+  `EffectIntent` emitter (`ability.CastHookSystem`) before `effect.ResolveSystem`.
+- **Every receiver sorts its intents by a full key before it acts,** because emit order can change
+  after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs).
+- **`player.InputSystem`, `ability.EquipSystem`, `ability.CastSystem`, then `player.MovementSystem`
+  run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
+  just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
+  depends on this (`TestFrameMovesBodySameTickAsAck`). Input, cast, move is the order a client
+  predictor steps. Effects a cast starts apply from the next tick.
   - Before the plugin, the step sees each Body where it moved to this tick. The mover sees walls as of
     the last step, so a wall created this tick blocks from the next one.
   - `physics.NewPlugin()` builds the plugin first so Movement can hold it. Where `world.RegisterPlugin`
     is called is what places its step.
-- **Abilities and shots run after the Echo replay:** `ability.EquipSystem` → `ability.CastSystem` →
-  `projectile.LaunchSystem` → `projectile.FlightSystem`, after `echo.ReplaySystem`, so shots test
-  against this tick's Echo poses. A Body can cast the tick it is claimed, and a shot launched this tick
-  moves this tick, its path starting at the shooter.
+- **Hooks, shots and areas run after the Echo replay:** `ability.CastHookSystem` →
+  `projectile.LaunchSystem` → `projectile.FlightSystem` → `area.AreaSystem`, after `echo.ReplaySystem`,
+  so they see this tick's Echo poses. A Body can cast the tick it is claimed (Equip runs before Cast),
+  and a shot launched this tick moves this tick, its path starting at the shooter.
+- **`effect.ResolveSystem` runs after every system that reads status, just before the syncs.** What it
+  adds applies from the next tick, and it drops what is over by then, so a whole tick reads one status.
 - **Sync systems run last** (`player`, `echo`, `ability`, `projectile`), so each sends the tick's final
   state.
 
@@ -299,8 +375,15 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **A definition is a Go type implementing `Name()` + `JSONFile()`** (the `data.Definition`
   contract); the JSON file unmarshals straight into it. Optional interfaces: `Validate()`
   (load-time invariants — a returned error **panics the boot**, fail loud), `Resolve()` (second-
-  stage load of designer-bundled assets like tilemaps).
-- **The definition TYPE lives in the feature package that owns it** (e.g. `combat.CombatTuning`),
+  stage load of designer-bundled assets like tilemaps; `AbilityTuning` binds its hooks there).
+- **Names fail at load; IDs across files fail in `TestContentIDsLineUp`.** An enum or bit name
+  (kinds, tags, relations, responses, hook names, hook params) decodes strictly, so a typo fails the
+  boot. `Validate` sees one file, so an ID another file defines (a shot type, an effect kind, an area
+  kind, a champion) is checked by that test; hooks list theirs in `Refs`.
+- **Tests change content with `withContent`** (`main_test.go`): it deep-merges JSON patches into the
+  shipped files and boots the real `register` through a data `Source`. Use it for test-only shot
+  types and champions; never add test content to the shipped files.
+- **The definition TYPE lives in the feature package that owns it** (e.g. `projectile.ProjectileTuning`),
   **never a central `types/` grab-bag.** Rampage centralizes all definitions in `pkg/datadef/types`
   and 40 feature files import it — that's the layered bucket we reject. Definitions reference each
   other **by string ID resolved through the catalog**, so feature-owned types create no import
@@ -349,22 +432,48 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Systems act on input through `InputQueue.Applied(tick)`**, so each frame acts once: movement sets
   velocity from it, abilities cast from it. Buttons ride in the frame (like a Source or Overwatch
   user command), so a shot leaves from where the client predicted its Body when it fired.
-- **Cooldowns are server ticks** (`Slot.ReadyTick`), never a client count, so a client can't speed
+- **Cooldowns are server ticks** (`Cooldown.ReadyTick`), never a client count, so a client can't speed
   them up. Shots aren't predicted on the client yet; they appear when the server confirms them.
 
 ### Abilities and their effects
-- **`ability` only decides whether a cast happens.** It holds each Body's kit (equipped from
-  `default_kit` when the Body is claimed), checks the button, cooldown and aim, starts the cooldown,
-  and emits `AbilityCast{Caster, Ability, Aim}`. It never does the effect.
-- **An effect lives in the feature it changes and reacts to `AbilityCast` by ability ID,** with its
-  own numbers under that ID: `launchers.bolt` in `content/projectile/tuning.json` is the shot `bolt`
-  launches. A new shot ability is one JSON entry in each file. A new kind of effect (dash, shield) is a
-  new reactor in its own feature. Neither changes `ability`.
-- **Planned foundation for champions, effects and movement abilities:**
-  `docs/research/character-foundation.md`. Read it before adding a champion or a movement ability. Abilities never move
+- **A champion is an ID, not a type.** A Body's `player/component.Champion` names the champion it
+  plays, and each feature keeps that champion's numbers under the ID: `champions` (move speed, radius)
+  in `content/player/tuning.json`, `kits` in `content/ability/tuning.json`, and its Echo (delay, area)
+  in `content/echo/tuning.json`. A new champion is JSON entries, never new code.
+- **The cast gate decides whether a cast happens.** A Body casts from its champion's kit.
+  `ability.CastSystem` checks the button, cooldown and aim, and that the Body isn't stunned, then starts
+  the cooldown and emits `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
+  follows its ability into whichever slot holds it.
+- **What an ability does is its hook.** Every ability row names a hook in `ability/hooks` and gives
+  its `params` (`{"hook": "launch", "params": {"shot": "bolt"}}`). A hook reads its `Cast` and params
+  and appends requests to `Out` (`Launches`, `Effects`); `ability.CastHookSystem` turns them into
+  intents with the cast's Cause, the caster's Owner and Team and its position. Hooks never write state,
+  never import Cardinal, and never branch on a champion or another ability's ID.
+  - Shared hooks make common abilities JSON-only: `launch` (one shot along the aim) and `dash`. Make a
+    shared hook at the third copy of an idea; a unique hook is named after its ability.
+  - **Never assume the caster:** a hook gets the caster and its owner apart, so an Echo can cast too
+    (`TestAnyCasterCastsEveryAbility`).
+  - A new request type in `Out`, or a new method a hook may read, comes with its first user.
+- **A shot is a shot type.** `content/projectile/tuning.json` keys shots by type (`shots.bolt`), and a
+  hook names the type it launches. A new shot ability is a shot type (with its own `meets` only where it
+  differs from the defaults) plus an ability row.
+- **A dash is a forced-move effect.** The `dash` hook turns the cast into one along the aim, covering
+  `distance` in `seconds` (whole ticks). It runs from the tick after the cast, walls stop it, and CC
+  ends it (the `dash` kind has `ends_on_cc`).
+- **Timed effects (stun, slow, pass, forced move) belong to `effect`.** A feature asks with
+  `EffectIntent{Target, Kind, Ticks, Value, VelX, VelY, Source}`; what each kind does (tags, passes,
+  stat, stacking) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
+  know. An intent of an unknown kind is dropped with an error log. A refresh keeps whichever entry ends later, so a short stun never cuts a long one
+  short. Bodies and Echoes carry `Effects` from their constructors. Read a status with
+  `Effects.Status(tick)`; the rules live in `effect/status` so a predictor can run them.
+- **Foundation for champions, effects and movement abilities:** `docs/research/character-foundation.md`
+  (build steps 1-8 built). Read it before adding a champion or a movement ability. Abilities never move
   a Body; they feed the one mover a forced move, a speed change or a pass.
+- **The architecture for every system:** `docs/research/system-architecture-design.md` (migration
+  steps 1-9 built). Read it before adding a shot behavior, an area, a hook or a game mode; it says what
+  comes with which first user.
 - **`InputFrame.Buttons` bit N casts kit slot N**, so a new ability never changes the input type.
-  `TestLaunchersAreAimedAbilities` checks the content IDs line up.
+  `TestContentIDsLineUp` checks the content IDs line up across files.
 
 ---
 

@@ -1,5 +1,11 @@
 {
-  "launchers": {
+  "defaults": [
+    {"kinds": ["wall", "bounds"], "do": "stop"},
+    {"relations": ["own", "ally"], "do": "pass"},
+    {"kinds": ["body"], "do": "stop"},
+    {"kinds": ["echo"], "do": "stop", "payload": true}
+  ],
+  "shots": {
     "bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}
   }
 }

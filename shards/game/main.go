@@ -6,8 +6,10 @@ import (
 
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
+	"echo_image/shards/game/internal/area"
 	"echo_image/shards/game/internal/combat"
 	"echo_image/shards/game/internal/echo"
+	"echo_image/shards/game/internal/effect"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/projectile"
@@ -27,16 +29,21 @@ func main() {
 }
 
 // register installs the plugins, game types and systems.
-func register(world *cardinal.World) {
+func register(world *cardinal.World) { registerWith(world, nil) }
+
+// registerWith is register with content from src, or from the data plugin's own pick when src is nil,
+// so a test can change content.
+func registerWith(world *cardinal.World, src data.Source) {
 	// Data plugin: loads content/<feature>/*.json into a typed catalog at init; systems read it
 	// via data.Get[T](dataPlugin). Register every kind BEFORE RegisterPlugin so it's in the catalog
 	// before the tick loop starts.
-	dataPlugin := data.NewPlugin(data.Config{EmbeddedFS: content.FS})
-	data.Register[combat.CombatTuning](dataPlugin)
+	dataPlugin := data.NewPlugin(data.Config{EmbeddedFS: content.FS, Source: src})
 	data.Register[player.MovementTuning](dataPlugin)
 	data.Register[echo.EchoTuning](dataPlugin)
 	data.Register[ability.AbilityTuning](dataPlugin)
 	data.Register[projectile.ProjectileTuning](dataPlugin)
+	data.Register[effect.EffectTuning](dataPlugin)
+	data.Register[area.AreaTuning](dataPlugin)
 	world.RegisterPlugin(dataPlugin)
 
 	// Every component, command, event and system event a system uses must be registered before
@@ -47,15 +54,22 @@ func register(world *cardinal.World) {
 	ability.RegisterTypes(world)
 	projectile.RegisterTypes(world)
 	combat.RegisterTypes(world)
+	effect.RegisterTypes(world)
+	area.RegisterTypes(world)
 
 	// Physics plugin: built here so movement can query it, registered after movement.
 	physicsPlugin := physics.NewPlugin()
 
 	// Input (PreUpdate, first): queues Input frames and applies one per Body per tick, and emits
-	// BodyClaimed the first tick each Body is claimed. Movement then moves each Body by that frame,
-	// stopping at walls, so a frame moves the Body the same tick its ack is sent. Both run BEFORE the
-	// physics plugin, so its step sees each Body where it moved to this tick.
+	// BodyClaimed the first tick each Body is claimed. Abilities then give a newly-claimed Body its
+	// cooldowns and cast from its champion's kit; each cast emits AbilityCast, whose hook runs the same
+	// tick. Movement then moves each Body by the frame and its effects, stopping at walls, so a frame
+	// moves the Body the same tick its ack is sent. Input, cast, move is the order a client predictor
+	// steps; effects a cast starts apply from the next tick. All run BEFORE the physics plugin, so its
+	// step sees each Body where it moved to this tick.
 	world.RegisterSystem(&player.InputSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin, Physics: physicsPlugin},
 		cardinal.WithHook(cardinal.PreUpdate))
 
@@ -72,28 +86,37 @@ func register(world *cardinal.World) {
 	world.RegisterSystem(&echo.SpawnSystem{Data: dataPlugin})
 
 	// Echo replay (Update): record the Body's post-step pose and drive the Echo to the pose from
-	// delay_seconds ago, ticking down each Echo's anti-camp warmup. Registered before projectile and
-	// AntiCampSystem so the Echo's transform and warmup are current when they read them.
+	// delay_seconds ago. Registered before projectile and areas so the Echo's pose is current when they
+	// read it.
 	world.RegisterSystem(&echo.ReplaySystem{})
 
-	// Abilities (Update): equip a newly-claimed Body's kit, then cast from this tick's input frame.
-	// Each cast emits AbilityCast, which the features it changes read the same tick.
-	world.RegisterSystem(&ability.EquipSystem{Data: dataPlugin})
-	world.RegisterSystem(&ability.CastSystem{Data: dataPlugin})
+	// Ability hooks (Update): each cast runs its ability's hook, which asks the features that own the
+	// state for changes with intents (a shot to launch, a dash's forced move). Before every receiver of
+	// those intents.
+	world.RegisterSystem(&ability.CastHookSystem{Data: dataPlugin})
 
-	// Projectiles (Update): launch a shot for each cast that has a launcher, then move every shot and
-	// resolve its first hit. A shot launched this tick moves this tick, so its path starts at the shooter.
+	// Projectiles (Update): launch a shot for each LaunchIntent, then move every shot and resolve what
+	// it meets by its rules. A shot launched this tick moves this tick, so its path starts at the
+	// shooter.
 	world.RegisterSystem(&projectile.LaunchSystem{Data: dataPlugin})
-	world.RegisterSystem(&projectile.FlightSystem{Physics: physicsPlugin})
+	world.RegisterSystem(&projectile.FlightSystem{Data: dataPlugin, Physics: physicsPlugin})
 
-	// Combat (Update). Order matters: every DamageIntent emitter (FlightSystem, AntiCampSystem)
-	// runs before DamageResolveSystem drains them the same tick — system events are cleared at tick end.
-	world.RegisterSystem(&combat.AntiCampSystem{Data: dataPlugin})
+	// Areas (Update): each area acts on the things overlapping its holder, by its rules. An Echo's
+	// anti-camp is one.
+	world.RegisterSystem(&area.AreaSystem{Data: dataPlugin, Physics: physicsPlugin})
+
+	// Combat (Update). Order matters: every DamageIntent and HealIntent emitter (FlightSystem,
+	// AreaSystem) runs before DamageResolveSystem drains them the same tick — system events are
+	// cleared at tick end.
 	world.RegisterSystem(&combat.DamageResolveSystem{})
+
+	// Effects (Update, after every EffectIntent emitter and every system that reads status): the one
+	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
+	world.RegisterSystem(&effect.ResolveSystem{Data: dataPlugin})
 
 	// Client sync (Update, last): each feature sends each player this tick's final state it may see.
 	world.RegisterSystem(&player.SyncSystem{})
 	world.RegisterSystem(&echo.SyncSystem{})
-	world.RegisterSystem(&ability.SyncSystem{})
+	world.RegisterSystem(&ability.SyncSystem{Data: dataPlugin})
 	world.RegisterSystem(&projectile.SyncSystem{})
 }

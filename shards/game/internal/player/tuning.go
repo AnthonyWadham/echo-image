@@ -9,12 +9,18 @@ import (
 
 // MovementTuning is data-driven movement config, loaded once at boot from content/player/tuning.json.
 // Read it via data.Get[MovementTuning]() at system entry — never hardcode the speed. It's a Singleton
-// (one JSON object). TODO: when champions land, move speed becomes per-champion — this either grows
-// into a broader player tuning or is superseded by champion definitions.
+// (one JSON object).
 type MovementTuning struct {
-	MoveSpeed           float64 `json:"move_speed"`            // Body speed in world units per second
-	InputBufferSeconds  float64 `json:"input_buffer_seconds"`  // most input a Body queues; older frames drop
-	InputTimeoutSeconds float64 `json:"input_timeout_seconds"` // a Body with no input this long stops
+	InputBufferSeconds  float64                `json:"input_buffer_seconds"`  // most input a Body queues; older frames drop
+	InputTimeoutSeconds float64                `json:"input_timeout_seconds"` // a Body with no input this long stops
+	Champions           map[string]ChampionDef `json:"champions"`             // by champion ID
+	DevChampion         string                 `json:"dev_champion"`          // the champion DevSpawnSystem's Bodies play
+}
+
+// ChampionDef is a champion's Body.
+type ChampionDef struct {
+	MoveSpeed float64 `json:"move_speed"` // world units per second at full input
+	Radius    float64 `json:"radius"`     // the Body's collider circle
 }
 
 // Name is the data-catalog key used by data.Get[MovementTuning]().
@@ -35,12 +41,17 @@ func (t MovementTuning) TimeoutTicks() uint64 {
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t MovementTuning) Validate() error {
-	if t.MoveSpeed < 0 {
-		return fmt.Errorf("movement_tuning: move_speed must be >= 0, got %v", t.MoveSpeed)
-	}
 	if t.BufferFrames() < 1 || t.TimeoutTicks() < 1 {
 		return fmt.Errorf("movement_tuning: input_buffer_seconds and input_timeout_seconds must be >= 1 tick at %d Hz, got %+v",
 			physics.ServerTickRateHz, t)
+	}
+	for id, c := range t.Champions {
+		if c.MoveSpeed < 0 || c.Radius <= 0 {
+			return fmt.Errorf("movement_tuning: champion %q needs move_speed >= 0 and radius > 0, got %+v", id, c)
+		}
+	}
+	if _, ok := t.Champions[t.DevChampion]; !ok {
+		return fmt.Errorf("movement_tuning: dev_champion %q is not a champion", t.DevChampion)
 	}
 	return nil
 }

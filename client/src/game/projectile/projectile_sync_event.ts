@@ -13,6 +13,7 @@ export interface ProjectileSync {
 /** projectile.ProjectileState */
 export interface ProjectileState {
   EntityID: number // uint32
+  Type: string // shot type ID, for its look
   Team: number // uint8
   X: number
   Y: number

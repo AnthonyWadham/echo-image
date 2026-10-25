@@ -1,0 +1,8 @@
+{
+  "kinds": {
+    "phase": {"passes": ["wall"], "stacking": "merge"},
+    "dash":  {"tags": ["ends_on_cc"], "stacking": "merge"},
+    "stun":  {"tags": ["stunned", "cc"], "stacking": "merge"},
+    "slow":  {"tags": ["cc"], "stat": "move_speed", "stacking": "per_source"}
+  }
+}

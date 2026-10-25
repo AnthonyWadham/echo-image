@@ -16,6 +16,7 @@ type syncRow struct {
 	Player    component.Player
 	Team      team.Team
 	Transform physics2d.Transform2D
+	Body      physics2d.PhysicsBody2D // for its radius
 }
 
 // SyncSystem (Update, after game logic) sends each player the Bodies they may see, and their own
@@ -38,6 +39,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Team:     e.Get[team.Team]().ID,
 			X:        pos.X,
 			Y:        pos.Y,
+			Radius:   radius(e),
 		})
 	}
 	lists := bodies.Lists(viewers)

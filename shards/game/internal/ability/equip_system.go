@@ -2,7 +2,6 @@ package ability
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/ability/component"
 	playercomp "echo_image/shards/game/internal/player/component"
@@ -13,11 +12,10 @@ type claimedRow struct {
 	Player playercomp.Player
 }
 
-// EquipSystem (Update) gives a Body the default kit the tick it is claimed, as echo.SpawnSystem gives
-// it an Echo. So player never knows about abilities.
-type EquipSystem struct {
-	Data *data.Plugin
-}
+// EquipSystem (PreUpdate, after player.InputSystem) gives a Body its cooldowns, all ready, the tick it
+// is claimed, as echo.SpawnSystem gives it an Echo. So player never knows about abilities. The kit is
+// the Body's champion's, in tuning.
+type EquipSystem struct{}
 
 func (s *EquipSystem) Run(w *cardinal.World) {
 	bodies := w.Contains[claimedRow]()
@@ -26,15 +24,6 @@ func (s *EquipSystem) Run(w *cardinal.World) {
 		if err != nil {
 			continue // claimed Body vanished the same tick
 		}
-		body.Set(kit(data.Get[AbilityTuning](s.Data).DefaultKit))
+		body.Set(component.Abilities{})
 	}
-}
-
-// kit returns the abilities in slot order, all ready to cast.
-func kit(ids []string) component.Abilities {
-	slots := make([]component.Slot, len(ids))
-	for i, id := range ids {
-		slots[i] = component.Slot{Ability: id}
-	}
-	return component.Abilities{Slots: cardinal.SliceOf(slots...)}
 }

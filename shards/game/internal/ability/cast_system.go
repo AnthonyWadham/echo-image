@@ -5,48 +5,53 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/ability/component"
+	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/interact"
 	playercomp "echo_image/shards/game/internal/player/component"
 )
 
-// casterRow is a Body with input and a kit.
+// casterRow is a Body with input, a champion, cooldowns and effects.
 type casterRow struct {
 	Input     playercomp.InputQueue
+	Champion  playercomp.Champion
 	Abilities component.Abilities
+	Effects   effectcomp.Effects
 }
 
-// CastSystem (Update, after EquipSystem) casts each ready ability whose button is held in this tick's
-// input frame: it starts the cooldown and emits AbilityCast, and does nothing else. It is the only
-// writer of cooldowns. O(B·S) for B Bodies with S slots.
+// CastSystem (PreUpdate, after EquipSystem and before player.MovementSystem) casts each ready ability
+// in the Body's champion's kit whose button is held in this tick's input frame, unless the Body is
+// stunned: it starts that ability's cooldown and emits AbilityCast, and does nothing else. It is the
+// only writer of cooldowns. O(B·S) for B Bodies with S slots.
 type CastSystem struct {
 	Data *data.Plugin
 }
 
 func (s *CastSystem) Run(w *cardinal.World) {
-	defs := data.Get[AbilityTuning](s.Data).Abilities
+	tuning := data.Get[AbilityTuning](s.Data)
 	tick := w.TickHeight()
 	for body := range w.Contains[casterRow]().Iter() {
 		f, ok := body.Get[playercomp.InputQueue]().Applied(tick)
-		if !ok || f.Buttons == 0 {
+		if !ok || f.Buttons == 0 || body.Get[effectcomp.Effects]().Status(tick).Tags&interact.Stunned != 0 {
 			continue
 		}
 		aimX, aimY := f.Aim()
-		kit := body.Get[component.Abilities]()
+		state := body.Get[component.Abilities]()
 		cast := false
-		for i, slot := range kit.Slots.All() {
-			def, known := defs[slot.Ability]
-			if !known || !f.Pressed(i) || tick < slot.ReadyTick {
+		for i, id := range tuning.Kits[body.Get[playercomp.Champion]().ID] {
+			def, known := tuning.Abilities[id]
+			if !known || !f.Pressed(i) || tick < state.ReadyTick(id) {
 				continue
 			}
 			if def.Aimed && aimX == 0 && aimY == 0 {
 				continue // no aim: no cast, and no cooldown
 			}
-			slot.ReadyTick = tick + def.CooldownTicks()
-			kit.Slots = kit.Slots.With(i, slot)
+			state = state.WithReadyTick(id, tick+def.CooldownTicks())
 			cast = true
-			w.EmitSystemEvent(component.AbilityCast{Caster: body.ID(), Ability: slot.Ability, AimX: aimX, AimY: aimY})
+			cause := component.Cause{Caster: body.ID(), Ability: id, Tick: tick}
+			w.EmitSystemEvent(component.AbilityCast{Cause: cause, AimX: aimX, AimY: aimY})
 		}
 		if cast {
-			body.Set(kit)
+			body.Set(state)
 		}
 	}
 }

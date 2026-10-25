@@ -1,0 +1,7 @@
+{
+  "kinds": {
+    "anticamp": {"rules": [
+      {"kinds": ["body"], "relations": ["own"], "to": "self", "damage_per_second": 25}
+    ]}
+  }
+}

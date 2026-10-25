@@ -1,5 +1,7 @@
 {
-  "delay_seconds": 5.0,
   "max_hp": 100,
-  "hit_radius": 0.5
+  "hit_radius": 0.5,
+  "champions": {
+    "starter": {"delay_seconds": 5.0, "area": "anticamp"}
+  }
 }

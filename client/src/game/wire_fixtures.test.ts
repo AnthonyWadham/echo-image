@@ -18,8 +18,8 @@ const bodySync: BodySync = {
   TickSeconds: 0.05,
   You: { Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5 },
   Bodies: [
-    { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2 },
-    { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75 },
+    { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5 },
+    { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75, Radius: 0.75 },
   ],
 }
 const echoSync: EchoSync = {
@@ -32,7 +32,7 @@ const abilitySync: AbilitySync = {
 }
 const projectileSync: ProjectileSync = {
   Tick: 8n,
-  Projectiles: [{ EntityID: 9, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15 }],
+  Projectiles: [{ EntityID: 9, Type: 'bolt', Team: 1, X: 0.125, Y: -7.5, Radius: 0.15 }],
 }
 const projectileSyncEmpty: ProjectileSync = { Tick: 9n, Projectiles: [] }
 const input: Input = {

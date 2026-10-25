@@ -5,21 +5,26 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/team"
 )
 
-// bodyRow is a player Body: identity, team, input, speed, and the physics2d trio.
-// Deliberately NO Health — the Body is invincible; Health lives on the Echo.
+// bodyRow is a player Body: identity, champion, team, owner (itself), input, speed, the physics2d trio,
+// and its effect list. Deliberately NO Health — the Body is invincible; Health lives on the Echo.
 type bodyRow struct {
 	Player    component.Player
+	Champion  component.Champion
 	Team      team.Team
+	Owner     team.Owner
 	Input     component.InputQueue
 	Speed     component.MoveSpeed
 	Transform physics2d.Transform2D
 	Velocity  physics2d.Velocity2D
 	Body      physics2d.PhysicsBody2D
+	Effects   effectcomp.Effects
 }
 
 // DevSpawnSystem drops two players on opposing teams (a 1v1) at fixed spawn points at world init.
@@ -30,20 +35,25 @@ type DevSpawnSystem struct {
 }
 
 func (s *DevSpawnSystem) Run(w *cardinal.World) {
-	speed := data.Get[MovementTuning](s.Data).MoveSpeed
-	spawnBody(w, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0}, speed)
-	spawnBody(w, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0}, speed)
+	tuning := data.Get[MovementTuning](s.Data)
+	spawnBody(w, tuning, tuning.DevChampion, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0})
+	spawnBody(w, tuning, tuning.DevChampion, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0})
 }
 
 // spawnBody is the one constructor for a player Body; every spawn path uses it, so no Body is
-// missing a component another system needs.
-func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos physics2d.Vec2, speed float64) {
+// missing a component another system needs. Its champion's numbers set its speed and size.
+func spawnBody(w *cardinal.World, tuning MovementTuning, champion string, id uint32, nickname string,
+	teamID uint8, pos physics2d.Vec2,
+) {
+	def := tuning.Champions[champion]
 	b := w.Create[bodyRow]()
 	// Persona left empty: the Body is unclaimed until the first Input command from a persona claims it
 	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Set(component.Player{ID: id, Nickname: nickname})
+	b.Set(component.Champion{ID: champion})
 	b.Set(team.Team{ID: teamID})
-	b.Set(component.MoveSpeed{Value: speed})
+	b.Set(team.Owner{Body: b.ID()})
+	b.Set(component.MoveSpeed{Value: def.MoveSpeed})
 	b.Set(physics2d.Transform2D{Position: pos})
 	b.Set(physics2d.Velocity2D{})
 	// Manual: MovementSystem owns the pose and stops it at walls with Box2D's mover. Box2D itself never
@@ -51,13 +61,18 @@ func spawnBody(w *cardinal.World, id uint32, nickname string, teamID uint8, pos 
 	// damage target).
 	b.Set(physics.NewBody2D(physics2d.BodyTypeManual, physics2d.ColliderShape{
 		ShapeType:    physics2d.ShapeTypeCircle,
-		Radius:       0.5,
+		Radius:       def.Radius,
 		Density:      1,
-		CategoryBits: physics.CategoryBody,
-		MaskBits:     physics.CategoryEnvironment, // walls; Bodies pass through each other, for now
+		CategoryBits: uint64(interact.Body),
+		MaskBits:     uint64(interact.Wall | interact.Area), // walls and areas; Bodies pass through each other, for now
 	}))
 	w.Logger().Info().
-		Uint32("id", id).Str("nickname", nickname).Uint8("team", teamID).
+		Uint32("id", id).Str("nickname", nickname).Str("champion", champion).Uint8("team", teamID).
 		Float64("x", pos.X).Float64("y", pos.Y).
 		Msg("player spawned (dev)")
+}
+
+// radius is the radius of a Body's collider: spawnBody's one circle.
+func radius(body cardinal.Entity) float64 {
+	return body.Get[physics2d.PhysicsBody2D]().Shapes.At(0).Radius
 }

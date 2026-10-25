@@ -1,7 +1,11 @@
-# Character foundation (proposal)
+# Character foundation
 
-Status: a proposal from research done on 2026-10-24. Nothing here is built yet. Where this file and the code or
-`CLAUDE.md` disagree, the code and `CLAUDE.md` win.
+Status: proposed on 2026-10-24 from research. Build steps 1-8 are built (see Build order, which also lists what
+was left for later). Where this file and the code or `CLAUDE.md` disagree, the code and `CLAUDE.md` win.
+
+Since then, `system-architecture-design.md` steps 1-9 (built 2026-10-25) changed some built parts: effect flags are
+now `interact` tags, the category bits are `interact.Kind`, `team.Owner` replaced `Echo.Owner` and
+`Projectile.Credit`, and the dash is the `dash` hook (no `DashSystem`, no `dashes`). This file is updated to match.
 
 ## Summary
 
@@ -35,18 +39,18 @@ These were checked against primary sources (docs, engine source, data-mined file
 3. An ability that touches several features is one reactor that emits each owner's intent. Only the owner writes its
    own state.
 4. Never branch on a champion or ability name in shared code. Name mechanics (dash, pass), not champions.
-5. Timed things store start and end ticks, like `Slot.ReadyTick`. No countdowns.
+5. Timed things store start and end ticks, like `Cooldown.ReadyTick`. No countdowns.
 6. Components hold values and IDs only. Behavior lives in code tables keyed by those IDs. An interface in a component
    loses its type on snapshot restore.
-7. An effect takes hold the tick after it is applied. Casts run before movement, so your own dash still moves on the
-   cast tick.
+7. An effect takes hold the tick after it is applied, so a dash moves from the tick after its cast. Casts run before
+   movement, so input, cast and move run in the order the predictor steps them.
 8. Code the client predicts is Cardinal-free and deterministic.
 
 ## The six foundation pieces
 
 | # | Piece | What | Why |
 |---|---|---|---|
-| 1 | Tick order | `ability.Equip` and `ability.Cast` move into PreUpdate, before `player.MovementSystem`. A test pins it. | A dash moves on the cast tick. |
+| 1 | Tick order | `ability.Equip` and `ability.Cast` run in PreUpdate, before `player.MovementSystem`. | Input, cast and move run in the order the predictor steps them. A teleport can apply on its cast tick. |
 | 2 | Effect list | One list per entity (Body, Echo, later summons), always present. A declared stacking rule per kind. | Every buff, stun, shield and pass uses it. |
 | 3 | Fold | A pure function turns the list into flags and stats, with fixed combine rules. | Changing a combine rule later is a balance patch (Overwatch armor, 2023). |
 | 4 | One movement executor | `MovementSystem` is the only pose writer. Effects feed it. A landing rule handles ending inside a wall. | Rampage's dash went around its mover, ignored stun, and every teleport had to cancel it. |
@@ -61,9 +65,9 @@ These were checked against primary sources (docs, engine source, data-mined file
 - Each tick, for each Body:
 
   ```go
-  st := status.Fold(effects, tick)
-  mask := physics.MoveBlockers &^ st.Pass // MoveBlockers = KindWall | KindBounds
-  filter := box2d.QueryFilter{CategoryBits: physics.CategoryBody, MaskBits: mask}
+  st := body.Get[effectcomp.Effects]().Status(tick)
+  mask := physics.MoveBlockers &^ st.Pass // MoveBlockers = interact.Wall | interact.Bounds
+  filter := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(mask)}
   ```
 
 - The bounds kind has no content name, so no effect can pass it.
@@ -88,7 +92,8 @@ These were checked against primary sources (docs, engine source, data-mined file
 ### Landing rule
 
 - If a Body's center is inside a blocker for this tick's mask, move it to the nearest clear spot with a fixed,
-  deterministic grid search. This covers a phase ending, blinks, and restore lag.
+  deterministic grid search. The straight way there must not cross the map edge, which is a thin chain loop with
+  nothing solid behind it. This covers a phase ending, blinks, and restore lag.
 - Maps may have no sealed pockets and no wall deeper than the landing reach. Map tests check both.
 
 ### Examples
@@ -104,20 +109,27 @@ These were checked against primary sources (docs, engine source, data-mined file
 
 ## Effects
 
-- Entry: `{Kind, Serial, Credit, Source, Start, End, Stacks}` plus resolved numbers. Serials, because Cardinal reuses
-  entity IDs at once with no generation.
+- Entry (built): `{Kind, Tags, Pass, Stat, Value, VelX, VelY, Source, Start, End, Serial}`. It holds the kind's
+  resolved rules and the applier's numbers, so the fold needs no catalog. Serials, because Cardinal reuses entity IDs
+  at once with no generation. `Credit` and `Stacks` come with their first users.
 - Stacking per kind: `merge` (one per kind), `per_source` (one per kind and source), `instanced` (always new: shields,
-  pushes).
-- One writer: the effect resolve system at the end of Update. It applies in a fixed order: by target, then cleanses,
-  then adds, then crowd control, then by source and kind. Never by emit order, which can change after a restore.
-- The fold gives closed flags (stunned, rooted, silenced, unstoppable, invulnerable) and stats in integer basis points.
-- Keep hero-only state in that hero's own component, not in the shared flags. Deadlock's state enum filled up with
+  pushes). A refresh keeps whichever entry ends later (built), so a short stun never cuts a long one short.
+- One writer: the effect resolve system at the end of Update. It applies in a fixed order: by target, then adds, then
+  crowd control (so a same-tick Unstoppable blocks it), then by source, kind and numbers. Cleanses go first once they
+  exist. Never by emit order, which can change after a restore.
+- An entry is dropped once it is over, so the list after a resolve is what applies from the next tick on.
+- The fold gives closed tags (`interact.Tags`) and stats in integer basis points. Built tags: stunned, cc,
+  ends_on_cc, unstoppable. Rooted, silenced and invulnerable come with the rules that read them.
+- Keep hero-only state in that hero's own component, not in the shared tags. Deadlock's state enum filled up with
   hero-only entries.
 
 ## Damage and credit
 
-- `AbilityCast{Slot, Tick}`, `DamageIntent{Credit, Cause}`, `Projectile{Credit, Cause}`.
-- Resolver stages: immunity, then modifiers, then apply, then deaths last. A `HealIntent` with a MaxHP clamp.
+- Built: `Cause{Caster, Ability, Tick}`, which `AbilityCast` embeds. `DamageIntent{Target, Credit, Cause, Amount}`,
+  `HealIntent` (same fields), and `Projectile{Cause}` on a shot that also carries `team.Owner`, the Body credited.
+- Built resolver: per target, the tick's damage, then its heals. HP is written once, never above MaxHP, and at 0 or
+  below the target dies, so HP is never stored below 0. Overkill counts. Intents are summed in sorted order.
+- Later, with the first rule that reads them: immunity and modifier stages before damage, and `Slot` on the cast.
 
 ## Prediction
 
@@ -126,7 +138,8 @@ These were checked against primary sources (docs, engine source, data-mined file
 - Predicted: your own movement, cast gate, cooldowns and self effects. Not damage, death or other players.
 - `YouState` gains your own effect entries and cooldown ticks. Send the entries, never the folded mask.
 - Determinism: round every product, no `math.Sin`, `Exp` or `Pow`, integer stats, fixed orders, and an assembly-scan
-  test for FMA over the shared packages. The mover gave the same bits on amd64 (v1 and v3), js/wasm and wasip1.
+  test for FMA over the shared packages (built: `TestSharedCoreIsDeterministic`). The mover gave the same bits on amd64
+  (v1 and v3), js/wasm and wasip1.
 
 ## Cardinal facts that shape this
 
@@ -140,26 +153,40 @@ These were checked against primary sources (docs, engine source, data-mined file
 
 ## Build order
 
-1. Tick order: casts before movement, pinned by a test. About 15 lines.
-2. `effect/status` pure core with unit tests. About 160 lines plus 100 test lines.
-3. The effect feature: leaf, `EffectIntent`, kinds tuning with `Validate`, the resolve system, and a generic on-cast
-   reactor. Add the list to the Body and Echo constructors. About 300 lines.
-4. Movement reads the fold: speed, forced velocity, pass mask, landing, and coasting from the last frame. Walls and
-   bounds become kind bits. About 120 lines.
-5. Credit and cause on casts, damage and shots. Resolver stages, `HealIntent`, MaxHP clamp, deaths last. About 80
-   lines.
-6. Champion ID: a `Champion` component, numbers keyed by champion ID, and cooldowns per ability ID. About 100 lines.
-7. The FMA scan over the shared packages. About 60 lines.
-8. First real user: ship the dash end to end, with tests for distance, wall stop, stun ending it, and determinism.
+1. **Built.** Tick order: casts before movement. No test pins it yet, since nothing depends on it; the first
+   same-tick teleport's test will.
+2. **Built.** `effect/status` pure core with unit tests.
+3. **Built**, except the generic on-cast reactor. The effect feature: leaf, `EffectIntent`, kinds tuning with
+   `Validate`, the resolve system, and the list on the Body and Echo constructors. The reactor waits for its first
+   user (an ability that only applies effects), since where its config lives is an open decision below.
+4. **Built.** Movement reads the fold: speed, forced velocity, pass mask, landing, and coasting from the last frame.
+   Walls and bounds are kind bits.
+5. **Built**, except immunity and modifier stages. Credit and cause on casts, damage and shots. The resolver takes
+   damage, then heals, and keeps HP between 0 and MaxHP; at 0 the target dies.
+6. **Built.** A `Champion` component. Move speed, radius and kits are keyed by champion ID. Cooldowns are per ability
+   ID.
+7. **Built.** `TestSharedCoreIsDeterministic`: the shared packages import no Cardinal and compile with no FMA on
+   arm64, amd64/v3 and wasm.
+8. **Built.** The dash: now the `dash` hook, with its numbers in its ability row. A stunned Body can't cast. Tests
+   cover distance, wall stop, stun ending it, a stunned cast, and determinism.
 
-About 900 lines with tests. Adding a new component needs one `world purge`.
+Steps 1-8 added `Effects` and `Champion` and changed `Abilities`, so an old snapshot needs one `world purge`.
+
+Left for later, each with its first user:
+
+- Immunity and modifier stages (step 5). The generic on-cast reactor (step 3) is built as `ability.CastHookSystem`.
+- Charges, teleports and the Echo rewind.
+- `YouState` effect entries and cooldowns, for the predictor.
+- A test that pins the tick order (step 1).
+- The client binds only button 0, so the dash has no key yet. Its prediction doesn't know effects.
 
 ## Open decisions
 
-- How do slows combine? Proposal: strongest only; hastes add.
-- When does an applied effect take hold? Proposal: the next tick, with casts before movement.
+- How do slows combine? Proposal: strongest only; hastes add. Built this way.
+- When does an applied effect take hold? Proposal: the next tick, with casts before movement. Built this way, so a
+  dash starts 1 tick (50 ms) after its cast.
 - Where do champion numbers live: per feature (as today) or in one `kit.json`? Proposal: per feature. One file is worth
-  it only if non-programmers will write kits.
+  it only if non-programmers will write kits. Built per feature.
 - Echo-Swap re-sync and Echo delay changes: proposal is to walk the Echo back at a bounded rate, with no jumps.
 
 ## Appendix

@@ -12,7 +12,7 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
   Tick: BigInt(tick),
   TickSeconds: 0.05,
   You: { Body: 1, InputSession: session, InputAck: ack, MoveSpeed: 5 },
-  Bodies: bodies.map((b) => ({ PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, ...b })),
+  Bodies: bodies.map((b) => ({ PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, Radius: 0.5, ...b })),
 })
 
 /** Connected and playing Body 1, after the join frame (Seq 1). */

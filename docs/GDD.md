@@ -142,7 +142,7 @@ Moment-to-moment combat is a **top-down shooter with abilities**:
 - **Abilities** — maneuver, utility, and kit identity layered on top of primary fire (§4). [Locked — structure]
 - **Echoes** — carry `Health`; the **only valid damage target**, including **self-damage** when
   overlapping their own Body (§3). [Locked]
-- **Tuning** — data-driven; balance numbers live in JSON, not code (`CombatTuning`). [Locked — infra]
+- **Tuning** — data-driven; balance numbers live in JSON, not code (e.g. `ProjectileTuning`). [Locked — infra]
 
 Still open (§9): whether Echoes are one-shot or an HP pool (the Echo-Medic concept leans toward a
 pool), and whether a body also blocks *movement*.

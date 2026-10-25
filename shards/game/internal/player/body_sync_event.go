@@ -31,4 +31,5 @@ type BodyState struct {
 	Nickname string
 	Team     uint8
 	X, Y     float64
+	Radius   float64 // its collider circle, set by its champion
 }

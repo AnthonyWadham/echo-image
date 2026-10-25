@@ -6,9 +6,9 @@ import { TeamLooks } from '../team/team_look'
 import type { BodyState } from './body_sync_event'
 import type { LocalPlayer } from './local_player'
 
-const geometry = new SphereGeometry(0.5, 32, 16) // shared, so a view owns nothing to dispose
+const geometry = new SphereGeometry(1, 32, 16) // shared, and scaled to each Body's Radius
 
-/** A Body: a ball in its team's colour. */
+/** A Body: a ball of its Radius in its team's colour, resting on the ground. */
 interface BodyView {
   readonly root: Mesh
 }
@@ -26,7 +26,8 @@ export function newBodyViews(stage: Stage, player: LocalPlayer): EntityViews<Bod
     (b): BodyView => ({ root: new Mesh(geometry, material(b)) }),
     (view, b, x, y) => {
       view.root.material = material(b)
-      view.root.position.set(x, y, 0.5)
+      view.root.position.set(x, y, b.Radius)
+      view.root.scale.setScalar(b.Radius)
     },
   )
 }

@@ -28,4 +28,5 @@ export interface BodyState {
   Team: number // uint8
   X: number
   Y: number
+  Radius: number // its collider circle
 }

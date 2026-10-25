@@ -3,6 +3,8 @@
 package physics
 
 import (
+	"math"
+
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
 )
@@ -35,4 +37,10 @@ func NewPlugin() *physics2d.Plugin {
 // FixedRotation on the result before writing it to ECS.
 func NewBody2D(bodyType physics2d.BodyType, shapes ...physics2d.ColliderShape) physics2d.PhysicsBody2D {
 	return component.NewPhysicsBody2D(bodyType, shapes...)
+}
+
+// WorldPoint returns a shape's local offset in world space, at pose.
+func WorldPoint(pose physics2d.Transform2D, local physics2d.Vec2) physics2d.Vec2 {
+	c, s := math.Cos(pose.Rotation), math.Sin(pose.Rotation)
+	return physics2d.Vec2{X: pose.Position.X + c*local.X - s*local.Y, Y: pose.Position.Y + s*local.X + c*local.Y}
 }

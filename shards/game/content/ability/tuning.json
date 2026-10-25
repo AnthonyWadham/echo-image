@@ -1,6 +1,10 @@
 {
-  "default_kit": ["bolt"],
+  "kits": {
+    "starter": ["bolt", "dash"]
+  },
   "abilities": {
-    "bolt": {"cooldown_seconds": 2.0, "aimed": true}
+    "bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
+    "dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
+             "params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}
   }
 }

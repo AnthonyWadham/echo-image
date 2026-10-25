@@ -2,35 +2,42 @@ package ability
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
+	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/netsync"
+	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/team"
 )
 
 // syncRow is a kit allies see.
 type syncRow struct {
+	Champion  playercomp.Champion
 	Abilities component.Abilities
 	Team      team.Team
 }
 
 // SyncSystem (Update, after casts) sends each player their team's kits, with SendTo. O(B·S) to
 // collect, then one send per player.
-type SyncSystem struct{}
+type SyncSystem struct {
+	Data *data.Plugin
+}
 
 func (s *SyncSystem) Run(w *cardinal.World) {
 	viewers := netsync.Viewers(w)
 	if len(viewers) == 0 {
 		return
 	}
+	kits := data.Get[AbilityTuning](s.Data).Kits
 	var abilities netsync.Items[AbilityState]
 	for e := range w.Contains[syncRow]().Iter() {
-		for i, slot := range e.Get[component.Abilities]().Slots.All() {
+		state := e.Get[component.Abilities]()
+		for i, id := range kits[e.Get[playercomp.Champion]().ID] {
 			abilities.Add(e, netsync.Allies, AbilityState{
 				Body:      uint32(e.ID()),
 				Slot:      uint32(i),
-				Ability:   slot.Ability,
-				ReadyTick: slot.ReadyTick,
+				Ability:   id,
+				ReadyTick: state.ReadyTick(id),
 			})
 		}
 	}
