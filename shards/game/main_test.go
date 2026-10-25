@@ -651,20 +651,29 @@ func TestShotPassesThroughAllies(t *testing.T) {
 	}
 }
 
+// A shot ends at its range in every direction, though a rounded speed can leave its last step short.
 func TestShotExpiresAtRange(t *testing.T) {
-	w, alice, _ := duel(t)
-	_, shot := primary(t)
+	fx := &emitter{}
+	w := cardinal.NewTestWorld(t, withEmitter(register, fx))
+	claim(t, w)
+	def, shot := primary(t)
+	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
 	steps := int(math.Ceil(shot.Range / (shot.Speed * physics.SecondsPerTick)))
 
-	alice.fire(0, 1) // nothing above her
-	w.Tick()         // first step
+	const n = 16 // 6 of these got stuck at a remainder above 0
+	for k := range n {
+		a := 2 * math.Pi * float64(k) / n
+		emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: uint64(k)},
+			From: physics2d.Vec2{X: 100, Y: 100}, Dir: physics2d.Vec2{X: math.Cos(a), Y: math.Sin(a)}}) // far from everyone
+	}
+	w.Tick() // first step
 	flyFor(w, steps-2)
-	if n := len(shots(t, w, "alice")); n != 1 {
-		t.Fatalf("shot gone after %d of %d steps", steps-1, steps)
+	if got := len(shots(t, w, "alice")); got != n {
+		t.Fatalf("%d of %d shots left after %d of %d steps", got, n, steps-1, steps)
 	}
 	w.Tick()
-	if n := len(shots(t, w, "alice")); n != 0 {
-		t.Fatalf("shot still flying after %d steps, past its range", steps)
+	if got := len(shots(t, w, "alice")); got != 0 {
+		t.Fatalf("%d shots still flying after %d steps, past their range", got, steps)
 	}
 }
 

@@ -80,16 +80,21 @@ func (s *FlightSystem) fly(w *cardinal.World, tuning ProjectileTuning, shot card
 	}
 	start := shot.Get[physics2d.Transform2D]().Position
 	speed := math.Hypot(p.Velocity.X, p.Velocity.Y)
-	seconds := math.Min(physics.SecondsPerTick, p.Remaining/speed) // the last step stops at the range
+	seconds := physics.SecondsPerTick
+	// Decided before the step: a remainder after it can round to a hair above 0 and never reach it.
+	last := p.Remaining <= speed*seconds
+	if last {
+		seconds = p.Remaining / speed // the last step stops at the range
+	}
 	end := physics2d.Vec2{X: start.X + p.Velocity.X*seconds, Y: start.Y + p.Velocity.Y*seconds}
 
 	first, found := s.firstHit(tuning, def, start, end, p.Radius, team.SideOf(shot), targets)
 	if !found {
-		p.Remaining -= speed * seconds
-		if p.Remaining <= 0 {
+		if last {
 			shot.Destroy() // flew its range
 			return
 		}
+		p.Remaining -= speed * seconds
 		shot.Set(p)
 		shot.Set(physics2d.Transform2D{Position: end})
 		return
