@@ -25,6 +25,9 @@ one is the *what*.
   `shards/game/main_test.go` runs real ticks through `main.go`'s `register` with `cardinal.NewTestWorld`,
   so a missing registration fails there; it also pins the client-sync, prediction, ability, shot,
   Echo, area, damage and effect rules below.
+- **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
+  `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
+  gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
 - **world-engine is the local checkout** (`replace => ../world-engine` in `go.mod`), currently a
   branch where codegen is reverted. The shard's Docker build only mounts this project, so it can't
   see `../world-engine`: `world start` needs a fresh `go mod vendor` first (and a re-vendor whenever
@@ -48,11 +51,13 @@ shards/game/
   internal/
     interact/ package interact    the rule vocabulary: Kind (the Box2D category bits), Tags, Relation,
                                   Side, Filter, First — standard library only
-    physics/  package physics    plugin config (physics.go) + MoveBlockers and Match (categories.go)
+    physics/  package physics    plugin config (physics.go) + Match (categories.go)
                                   + NewBody2D, WorldPoint helpers
       mover/  package mover      Box2D's geometric mover (walls stop a circle, it slides along them)
                                   and the landing rule: pure functions over *box2d.World, no Cardinal
                                   import
+      timestep/ package timestep the tick rate the server, the physics step and the predictor share
+                                  (Rate, Seconds) — imports nothing
     team/     package team        Team and Owner allegiance components + SameTeam, SideOf — a
                                   component-only leaf (imports only cardinal and interact)
     combat/   package combat      damage: damage_system.go (the one writer of Health)
@@ -66,49 +71,65 @@ shards/game/
                                   sync_system.go, tuning.go (champions)
       component/  package component   Player, Champion, InputQueue + InputFrame, MoveSpeed, BodyClaimed
                                       — player's leaf
+      motion/     package motion      how a Body moves each tick: Step (the server's move, and the
+                                      predictor's), Unit, Blockers — no Cardinal import
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
                                   tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
     ability/  package ability     casting: equip_system.go (cooldowns on claim) → cast_system.go (the
                                   gate; the one writer of cooldowns) → cast_hook_system.go (runs each
                                   cast's hook, turns its requests into intents), sync_system.go,
-                                  tuning.go (kits, abilities and their hooks), doc.go
+                                  tuning.go (AbilityTuning: cast.Tuning plus its data-plugin load),
+                                  doc.go
       component/  package component   Abilities (cooldowns by ability ID), AbilityCast + Cause —
                                       ability's leaf
+      cast/       package cast        the cast gate (Gate), Cooldowns, Tuning (kits, abilities, their
+                                      bound hooks) — no Cardinal import
       hooks/      package hooks       what abilities do: one hook per name (launch_hook.go,
                                       dash_hook.go), Bind, Out — standard library only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
-                                  flight_system.go (move + meets rules), sync_system.go, tuning.go
-                                  (shot types and the default rules), doc.go
+                                  flight_system.go (flies each shot, acts on what it meets),
+                                  sync_system.go, tuning.go (ProjectileTuning = flight.Tuning), doc.go
       component/  package component   Projectile, LaunchIntent — projectile's leaf
+      flight/     package flight      one tick of a shot's flight and what it meets first: Tuning (shot
+                                      types and the default rules), Launch, Fly — no Cardinal import
     effect/   package effect      timed effects on any entity: resolve_system.go (the one writer of
-                                  Effects), tuning.go (what each effect kind does), doc.go
+                                  Effects), tuning.go (EffectTuning = status.Tuning), doc.go
       component/  package component   Effects, EffectIntent — effect's leaf; any feature reads a status
                                       or asks for an effect without importing effect's systems
-      status/     package status      the rules: Entry, Add, Fold, Speed — standard library and
-                                      interact only
+      status/     package status      the rules: Entry, Fold, Sweep, Tuning (what each kind does),
+                                      Intent, Apply — standard library and interact only
     netsync/  package netsync     who may receive what: Viewers, Items (audience + seenBy). No events
                                   of its own; each feature sends its own
+    predict/  package predict     the client's own Body ahead of the server: Reset from a body_sync,
+                                  Step per frame (cast gate, move, hooks, its shots, its effects) —
+                                  no Cardinal import
+  predictor/  package main        js/wasm only: predict for the browser, with content.FS embedded
+                                  (client/scripts/predictor.mjs)
 ```
 
 Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
 the **team** and **interact** primitives, **netsync**, and any **`<feature>/component`** leaves it
-reads — never another feature's behavior package (`player → {physics, physics/mover, interact, team,
-netsync, player/component, effect/component, effect/status}`, `ability → {ability/hooks, physics,
-interact, team, netsync, player/component, ability/component, effect/component,
-projectile/component}`, `projectile → {physics, interact, team, netsync, combat/component,
-effect/component, projectile/component}`, `area → {physics, interact, team, area/component,
-combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
-{physics, interact, team, netsync, echo/component, area/component, combat/component,
-player/component, effect/component}`, `effect → {data, interact, effect/component, effect/status}`).
+reads — never another feature's behavior package (`player → {physics, interact, team, netsync,
+player/component, player/motion, effect/component, effect/status, ability/component, ability/cast,
+projectile/component}`, `ability → {ability/hooks, ability/cast, physics, team, netsync,
+player/component, ability/component, effect/component, projectile/component}`, `projectile → {physics,
+interact, team, netsync, combat/component, effect/component, projectile/component, projectile/flight}`,
+`area → {physics, interact, team, area/component, combat/component, effect/component}`, `combat →
+{combat/component, ability/component}`, `echo → {physics, interact, team, netsync, echo/component,
+area/component, combat/component, player/component, effect/component}`, `effect → {data,
+effect/component, effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
-also imports `effect/status`, team imports `interact`, and combat's and projectile's leaves import
-ability's leaf for `Cause`), so they're dependency *sinks* — a feature can read another's components
-without ever closing a cycle.
-`physics/mover` imports only box2d, and `interact`, `effect/status` and `ability/hooks` only the
-standard library (and `interact`), so a client predictor built for wasm can import them too. `content` is a leaf too (imported only by
-`main.go`); feature packages never import it — they name their JSON file by path string in
+also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
+and combat's and projectile's leaves import ability's leaf for `Cause`), so they're dependency *sinks*
+— a feature can read another's components without ever closing a cycle.
+The shared sim code imports no Cardinal: `physics/timestep` imports nothing, `physics/mover` only box2d;
+`interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`); and
+`ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
+predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
+`player/motion` for `InputFrame.Move`. `content` is a leaf too (imported only by
+`main.go` and the predictor); feature packages never import it — they name their JSON file by path string in
 `JSONFile()`.
 
 ### Conventions when adding systems
@@ -190,7 +211,8 @@ can read another's data without risking an import cycle.
 The simulation must be **tick-rate agnostic**: changing `TickRate` changes only how finely we sample
 time — never how fast the game plays or how hard anything hits. A build at 60 Hz must be the *same
 game* as one at 20 Hz, just smoother. Every system honors this:
-- **Rates are per-second, scaled by `dt` at the point of use.** `dt = 1 / physics.ServerTickRateHz`.
+- **Rates are per-second, scaled by `dt` at the point of use.** `dt = 1 / physics.ServerTickRateHz`
+  (`physics/timestep`, which the client predictor shares).
   Never bake a per-*tick* constant. A damage-over-time of 25/s is `25 * dt` this tick, not a hardcoded
   `1.25`. Movement already complies: `Velocity2D` is world-units-per-*second* and
   `player.MovementSystem` moves a Body by `velocity * dt`, so units/second is constant across tick
@@ -283,7 +305,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
   the bits, so never renumber one.
 - **A map shape's category is its map kind, and its mask is all bits.** Each query's mask lists the
-  kinds that stop it (`physics.MoveBlockers`, or the map kinds a shot's rules stop at). A per-Body rule,
+  kinds that stop it (`motion.Blockers`, or the map kinds a shot's rules stop at). A per-Body rule,
   like a pass through walls, changes that Body's query mask, never a shape's bits.
 - **Filter at the source with mask bits** so pairs you'll never act on don't even generate events —
   cheaper than classify-and-discard. Two shapes interact only if each one's category is in the
@@ -311,11 +333,13 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 ### Movement and walls
 - **Bodies are `BodyTypeManual`, and `player.MovementSystem` moves them itself.** Box2D never pairs a
   kinematic or Manual body with a static or kinematic one, so its step can't stop a Body.
+- **One tick's move is `motion.Step`,** which the server and the client predictor both run. It
+  lands a Body that's inside a blocker, picks its velocity and runs the mover.
 - **The move is Box2D's geometric mover,** `physics/mover.Move`: up to 5 passes of collide → solve
   planes → cast, then the velocity is clipped. It writes `Transform2D`. Walls stop a Body and it
   slides along them.
 - **The mover's query filter decides what blocks a Body:** `{Category: interact.Body, Mask:
-  MoveBlockers &^ passes}`. The filter is two-way, which is why map shapes mask all bits. The Body's own
+  motion.Blockers &^ passes}`. The filter is two-way, which is why map shapes mask all bits. The Body's own
   `MaskBits` doesn't drive the mover.
 - **Effects feed the mover and never move a Body.** `MovementSystem` folds the Body's `Effects` each
   tick: a forced velocity (dash, push) replaces input, the folded speed scales input (slows; a stun is
@@ -333,11 +357,14 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   cross the map edge). The mover can't push a center out, so it would walk out the far side. This
   covers a phase ending inside a wall. Map walls must be thinner than twice `LandReach`, with no sealed
   pockets.
-- **The mover is shared sim code** for a later wasm predictor, so it must stay deterministic: no
+- **The mover is shared sim code** the client predictor runs too, so it must stay deterministic: no
   Cardinal import, FMA-free arithmetic (`float64(a*b)`, or box2d helpers like `box2d.MulAdd`), and
-  planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID. `TestSharedCoreIsDeterministic`
-  checks `physics/mover`, `effect/status`, `interact` and `ability/hooks` for both: no Cardinal import,
-  and no FMA instruction on arm64, amd64/v3 or wasm.
+  planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID. So must the cast gate, hooks,
+  shot flight and effect rules. `TestSharedCoreIsDeterministic` checks `physics/mover`,
+  `physics/timestep`, `effect/status`, `interact`, `ability/hooks`, `ability/cast`,
+  `projectile/flight`, `player/motion`, `predict` and world-engine's `box2d`: no Cardinal import, no FMA
+  instruction on arm64, amd64/v3 or wasm, and no `math` call but the exact ones (floor, mod, …).
+  **Never `math.Hypot`:** it fuses on arm64. Use `box2d.Length`.
 
 ### System registration ordering (`main.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
@@ -353,8 +380,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **`player.InputSystem`, `ability.EquipSystem`, `ability.CastSystem`, then `player.MovementSystem`
   run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
   just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
-  depends on this (`TestFrameMovesBodySameTickAsAck`). Input, cast, move is the order a client
-  predictor steps. Effects a cast starts apply from the next tick.
+  depends on this (`TestFrameMovesBodySameTickAsAck`). The predictor steps in the same order: input,
+  cast gate, move, then the hooks and shots from where the Body moved. Effects a cast starts apply
+  from the next tick.
   - Before the plugin, the step sees each Body where it moved to this tick. The mover sees walls as of
     the last step, so a wall created this tick blocks from the next one.
   - `physics.NewPlugin()` builds the plugin first so Movement can hold it. Where `world.RegisterPlugin`
@@ -384,7 +412,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   shipped files and boots the real `register` through a data `Source`. Use it for test-only shot
   types and champions; never add test content to the shipped files.
 - **The definition TYPE lives in the feature package that owns it** (e.g. `projectile.ProjectileTuning`),
-  **never a central `types/` grab-bag.** Rampage centralizes all definitions in `pkg/datadef/types`
+  **never a central `types/` grab-bag.** Shared sim code keeps the type in its own package
+  (`flight.Tuning`), and the feature names it with an alias, or embeds it to add a data-plugin method
+  (`AbilityTuning{cast.Tuning}` adds `Resolve`). Rampage centralizes all definitions in `pkg/datadef/types`
   and 40 feature files import it — that's the layered bucket we reject. Definitions reference each
   other **by string ID resolved through the catalog**, so feature-owned types create no import
   cycles.
@@ -421,9 +451,33 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Cost.** Cardinal writes one stream message per event, so each synced feature adds one message per
   player per tick. Serialization repeats once per player; bandwidth equals a broadcast.
 - **Player IDs are only trustworthy with Argus auth.** DEV auth trusts the `X-Player-ID` header.
-- **Clients predict their own Body.** Each tick a client sends `Input{Session, Frames}` with its recent
-  unacked frames — each frame is move, aim and buttons — and replays the frames newer than
-  `BodySync.You.InputAck` (when `InputSession` is its own).
+- **Clients predict their own Body with the server's own code.** Each tick a client sends
+  `Input{Session, Frames}` with its recent unacked frames — each frame is move, aim and buttons.
+  `shards/game/predictor` builds `predict` (and through it `motion.Step` and world-engine's `box2d`) to
+  wasm with the server's Go toolchain. Each frame the client sends runs one tick of it at once, in the
+  server's order: the cast gate, the move, each cast's hook, your shots, then the effects your casts
+  put on you. Each `BodySync` restarts it from your Body and `You` (`MoveSpeed`, `Champion`,
+  `Cooldowns`, `Effects` with `EffectsNext`, never the folded status, and `Shots`) at `Tick`, and
+  replays the frames newer than `You.InputAck` (when `InputSession` is its own). A replay that lands
+  elsewhere is a correction: the drawn Body fades to it (`client/src/game/player/prediction.ts`), and
+  the HUD counts them.
+  - **Every input is predicted:** a shot leaves the frame you click, from where that frame moves your
+    Body, a dash starts the tick after, and the HUD starts a cooldown at once. `ProjectileState.Caster`
+    says whose a shot is: a client draws its own from the predictor and the rest from
+    `ProjectileSync`.
+  - **What a shot hits is the server's to say.** A predicted shot flies through enemies until the next
+    body_sync drops it, about one round trip late. Lag compensation comes later.
+  - **The predictor embeds `content.FS`** and loads it with `predict.Load`, as the data plugin does. A
+    client must be built from its server's tree, and a content hot reload shows as corrections until
+    the client is rebuilt.
+  - **Exact, unless the network surprises it.** `TestPredictionMatchesServer` checks the predictor lands
+    on the server's bits, and keeps its run in `testdata/prediction.msgpack`, which the wasm build must
+    match too (`predictor.test.ts`). Corrections still come from what the client can't know: a late
+    frame (the server repeats the last one), bunched frames past the buffer (the oldest are dropped),
+    and effects others cause.
+  - The predictor's world has no map yet. Walls come with the arena, built exactly as the server builds
+    them.
+  - The client aims from where the frame moves its Body, since the server casts from there.
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
   (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, at
   most `input_buffer_seconds` of frames are kept, and a Body with no input for `input_timeout_seconds`
@@ -433,7 +487,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   velocity from it, abilities cast from it. Buttons ride in the frame (like a Source or Overwatch
   user command), so a shot leaves from where the client predicted its Body when it fired.
 - **Cooldowns are server ticks** (`Cooldown.ReadyTick`), never a client count, so a client can't speed
-  them up. Shots aren't predicted on the client yet; they appear when the server confirms them.
+  them up. Its predicted kit reads them from `You.Cooldowns`.
 
 ### Abilities and their effects
 - **A champion is an ID, not a type.** A Body's `player/component.Champion` names the champion it
@@ -441,8 +495,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   in `content/player/tuning.json`, `kits` in `content/ability/tuning.json`, and its Echo (delay, area)
   in `content/echo/tuning.json`. A new champion is JSON entries, never new code.
 - **The cast gate decides whether a cast happens.** A Body casts from its champion's kit.
-  `ability.CastSystem` checks the button, cooldown and aim, and that the Body isn't stunned, then starts
-  the cooldown and emits `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
+  `cast.Gate`, which `ability.CastSystem` and the predictor both run, checks the button, cooldown and
+  aim, and that the Body isn't stunned, then starts the cooldown; `CastSystem` emits
+  `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
   follows its ability into whichever slot holds it.
 - **What an ability does is its hook.** Every ability row names a hook in `ability/hooks` and gives
   its `params` (`{"hook": "launch", "params": {"shot": "bolt"}}`). A hook reads its `Cast` and params
@@ -465,14 +520,16 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   stat, stacking) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
   know. An intent of an unknown kind is dropped with an error log. A refresh keeps whichever entry ends later, so a short stun never cuts a long one
   short. Bodies and Echoes carry `Effects` from their constructors. Read a status with
-  `Effects.Status(tick)`; the rules live in `effect/status` so a predictor can run them.
+  `Effects.Status(tick)`; the rules, and what each kind does (`status.Tuning`), live in `effect/status`
+  so a predictor can run them.
 - **Foundation for champions, effects and movement abilities:** `docs/research/character-foundation.md`
   (build steps 1-8 built). Read it before adding a champion or a movement ability. Abilities never move
   a Body; they feed the one mover a forced move, a speed change or a pass.
 - **The architecture for every system:** `docs/research/system-architecture-design.md` (migration
   steps 1-9 built). Read it before adding a shot behavior, an area, a hook or a game mode; it says what
   comes with which first user.
-- **`InputFrame.Buttons` bit N casts kit slot N**, so a new ability never changes the input type.
+- **`InputFrame.Buttons` bit N casts kit slot N**, so a new ability never changes the input type. The
+  client sends left click as slot 0 and Space as slot 1.
   `TestContentIDsLineUp` checks the content IDs line up across files.
 
 ---

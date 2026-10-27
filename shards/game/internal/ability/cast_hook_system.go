@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/ability/hooks"
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -30,12 +31,12 @@ type CastHookSystem struct {
 func (s *CastHookSystem) Run(w *cardinal.World) {
 	tuning := data.Get[AbilityTuning](s.Data)
 	casters := w.Contains[hookCasterRow]()
-	for cast := range w.SystemEvents[component.AbilityCast]() {
-		hook, ok := tuning.bound[cast.Ability]
+	for c := range w.SystemEvents[component.AbilityCast]() {
+		hook, ok := tuning.Hook(c.Ability)
 		if !ok || hook.OnCast == nil {
 			continue
 		}
-		caster, err := casters.GetByID(cast.Caster)
+		caster, err := casters.GetByID(c.Caster)
 		if err != nil {
 			continue // caster gone this tick
 		}
@@ -43,21 +44,18 @@ func (s *CastHookSystem) Run(w *cardinal.World) {
 		pos := caster.Get[physics2d.Transform2D]().Position
 		var out hooks.Out
 		hook.OnCast(hooks.Cast{
-			Caster: uint32(cast.Caster), Owner: uint32(owner), Team: side,
-			Pos: hooks.Vec2{X: pos.X, Y: pos.Y}, Aim: hooks.Vec2{X: cast.AimX, Y: cast.AimY},
+			Caster: uint32(c.Caster), Owner: uint32(owner), Team: side,
+			Pos: hooks.Vec2{X: pos.X, Y: pos.Y}, Aim: hooks.Vec2{X: c.AimX, Y: c.AimY},
 			TickRate: physics.ServerTickRateHz,
 		}, &out)
 		for _, l := range out.Launches {
 			w.EmitSystemEvent(projectilecomp.LaunchIntent{
-				Shot: l.Shot, Cause: cast.Cause, Owner: owner, Team: side,
+				Shot: l.Shot, Cause: c.Cause, Owner: owner, Team: side,
 				From: pos, Dir: physics2d.Vec2{X: l.Dir.X, Y: l.Dir.Y},
 			})
 		}
 		for _, e := range out.Effects {
-			w.EmitSystemEvent(effectcomp.EffectIntent{
-				Target: cardinal.EntityID(e.Target), Kind: e.Kind, Ticks: e.Ticks,
-				VelX: e.Vel.X, VelY: e.Vel.Y, Source: cast.Caster,
-			})
+			w.EmitSystemEvent(effectcomp.EffectIntent(cast.EffectIntent(e, uint32(c.Caster))))
 		}
 	}
 }

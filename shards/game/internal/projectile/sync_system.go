@@ -25,6 +25,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 		shots.Add(e, netsync.Everyone, ProjectileState{
 			EntityID: uint32(e.ID()),
 			Type:     p.Type,
+			Caster:   uint32(p.Cause.Caster),
 			Team:     e.Get[team.Team]().ID,
 			X:        pos.X,
 			Y:        pos.Y,

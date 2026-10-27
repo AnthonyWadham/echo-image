@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
@@ -23,4 +24,6 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  // Builds the predictor from the current Go code, so its tests never run a stale one.
+  test: { globalSetup: ['scripts/predictor.mjs'] },
 }))

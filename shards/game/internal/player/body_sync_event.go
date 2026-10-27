@@ -1,6 +1,11 @@
 package player
 
-import "github.com/argus-labs/world-engine/pkg/cardinal"
+import (
+	"github.com/argus-labs/world-engine/pkg/cardinal"
+
+	"echo_image/shards/game/internal/ability/cast"
+	"echo_image/shards/game/internal/effect/status"
+)
 
 // BodySync is one player's view of the Bodies this tick, plus their own prediction data. Server time
 // is Tick * TickSeconds; clients interpolate on it and predict their own Body in steps of TickSeconds.
@@ -15,13 +20,28 @@ type BodySync struct {
 // Name is the event name.
 func (BodySync) Name() string { return "body_sync" }
 
-// YouState is the receiving player's own data, for client-side prediction. InputAck counts only
-// for the client run whose Input.Session matches InputSession.
+// YouState is the receiving player's own data, for client-side prediction: everything the predictor
+// starts from, in one event. InputAck counts only for the client run whose Input.Session matches
+// InputSession.
 type YouState struct {
-	Body         uint32  // your Body's EntityID
-	InputSession uint32  // Input.Session the ack belongs to
-	InputAck     uint32  // Seq of the last applied frame, included in your Body's position
-	MoveSpeed    float64 // units per second at full input
+	Body         uint32                        // your Body's EntityID
+	InputSession uint32                        // Input.Session the ack belongs to
+	InputAck     uint32                        // Seq of the last applied frame, included in your Body's position
+	MoveSpeed    float64                       // units per second at full input
+	Champion     string                        // the champion your Body plays: its kit
+	Cooldowns    cardinal.Slice[cast.Cooldown] // when each ability your Body has cast is ready again
+	Effects      cardinal.Slice[status.Entry]  // your Body's timed effects, which the predictor folds itself
+	EffectsNext  uint32                        // the last serial your Body's effect list gave out
+	Shots        cardinal.Slice[ShotState]     // the shots your Body cast that are in flight
+}
+
+// ShotState is one of your shots in flight: what the predictor flies it on with.
+type ShotState struct {
+	Type       string // shot type ID: its rules
+	X, Y       float64
+	VelX, VelY float64 // units per second
+	Radius     float64
+	Remaining  float64 // distance left before it expires
 }
 
 // BodyState is one player Body.

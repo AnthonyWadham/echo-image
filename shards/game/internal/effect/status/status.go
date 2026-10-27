@@ -1,6 +1,7 @@
-// Package status is the Cardinal-free core of effects: the entry an effect list holds, the rules that
-// add one, and the fold that turns the active entries into what other rules read. It imports only the
-// standard library and interact, so a client predictor built for wasm can run it.
+// Package status is the Cardinal-free core of effects: what each kind does (Tuning), the entry an
+// effect list holds, the rules that add one, and the fold that turns the active entries into what
+// other rules read. It imports only the standard library and interact, so a client predictor built
+// for wasm can run it.
 package status
 
 import (

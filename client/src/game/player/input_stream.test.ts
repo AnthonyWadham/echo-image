@@ -4,12 +4,18 @@ import { InputStream, newSession } from './input_stream'
 
 const tick = 0.25 // exact in binary, so step counts are too
 const input = { MoveX: 1, MoveY: 0, AimX: 2, AimY: -1, Buttons: 1 }
+const next = () => input
 const seqs = (frames: readonly InputFrame[]) => frames.map((f) => f.Seq)
 const you = (InputSession: number, InputAck: number) => ({
   Body: 1,
   InputSession,
   InputAck,
   MoveSpeed: 5,
+  Champion: 'starter',
+  Cooldowns: [],
+  Effects: [],
+  EffectsNext: 0,
+  Shots: [],
 })
 
 describe('newSession', () => {
@@ -46,39 +52,46 @@ describe('InputStream', () => {
 
   test('steps once per tick of elapsed time', () => {
     const s = new InputStream(7)
-    expect(s.step(0.125, tick, input)).toEqual([])
-    const sends = s.step(0.125, tick, input)
+    expect(s.step(0.125, tick, next)).toEqual([])
+    expect(s.stepTime).toBe(0.125)
+    const sends = s.step(0.125, tick, next)
     expect(sends).toEqual([{ Session: 7, Frames: [{ Seq: 1, ...input }] }])
     expect(seqs(s.unacked)).toEqual([1])
   })
 
-  test('steps at most 3 times per animation frame', () => {
+  test('steps at most 3 times per animation frame, asking for each frame as it makes it', () => {
     const s = new InputStream(7)
-    expect(s.step(10, tick, input)).toHaveLength(3)
-    expect(s.step(0, tick, input)).toEqual([])
+    let asked = 0
+    const counted = () => {
+      asked++
+      return input
+    }
+    expect(s.step(10, tick, counted)).toHaveLength(3)
+    expect(asked).toBe(3)
+    expect(s.step(0, tick, next)).toEqual([])
   })
 
   test('never steps without a tick length', () => {
-    expect(new InputStream(7).step(1, 0, input)).toEqual([])
+    expect(new InputStream(7).step(1, 0, next)).toEqual([])
   })
 
   test('sends the newest 8 unacked frames with each step', () => {
     const s = new InputStream(7)
-    for (let i = 0; i < 9; i++) s.step(tick, tick, input)
-    const [send] = s.step(tick, tick, input)
+    for (let i = 0; i < 9; i++) s.step(tick, tick, next)
+    const [send] = s.step(tick, tick, next)
     expect(seqs(send?.Frames ?? [])).toEqual([3, 4, 5, 6, 7, 8, 9, 10])
   })
 
   test('keeps at most 128 unacked frames', () => {
     const s = new InputStream(7)
-    for (let i = 0; i < 130; i++) s.step(tick, tick, input)
+    for (let i = 0; i < 130; i++) s.step(tick, tick, next)
     expect(s.unacked).toHaveLength(128)
     expect(s.unacked[0]?.Seq).toBe(3)
   })
 
   test('ack drops the frames its own session applied', () => {
     const s = new InputStream(7)
-    for (let i = 0; i < 5; i++) s.step(tick, tick, input)
+    for (let i = 0; i < 5; i++) s.step(tick, tick, next)
     s.ack(you(9, 4))
     expect(seqs(s.unacked)).toEqual([1, 2, 3, 4, 5])
     s.ack(you(7, 3))
@@ -88,10 +101,10 @@ describe('InputStream', () => {
   test('reset forgets unacked frames and step time; Seq carries on', () => {
     const s = new InputStream(7)
     s.join({ x: 0, y: 0 })
-    s.step(tick * 1.5, tick, input)
+    s.step(tick * 1.5, tick, next)
     s.reset()
     expect(s.unacked).toEqual([])
-    expect(s.step(tick * 0.75, tick, input)).toEqual([])
+    expect(s.step(tick * 0.75, tick, next)).toEqual([])
     expect(s.join({ x: 0, y: 0 }).Frames[0]?.Seq).toBe(3)
   })
 })

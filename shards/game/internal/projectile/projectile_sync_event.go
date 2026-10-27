@@ -16,6 +16,7 @@ func (ProjectileSync) Name() string { return "projectile_sync" }
 type ProjectileState struct {
 	EntityID uint32
 	Type     string // shot type ID, for its look
+	Caster   uint32 // the Body or Echo that cast it: your Body's are drawn from your predictor instead
 	Team     uint8
 	X, Y     float64
 	Radius   float64

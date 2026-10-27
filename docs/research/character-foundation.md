@@ -133,13 +133,19 @@ These were checked against primary sources (docs, engine source, data-mined file
 
 ## Prediction
 
-- Shared core: `physics/mover`, `effect/status`, `ability/charges`, `echo/rewind`. None may import Cardinal or a
-  component leaf (a leaf pulls in about 737 packages).
-- Predicted: your own movement, cast gate, cooldowns and self effects. Not damage, death or other players.
-- `YouState` gains your own effect entries and cooldown ticks. Send the entries, never the folded mask.
-- Determinism: round every product, no `math.Sin`, `Exp` or `Pow`, integer stats, fixed orders, and an assembly-scan
-  test for FMA over the shared packages (built: `TestSharedCoreIsDeterministic`). The mover gave the same bits on amd64
-  (v1 and v3), js/wasm and wasip1.
+- Built 2026-10-25: every input of your own (movement, casts, cooldowns, the dash and your shots), through the
+  server's own code in wasm (`player/motion`, `ability/cast`, `projectile/flight`, `predict`,
+  `shards/game/predictor`), from `YouState`. See CLAUDE.md, client sync.
+- Shared core, built: `physics/mover`, `physics/timestep`, `effect/status`, `interact`, `ability/hooks`,
+  `ability/cast`, `projectile/flight`, `player/motion`, `predict`. Planned: `ability/charges`, `echo/rewind`. None may
+  import Cardinal or a component leaf (a leaf pulls in about 737 packages).
+- Predicted: your own movement, cast gate, cooldowns, self effects and your shots' flight. Not hits, damage, death or
+  other players. A predicted shot flies through enemies until the server's next state drops it.
+- `YouState` carries your champion, cooldown ticks, effect entries (with `EffectsNext`) and shots. Send the entries,
+  never the folded mask.
+- Determinism: round every product, no `math.Sin`, `Exp`, `Pow` or `Hypot` (it fuses on arm64; use `box2d.Length`),
+  integer stats, fixed orders, and an assembly-scan test for FMA and inexact `math` calls over the shared packages
+  (built: `TestSharedCoreIsDeterministic`). The mover gave the same bits on amd64 (v1 and v3), js/wasm and wasip1.
 
 ## Cardinal facts that shape this
 
@@ -176,9 +182,8 @@ Left for later, each with its first user:
 
 - Immunity and modifier stages (step 5). The generic on-cast reactor (step 3) is built as `ability.CastHookSystem`.
 - Charges, teleports and the Echo rewind.
-- `YouState` effect entries and cooldowns, for the predictor.
 - A test that pins the tick order (step 1).
-- The client binds only button 0, so the dash has no key yet. Its prediction doesn't know effects.
+- Predicted shot hits (lag compensation), and walls in the predictor (with the arena).
 
 ## Open decisions
 

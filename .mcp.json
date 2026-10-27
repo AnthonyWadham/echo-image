@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "world": {
+      "type": "stdio",
+      "command": "world",
+      "args": [
+        "mcp"
+      ],
+      "env": {}
+    }
+  }
+}

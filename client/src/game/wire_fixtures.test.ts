@@ -16,7 +16,47 @@ const read = (name: string) => new Uint8Array(readFileSync(new URL(`${name}.msgp
 const bodySync: BodySync = {
   Tick: 9007199254740993n,
   TickSeconds: 0.05,
-  You: { Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5 },
+  You: {
+    Body: 1,
+    InputSession: 4294967295,
+    InputAck: 42,
+    MoveSpeed: 5,
+    Champion: 'starter',
+    Cooldowns: [
+      { Ability: 'bolt', ReadyTick: 9007199254740993n },
+      { Ability: 'dash', ReadyTick: 0n },
+    ],
+    Effects: [
+      {
+        Kind: 'slow',
+        Tags: 2n,
+        Pass: 0n,
+        Stat: 1,
+        Value: -4000,
+        VelX: 0,
+        VelY: 0,
+        Source: 2,
+        Start: 9007199254740993n,
+        End: 18446744073709551615n,
+        Serial: 1,
+      },
+      {
+        Kind: 'dash',
+        Tags: 4n,
+        Pass: 1n,
+        Stat: 0,
+        Value: 0,
+        VelX: -12.5,
+        VelY: 16.25,
+        Source: 1,
+        Start: 7n,
+        End: 13n,
+        Serial: 2,
+      },
+    ],
+    EffectsNext: 4294967295,
+    Shots: [{ Type: 'bolt', X: -4.25, Y: 1.5, VelX: 9, VelY: -12, Radius: 0.15, Remaining: 17.75 }],
+  },
   Bodies: [
     { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5 },
     { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75, Radius: 0.75 },
@@ -32,7 +72,7 @@ const abilitySync: AbilitySync = {
 }
 const projectileSync: ProjectileSync = {
   Tick: 8n,
-  Projectiles: [{ EntityID: 9, Type: 'bolt', Team: 1, X: 0.125, Y: -7.5, Radius: 0.15 }],
+  Projectiles: [{ EntityID: 9, Type: 'bolt', Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15 }],
 }
 const projectileSyncEmpty: ProjectileSync = { Tick: 9n, Projectiles: [] }
 const input: Input = {

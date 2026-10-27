@@ -16,9 +16,6 @@ import (
 // A map shape's category is its map kind (wall, bounds) and its mask is all bits, so each query's mask
 // decides what stops it.
 
-// MoveBlockers is the map kinds that stop a Body. A pass effect drops kinds from its holder's.
-const MoveBlockers = interact.Wall | interact.Bounds
-
 // Match reports whether a contact is between kinds x and y in either fixture order, testing category
 // MEMBERSHIP with a bitwise-AND (not ==) so a shape carrying more than one category bit still
 // classifies correctly. On a hit it returns the two entities remapped to (x, y) order. A shape in

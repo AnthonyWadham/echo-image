@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"maps"
 	"math"
 	"os"
@@ -17,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
@@ -24,6 +27,7 @@ import (
 
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
+	"echo_image/shards/game/internal/ability/cast"
 	abilitycomp "echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/area"
@@ -32,12 +36,15 @@ import (
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/effect"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
+	"echo_image/shards/game/internal/predict"
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -364,7 +371,7 @@ func kit(t *testing.T) []string {
 }
 
 // primary returns the tuning of the ability in kit slot 0 and of the shot it launches.
-func primary(t *testing.T) (ability.AbilityDef, projectile.Shot) {
+func primary(t *testing.T) (cast.Def, flight.Shot) {
 	t.Helper()
 	id := kit(t)[0]
 	def := tuningOf[ability.AbilityTuning](t).Abilities[id]
@@ -463,12 +470,17 @@ func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
 	alice.fire(0, 1)
 	w.Tick()
 
-	ready, ok := readyTick(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")).EntityID)
+	body := yourBody(t, bodiesFor(t, w, "alice")).EntityID
+	ready, ok := readyTick(t, w, "alice", body)
 	if !ok || ready != fired+cooldown {
 		t.Fatalf("alice's ReadyTick = %d (found %v), want %d", ready, ok, fired+cooldown)
 	}
 	if len(shots(t, w, "alice")) != 1 || len(shots(t, w, "bob")) != 1 {
 		t.Fatalf("alice sees %d shots and bob %d, want 1 each", len(shots(t, w, "alice")), len(shots(t, w, "bob")))
+	}
+	// Her client draws it from her predictor instead, by Caster.
+	if c := shots(t, w, "bob")[0].Caster; c != body {
+		t.Fatalf("the shot's Caster = %d, want alice's Body %d", c, body)
 	}
 }
 
@@ -1141,7 +1153,7 @@ func emit[T interface{ Name() string }](e *emitter, ev T) {
 
 // effect queues in for b.
 func (e *emitter) effect(b player.BodyState, in effectcomp.EffectIntent) {
-	in.Target = cardinal.EntityID(b.EntityID)
+	in.Target = b.EntityID
 	emit(e, in)
 }
 
@@ -1244,7 +1256,7 @@ func TestStunStopsInputMovement(t *testing.T) {
 
 func TestSlowScalesInputSpeed(t *testing.T) {
 	w, alice, _, fx := fxDuel(t)
-	bob := cardinal.EntityID(yourBody(t, bodiesFor(t, w, "bob")).EntityID)
+	bob := yourBody(t, bodiesFor(t, w, "bob")).EntityID
 	slow := effectcomp.EffectIntent{Kind: "slow", Ticks: 20, Value: -4000, Source: bob}
 	fx.effect(yourBody(t, bodiesFor(t, w, "alice")), slow)
 	w.Tick()
@@ -1440,7 +1452,7 @@ func TestAnyCasterCastsEveryAbility(t *testing.T) {
 				}
 			}
 			for _, in := range effects {
-				if in.Source != cid {
+				if in.Source != uint32(cid) {
 					t.Errorf("%s cast by her %s: effect %+v, want its source %d", id, caster, in, cid)
 				}
 			}
@@ -1457,7 +1469,7 @@ func TestEffectsAreDeterministic(t *testing.T) {
 	}, func(w *cardinal.TestWorld) {
 		alice, bob := claim(t, w)
 		a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
-		aID, bID := cardinal.EntityID(a.EntityID), cardinal.EntityID(b.EntityID)
+		aID, bID := a.EntityID, b.EntityID
 		addWall(w, physics2d.Vec2{X: a.X + 2, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
 		fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: 12}) // ends inside the wall
 		fx.effect(a, effectcomp.EffectIntent{Kind: "slow", Ticks: 30, Value: -2500, Source: bID})
@@ -1491,15 +1503,243 @@ func TestBodyHasItsChampionsNumbers(t *testing.T) {
 	}
 }
 
+// --- Prediction ---
+
+// predictionStep is one tick of TestPredictionMatchesServer's run: the body_sync before it, the frame
+// the server applied, and what the predictor gave after it, as predictor.wasm returns it.
+type predictionStep struct {
+	Sync  player.BodySync
+	Frame playercomp.InputFrame
+	X, Y  float64          // your Body
+	Shots []shotPrediction // your shots, in the predictor's order
+	Kit   kitPrediction
+}
+
+// shotPrediction is one of your shots, as predictor.wasm's shots() returns it.
+type shotPrediction struct {
+	Type                       string
+	X, Y, PrevX, PrevY, Radius float64
+}
+
+// kitPrediction is your kit, as predictor.wasm's kit() returns it: ticks are JS numbers there.
+type kitPrediction struct {
+	Tick  float64
+	Slots []kitSlot
+}
+
+type kitSlot struct {
+	Ability   string
+	ReadyTick float64
+}
+
+// predictFrom is the predictor's start from a body_sync, as client/src/game/player/predictor.ts builds
+// it. s goes through MessagePack first, as it does to a client.
+func predictFrom(t *testing.T, s player.BodySync) predict.State {
+	t.Helper()
+	raw, err := msgpack.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got player.BodySync
+	if err := msgpack.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	b, you := yourBody(t, got), got.You
+	state := predict.State{
+		Tick: got.Tick, Body: you.Body, Team: b.Team, Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius,
+		MoveSpeed: you.MoveSpeed, Champion: you.Champion, Cooldowns: slices.Collect(you.Cooldowns.Values()),
+		Effects: slices.Collect(you.Effects.Values()), EffectsNext: you.EffectsNext,
+	}
+	for shot := range you.Shots.Values() {
+		state.Shots = append(state.Shots, predict.Shot{Type: shot.Type, Flight: flight.Flight{
+			Pos:      box2d.Vec2{X: shot.X, Y: shot.Y},
+			Velocity: box2d.Vec2{X: shot.VelX, Y: shot.VelY}, Radius: shot.Radius, Remaining: shot.Remaining,
+		}})
+	}
+	return state
+}
+
+// requirePredicted fails unless p's state is the server's in after: her Body, cooldowns and shots, and
+// her effects unless something else put one on her this tick.
+func requirePredicted(t *testing.T, at string, p *predict.Predictor, after player.BodySync, effects bool) {
+	t.Helper()
+	got, want := p.State(), predictFrom(t, after)
+	if got.Center != want.Center {
+		t.Fatalf("%s: predicted her Body at %v, the server has %v", at, got.Center, want.Center)
+	}
+	if !slices.Equal(got.Cooldowns, want.Cooldowns) {
+		t.Fatalf("%s: predicted cooldowns %+v, the server has %+v", at, got.Cooldowns, want.Cooldowns)
+	}
+	if effects && (!slices.Equal(got.Effects, want.Effects) || got.EffectsNext != want.EffectsNext) {
+		t.Fatalf("%s: predicted effects %+v (next %d), the server has %+v (next %d)",
+			at, got.Effects, got.EffectsNext, want.Effects, want.EffectsNext)
+	}
+	// The server lists shots in no set order, and has no Prev.
+	flights := func(shots []predict.Shot) []predict.Shot {
+		out := make([]predict.Shot, len(shots))
+		for i, s := range shots {
+			out[i] = predict.Shot{Type: s.Type, Flight: s.Flight}
+		}
+		slices.SortFunc(out, func(a, b predict.Shot) int {
+			return cmp.Or(cmp.Compare(a.Pos.X, b.Pos.X), cmp.Compare(a.Pos.Y, b.Pos.Y))
+		})
+		return out
+	}
+	if g, w := flights(got.Shots), flights(want.Shots); !slices.Equal(g, w) {
+		t.Fatalf("%s: predicted shots %+v, the server has %+v", at, g, w)
+	}
+}
+
+// record is p's state as predictor.wasm returns it, for testdata/prediction.msgpack.
+func record(p *predict.Predictor, sync player.BodySync, f playercomp.InputFrame) predictionStep {
+	s := p.State()
+	step := predictionStep{
+		Sync: sync, Frame: f, X: s.Center.X, Y: s.Center.Y,
+		Shots: []shotPrediction{}, Kit: kitPrediction{Tick: float64(s.Tick), Slots: []kitSlot{}},
+	}
+	for _, shot := range s.Shots {
+		step.Shots = append(step.Shots, shotPrediction{
+			Type: shot.Type, X: shot.Pos.X, Y: shot.Pos.Y, PrevX: shot.Prev.X, PrevY: shot.Prev.Y, Radius: shot.Radius,
+		})
+	}
+	for _, c := range p.Kit() {
+		step.Kit.Slots = append(step.Kit.Slots, kitSlot{Ability: c.Ability, ReadyTick: float64(c.ReadyTick)})
+	}
+	return step
+}
+
+// The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts
+// and their cooldowns, its dash, and its shots. Started from any tick's state and stepped by the frames
+// after it, it lands on the server's bits, through slows, stuns, forced moves, held buttons, bad frames
+// and a shot flying out its range. Effects others put on her surprise it, and come with the next
+// state. testdata/prediction.msgpack keeps the run, so the client checks that its wasm build lands
+// there too (client/src/game/player/predictor.test.ts).
+func TestPredictionMatchesServer(t *testing.T) {
+	w, alice, _, fx := fxDuel(t)
+	rules, err := predict.Load(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := predict.New(rules)
+	a := yourBody(t, bodiesFor(t, w, "alice"))
+	from := yourBody(t, bodiesFor(t, w, "bob")).EntityID
+	dashSlot, _ := dash(t)
+	_, bolt := primary(t)
+	if steps := int(bolt.Range / (bolt.Speed * physics.SecondsPerTick)); steps >= 39 {
+		t.Fatalf("a bolt flies %d ticks, past the run", steps)
+	}
+	// What bob puts on her, by step. Each applies from the tick after it.
+	surprises := map[int]effectcomp.EffectIntent{
+		2: {Kind: "slow", Ticks: 9, Value: -4000, Source: from},
+		6: {Kind: "stun", Ticks: 3, Source: from}, // ends her dash
+	}
+	moves := [][2]float64{{1, 0}, {0.3, -0.9}, {-1, 1}, {0, 0}, {math.NaN(), 1}, {-0.6, -0.8}, {3, 4}, {1e-12, 0}}
+	// She holds fire for six ticks, aiming up and left, away from bob: it casts once, then cools down.
+	// She also dashes on the fourth.
+	frameAt := func(i int) playercomp.InputFrame {
+		m := moves[i%len(moves)]
+		f := playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: -0.6, AimY: 0.8}
+		switch {
+		case i == 3:
+			f.Buttons = 1 | 1<<dashSlot
+		case i < 6:
+			f.Buttons = 1
+		}
+		return f
+	}
+
+	// One frame from each tick's state, as when the server acks every frame.
+	var run []predictionStep
+	for i := range 40 {
+		e, surprised := surprises[i]
+		if surprised {
+			fx.effect(a, e)
+		}
+		before := bodiesFor(t, w, "alice")
+		f := frameAt(i)
+		alice.send(f)
+		w.Tick()
+		f.Seq = alice.seq
+		p.Reset(predictFrom(t, before))
+		p.Step(predict.Frame(f))
+		requirePredicted(t, fmt.Sprintf("step %d", i), p, bodiesFor(t, w, "alice"), !surprised)
+		run = append(run, record(p, before, f))
+	}
+	if len(run[0].Shots) != 1 || len(run[39].Shots) != 0 {
+		t.Fatalf("predicted %d shots after her first frame and %d at the end, want her one bolt, then none",
+			len(run[0].Shots), len(run[39].Shots))
+	}
+
+	// Ten frames from one state, as when acks lag. A stun and a slow from bob are in that state and end
+	// partway, and her bolt is ready again. She holds fire: the stun stops her first two frames, a bad aim
+	// and no aim the next two, and the fifth casts.
+	fx.effect(a, effectcomp.EffectIntent{Kind: "slow", Ticks: 5, Value: -2500, Source: from})
+	fx.effect(a, effectcomp.EffectIntent{Kind: "stun", Ticks: 2, Source: from})
+	alice.move(1, 0)
+	w.Tick()
+	p.Reset(predictFrom(t, bodiesFor(t, w, "alice")))
+	aims := [][2]float64{{-1, 0.25}, {-1, 0.25}, {math.NaN(), 1}, {0, 0}, {-1, 0.25}}
+	for i := range 10 {
+		m, aim := moves[i%len(moves)], aims[min(i, len(aims)-1)]
+		f := playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: aim[0], AimY: aim[1], Buttons: 1}
+		alice.send(f)
+		w.Tick()
+		p.Step(predict.Frame(f))
+		requirePredicted(t, fmt.Sprintf("replayed frame %d", i+1), p, bodiesFor(t, w, "alice"), true)
+		if shots := len(p.State().Shots); shots != 0 && i < 4 || shots != 1 && i >= 4 {
+			t.Fatalf("replayed frame %d: %d shots predicted, want her bolt from frame 5 only", i+1, shots)
+		}
+	}
+
+	// The recording must still predict its own results, so a change to the sim asks for a new one.
+	path := filepath.Join("testdata", "prediction.msgpack")
+	if *update {
+		raw, err := msgpack.Marshal(run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recorded []predictionStep
+	if err := msgpack.Unmarshal(raw, &recorded); err != nil || len(recorded) == 0 {
+		t.Fatalf("%s holds no run (%v)", path, err)
+	}
+	for i, s := range recorded {
+		p.Reset(predictFrom(t, s.Sync))
+		p.Step(predict.Frame(s.Frame))
+		got := record(p, s.Sync, s.Frame)
+		if got.X != s.X || got.Y != s.Y || !slices.Equal(got.Shots, s.Shots) || got.Kit.Tick != s.Kit.Tick ||
+			!slices.Equal(got.Kit.Slots, s.Kit.Slots) {
+			t.Fatalf("%s step %d: predicted (%v, %v), shots %+v, kit %+v; recorded (%v, %v), %+v, %+v. If the sim "+
+				"changed on purpose, run `go test ./shards/game -run TestPredictionMatchesServer -update`",
+				path, i, got.X, got.Y, got.Shots, got.Kit, s.X, s.Y, s.Shots, s.Kit)
+		}
+	}
+}
+
 // --- Shared sim code ---
 
-// sharedCore is the code a client predictor will run too.
-var sharedCore = []string{"./internal/physics/mover", "./internal/effect/status", "./internal/interact",
-	"./internal/ability/hooks"}
+// sharedCore is the code the client predictor runs too, box2d included.
+var sharedCore = []string{"./internal/physics/mover", "./internal/physics/timestep", "./internal/effect/status",
+	"./internal/interact", "./internal/ability/hooks", "./internal/ability/cast", "./internal/projectile/flight",
+	"./internal/player/motion", "./internal/predict", "github.com/argus-labs/world-engine/pkg/box2d"}
+
+// exactMath is the math functions the shared core may call: their results are exact, so no target
+// rounds them differently. The rest of math isn't scanned, and some of it fuses (math.Hypot on arm64).
+var exactMath = map[string]bool{"remainder": true, "mod": true, "modf": true, "floor": true, "ceil": true,
+	"trunc": true, "round": true, "roundtoeven": true, "frexp": true, "ldexp": true}
 
 // The shared core imports no Cardinal (a component leaf pulls in about 737 packages), and builds with
 // no fused multiply-add on targets that have one. An FMA rounds a*b+c once, so it gives other bits
-// than a target that can't fuse, like wasm. Fix a hit by rounding the product: float64(a*b).
+// than a target that can't fuse, like wasm. Fix a hit by rounding the product: float64(a*b). It calls
+// only exactMath of the math package: use box2d's FMA-free helpers (box2d.Length) for the rest.
 func TestSharedCoreIsDeterministic(t *testing.T) {
 	deps, err := exec.Command("go", append([]string{"list", "-deps"}, sharedCore...)...).CombinedOutput()
 	if err != nil {
@@ -1512,6 +1752,7 @@ func TestSharedCoreIsDeterministic(t *testing.T) {
 		}
 	}
 	fma := regexp.MustCompile(`\bV?FN?M(ADD|SUB)[0-9A-Z]*\b`) // FMADDD on arm64, VFMADD231SD on amd64/v3
+	mathCall := regexp.MustCompile(`\bCALL\s+math\.(\w+)`)
 	for _, target := range [][]string{{"GOOS=linux", "GOARCH=arm64"}, {"GOOS=linux", "GOARCH=amd64", "GOAMD64=v3"},
 		{"GOOS=js", "GOARCH=wasm"}} {
 		build := exec.Command("go", append([]string{"build", "-gcflags=-S"}, sharedCore...)...) // -S prints assembly
@@ -1524,13 +1765,16 @@ func TestSharedCoreIsDeterministic(t *testing.T) {
 			if fma.MatchString(line) {
 				t.Errorf("%v: fused multiply-add: %s", target, strings.TrimSpace(line))
 			}
+			if m := mathCall.FindStringSubmatch(line); m != nil && !exactMath[strings.TrimPrefix(strings.ToLower(m[1]), "arch")] {
+				t.Errorf("%v: calls math.%s, which can round differently per target: %s", target, m[1], strings.TrimSpace(line))
+			}
 		}
 	}
 }
 
 // --- Wire format ---
 
-var update = flag.Bool("update", false, "rewrite testdata/wire from the TestWireFixtures samples")
+var update = flag.Bool("update", false, "rewrite testdata from TestWireFixtures and TestPredictionMatchesServer")
 
 // TestWireFixtures pins each payload's bytes in testdata/wire, which the client checks too
 // (client/src/game/wire_fixtures.test.ts). A renamed field fails here instead of silently zeroing on
@@ -1549,7 +1793,23 @@ func TestWireFixtures(t *testing.T) {
 		{"body_sync", player.BodySync{
 			Tick:        9007199254740993, // 2^53+1, past float64 precision
 			TickSeconds: 0.05,
-			You:         player.YouState{Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5},
+			You: player.YouState{
+				Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5, Champion: "starter",
+				Cooldowns: cardinal.SliceOf(
+					cast.Cooldown{Ability: "bolt", ReadyTick: 9007199254740993},
+					cast.Cooldown{Ability: "dash", ReadyTick: 0},
+				),
+				Effects: cardinal.SliceOf(
+					status.Entry{Kind: "slow", Tags: interact.CC, Stat: status.MoveSpeed, Value: -4000, Source: 2,
+						Start: 9007199254740993, End: 18446744073709551615, Serial: 1},
+					status.Entry{Kind: "dash", Tags: interact.EndsOnCC, Pass: interact.Wall, VelX: -12.5, VelY: 16.25,
+						Source: 1, Start: 7, End: 13, Serial: 2},
+				),
+				EffectsNext: 4294967295,
+				Shots: cardinal.SliceOf(player.ShotState{
+					Type: "bolt", X: -4.25, Y: 1.5, VelX: 9, VelY: -12, Radius: 0.15, Remaining: 17.75,
+				}),
+			},
 			Bodies: cardinal.SliceOf(
 				player.BodyState{EntityID: 1, PlayerID: 1, Nickname: "Player One", Team: 0, X: 1.5, Y: -2, Radius: 0.5},
 				player.BodyState{EntityID: 2, PlayerID: 2, Nickname: "Échø ✦", Team: 1, X: -0.25, Y: 3.75, Radius: 0.75},
@@ -1562,7 +1822,7 @@ func TestWireFixtures(t *testing.T) {
 			ability.AbilityState{Body: 1, Slot: 0, Ability: "bolt", ReadyTick: 18446744073709551615},
 		)}},
 		{"projectile_sync", projectile.ProjectileSync{Tick: 8, Projectiles: cardinal.SliceOf(
-			projectile.ProjectileState{EntityID: 9, Type: "bolt", Team: 1, X: 0.125, Y: -7.5, Radius: 0.15},
+			projectile.ProjectileState{EntityID: 9, Type: "bolt", Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15},
 		)}},
 		{"projectile_sync_empty", projectile.ProjectileSync{Tick: 9}},
 		{"input", in},

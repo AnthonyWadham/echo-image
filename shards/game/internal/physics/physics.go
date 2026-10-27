@@ -7,15 +7,18 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
+
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
-// ServerTickRateHz is the fixed simulation rate shared by Cardinal ticks and the physics2d step.
-const ServerTickRateHz = 20
+// ServerTickRateHz is the fixed simulation rate shared by Cardinal ticks and the physics2d step. It is
+// timestep.Rate, which the client predictor shares.
+const ServerTickRateHz = timestep.Rate
 
 // SecondsPerTick is dt — the wall-clock duration of one tick (1 / ServerTickRateHz). Scale per-second
 // rates by this to stay tick-rate independent; never hardcode 0.05 (see CLAUDE.md → Tick-rate
 // independence).
-const SecondsPerTick = 1.0 / float64(ServerTickRateHz)
+const SecondsPerTick = timestep.Seconds
 
 // NewPlugin returns the physics2d plugin (Box2D-backed 2D simulation) for world.RegisterPlugin; keep
 // it for queries (CircleSweep, Raycast, Engine). It is built apart from registering so a system

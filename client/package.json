@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "predictor": "node scripts/predictor.mjs",
+    "dev": "node scripts/predictor.mjs && vite",
+    "build": "node scripts/predictor.mjs && tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc"

@@ -1,9 +1,7 @@
 package projectile
 
 import (
-	"cmp"
-	"math"
-
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
@@ -13,6 +11,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -25,30 +24,13 @@ type targetRow struct {
 	Effects   effectcomp.Effects
 }
 
-// target is one Body or Echo circle, in world space.
-type target struct {
-	id     cardinal.EntityID
-	kind   interact.Kind
-	side   interact.Side
-	tags   interact.Tags
-	center physics2d.Vec2
-	radius float64
-}
-
-// hit is a thing on a shot's path that it doesn't pass.
-type hit struct {
-	fraction float64
-	rule     int // the index of the rule that met it
-	target   cardinal.EntityID
-	meet     Meet
-}
-
 // FlightSystem (Update, after LaunchSystem, before combat.DamageResolveSystem) moves every shot one
-// tick along its path and resolves the first thing on it that the shot doesn't pass. Rules decide what
-// a shot does on meeting each thing: the shot type's own, then the defaults (GDD §7). It passes the
-// thing or stops there, and a payload rule gives the thing its damage as a DamageIntent. A shot
-// launched this tick moves this tick, so its path starts at the shooter. O(P·T·R) for P shots, T
-// Body/Echo circles and R rules, plus one CircleSweep per shot.
+// tick along its path with flight.Fly, the code the client predictor flies its own shots with, and
+// resolves the first thing on it that the shot doesn't pass. Rules decide what a shot does on meeting
+// each thing: the shot type's own, then the defaults (GDD §7). It passes the thing or stops there, and
+// a payload rule gives the thing its damage as a DamageIntent. A shot launched this tick moves this
+// tick, so its path starts at the shooter. O(P·T·R) for P shots, T Body/Echo circles and R rules,
+// plus one Box2D shape cast per shot.
 type FlightSystem struct {
 	Data    *data.Plugin
 	Physics *physics2d.Plugin
@@ -64,13 +46,14 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 	}
 	tuning := data.Get[ProjectileTuning](s.Data)
 	targets := collectTargets(w)
+	world := s.Physics.Engine()
 	// Resolved after the search finished, since a resolved shot is destroyed.
 	for _, shot := range shots {
-		s.fly(w, tuning, shot, targets)
+		fly(w, world, tuning, shot, targets)
 	}
 }
 
-func (s *FlightSystem) fly(w *cardinal.World, tuning ProjectileTuning, shot cardinal.Entity, targets []target) {
+func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot cardinal.Entity, targets []flight.Target) {
 	p := shot.Get[component.Projectile]()
 	def, ok := tuning.Shots[p.Type]
 	if !ok {
@@ -78,83 +61,36 @@ func (s *FlightSystem) fly(w *cardinal.World, tuning ProjectileTuning, shot card
 		shot.Destroy()
 		return
 	}
-	start := shot.Get[physics2d.Transform2D]().Position
-	speed := math.Hypot(p.Velocity.X, p.Velocity.Y)
-	seconds := physics.SecondsPerTick
-	// Decided before the step: a remainder after it can round to a hair above 0 and never reach it.
-	last := p.Remaining <= speed*seconds
-	if last {
-		seconds = p.Remaining / speed // the last step stops at the range
+	f := flight.Flight{
+		Pos:       box2d.Vec2(shot.Get[physics2d.Transform2D]().Position),
+		Velocity:  box2d.Vec2(p.Velocity),
+		Radius:    p.Radius,
+		Remaining: p.Remaining,
 	}
-	end := physics2d.Vec2{X: start.X + p.Velocity.X*seconds, Y: start.Y + p.Velocity.Y*seconds}
-
-	first, found := s.firstHit(tuning, def, start, end, p.Radius, team.SideOf(shot), targets)
-	if !found {
-		if last {
-			shot.Destroy() // flew its range
-			return
-		}
-		p.Remaining -= speed * seconds
+	next, over, hit := tuning.Fly(world, def, f, team.SideOf(shot), targets, physics.SecondsPerTick)
+	if !over {
+		p.Remaining = next.Remaining
 		shot.Set(p)
-		shot.Set(physics2d.Transform2D{Position: end})
+		shot.Set(physics2d.Transform2D{Position: physics2d.Vec2(next.Pos)})
 		return
 	}
-	if first.meet.Payload {
+	if hit.Meet.Payload {
 		w.EmitSystemEvent(combatcomp.DamageIntent{
-			Target: first.target, Credit: shot.Get[team.Owner]().Body, Cause: p.Cause, Amount: p.Damage,
+			Target: cardinal.EntityID(hit.Target), Credit: shot.Get[team.Owner]().Body, Cause: p.Cause,
+			Amount: p.Damage,
 		})
 	}
-	shot.Destroy() // Stop is the only response that ends at a thing
-}
-
-// firstHit returns the nearest thing on the path that the shot doesn't pass. At the same point the
-// earlier rule wins, then the lower entity ID, so by default a Body standing on its Echo shields it.
-func (s *FlightSystem) firstHit(tuning ProjectileTuning, def Shot, start, end physics2d.Vec2, radius float64,
-	side interact.Side, targets []target,
-) (hit, bool) {
-	var first hit
-	found := false
-	keep := func(h hit) {
-		if !found || cmp.Or(cmp.Compare(h.fraction, first.fraction), cmp.Compare(h.rule, first.rule),
-			cmp.Compare(h.target, first.target)) < 0 {
-			first, found = h, true
-		}
-	}
-	// The map is neutral and has no tags or Health, so one sweep covers the map kinds it stops at.
-	var stops interact.Kind
-	rule := math.MaxInt
-	for _, k := range []interact.Kind{interact.Wall, interact.Bounds} {
-		if m, i := tuning.meet(def, k, interact.Neutral, 0); m.Do != Pass {
-			stops, rule = stops|k, min(rule, i)
-		}
-	}
-	if stops != 0 {
-		wall := s.Physics.CircleSweep(physics2d.CircleSweepRequest{
-			Start:  start,
-			End:    end,
-			Radius: radius,
-			Filter: &physics2d.Filter{CategoryBits: uint64(interact.Shot), MaskBits: uint64(stops)},
-		})
-		if wall.Hit {
-			keep(hit{fraction: wall.Fraction, rule: rule, target: wall.Entity, meet: Meet{Do: Stop}})
-		}
-	}
-	for _, t := range targets {
-		m, i := tuning.meet(def, t.kind, side.Relation(t.side), t.tags)
-		if m.Do == Pass {
-			continue
-		}
-		if f, ok := sweep(start, end, t.center, t.radius+radius); ok {
-			keep(hit{fraction: f, rule: i, target: t.id, meet: m})
-		}
-	}
-	return first, found
+	// DEBUG(shots): temporary, remove after the off-screen shot hunt.
+	w.Logger().Info().Uint32("shot", uint32(shot.ID())).Uint32("caster", uint32(p.Cause.Caster)).
+		Float64("x", f.Pos.X).Float64("y", f.Pos.Y).Float64("remaining", f.Remaining).
+		Uint32("target", hit.Target).Bool("payload", hit.Meet.Payload).Msg("DEBUG shot ended")
+	shot.Destroy()
 }
 
 // collectTargets lists every Body and Echo circle once per tick, so each shot tests plain values.
-func collectTargets(w *cardinal.World) []target {
+func collectTargets(w *cardinal.World) []flight.Target {
 	tick := w.TickHeight()
-	var targets []target
+	var targets []flight.Target
 	for e := range w.Contains[targetRow]().Iter() {
 		pose := e.Get[physics2d.Transform2D]()
 		side := team.SideOf(e)
@@ -164,37 +100,15 @@ func collectTargets(w *cardinal.World) []target {
 			if kind == 0 || shape.ShapeType != physics2d.ShapeTypeCircle {
 				continue
 			}
-			targets = append(targets, target{
-				id:     e.ID(),
-				kind:   kind,
-				side:   side,
-				tags:   tags,
-				center: physics.WorldPoint(pose, shape.LocalOffset),
-				radius: shape.Radius,
+			targets = append(targets, flight.Target{
+				ID:     uint32(e.ID()),
+				Kind:   kind,
+				Side:   side,
+				Tags:   tags,
+				Center: box2d.Vec2(physics.WorldPoint(pose, shape.LocalOffset)),
+				Radius: shape.Radius,
 			})
 		}
 	}
 	return targets
-}
-
-// sweep returns the first fraction of the path start→end at which a point comes within r of c. A path
-// that starts within r hits at 0.
-func sweep(start, end, c physics2d.Vec2, r float64) (float64, bool) {
-	dx, dy := end.X-start.X, end.Y-start.Y
-	fx, fy := start.X-c.X, start.Y-c.Y
-	cc := fx*fx + fy*fy - r*r
-	if cc <= 0 {
-		return 0, true
-	}
-	b := fx*dx + fy*dy
-	if b >= 0 {
-		return 0, false // not moving toward c
-	}
-	a := dx*dx + dy*dy
-	disc := b*b - a*cc
-	if disc < 0 {
-		return 0, false
-	}
-	t := (-b - math.Sqrt(disc)) / a
-	return t, t <= 1
 }

@@ -13,7 +13,7 @@ interface BodyView {
   readonly root: Mesh
 }
 
-/** Every Body, yours lighter. */
+/** Every Body, yours lighter and where you've predicted it. */
 export function newBodyViews(stage: Stage, player: LocalPlayer): EntityViews<BodyState, BodyView> {
   const looks = new TeamLooks((c) => ({ body: lit(c), you: lit(mix(c, White, 0.5)) }))
   const material = (b: BodyState) => {
@@ -25,8 +25,9 @@ export function newBodyViews(stage: Stage, player: LocalPlayer): EntityViews<Bod
     player.bodies,
     (b): BodyView => ({ root: new Mesh(geometry, material(b)) }),
     (view, b, x, y) => {
+      const at = b.EntityID === player.you ? player.drawn : undefined
       view.root.material = material(b)
-      view.root.position.set(x, y, b.Radius)
+      view.root.position.set(at?.x ?? x, at?.y ?? y, b.Radius)
       view.root.scale.setScalar(b.Radius)
     },
   )

@@ -2,16 +2,44 @@ import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
 import type { BodySync } from './body_sync_event'
 import { LocalPlayer } from './local_player'
+import type { Predictor } from './predictor'
 
 const session = 7
 const still = { move: { x: 0, y: 0 }, ground: undefined, buttons: 0 }
-const newPlayer = (timelines = new Timelines()) => new LocalPlayer(timelines, session)
+
+/** A stand-in for the wasm: each frame moves the Body by its move. */
+function predictor(): Predictor {
+  let at = { x: 0, y: 0 }
+  return {
+    reset: (_, you) => {
+      at = { x: you.X, y: you.Y }
+    },
+    peek: (x, y) => ({ x: at.x + x, y: at.y + y }),
+    step: (f) => {
+      at = { x: at.x + f.MoveX, y: at.y + f.MoveY }
+      return at
+    },
+    shots: () => [],
+    kit: () => ({ Tick: 0, Slots: [] }),
+  }
+}
+const newPlayer = (timelines = new Timelines()) => new LocalPlayer(timelines, session, predictor())
 
 /** A body_sync at tick for you as Body 1, by default alone at (tick, 0). */
 const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 }]): BodySync => ({
   Tick: BigInt(tick),
   TickSeconds: 0.05,
-  You: { Body: 1, InputSession: session, InputAck: ack, MoveSpeed: 5 },
+  You: {
+    Body: 1,
+    InputSession: session,
+    InputAck: ack,
+    MoveSpeed: 5,
+    Champion: 'starter',
+    Cooldowns: [],
+    Effects: [],
+    EffectsNext: 0,
+    Shots: [],
+  },
   Bodies: bodies.map((b) => ({ PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, Radius: 0.5, ...b })),
 })
 
@@ -37,8 +65,11 @@ describe('LocalPlayer', () => {
     player.inputsToSend(0.05, still)
     expect(player.playing).toBe(true)
 
+    expect(player.kit).toBeDefined()
     expect(player.setConnected(false, { x: 0, y: 0 })).toBeUndefined()
     expect(player.playing).toBe(false)
+    expect(player.kit).toBeUndefined()
+    expect(player.drawnShots).toEqual([])
     expect(player.bodies.size).toBe(0)
     expect(echoes.size).toBe(0)
     expect(player.input.unacked).toEqual([])
@@ -67,15 +98,27 @@ describe('LocalPlayer', () => {
     expect(player.input.unacked).toEqual([])
   })
 
-  test('while playing, aims from the newest server position of your Body', () => {
+  test('while playing, aims from where the frame moves your Body', () => {
     const player = playing()
     player.onBodySync(bodySync(101))
     const held = { move: { x: 1, y: 0 }, ground: { x: 103, y: -2 }, buttons: 1 }
     const [input] = player.inputsToSend(0.05, held)
     expect(input).toEqual({
       Session: session,
-      Frames: [{ Seq: 2, MoveX: 1, MoveY: 0, AimX: 2, AimY: -2, Buttons: 1 }],
+      Frames: [{ Seq: 2, MoveX: 1, MoveY: 0, AimX: 1, AimY: -2, Buttons: 1 }],
     })
+  })
+
+  test('predicts your Body from each body_sync plus the frames it has not applied', () => {
+    const player = playing()
+    const right = { ...still, move: { x: 1, y: 0 } }
+    player.inputsToSend(0.05, right)
+    player.inputsToSend(0.05, right)
+    expect(player.prediction.position).toEqual({ x: 102, y: 0 })
+    player.onBodySync(bodySync(101, 2)) // frame 2 applied, frame 3 not
+    expect(player.prediction.position).toEqual({ x: 102, y: 0 })
+    expect(player.prediction.corrections).toBe(0)
+    expect(player.drawn).toEqual({ x: 101, y: 0 })
   })
 
   test('drops the frames each body_sync acks', () => {

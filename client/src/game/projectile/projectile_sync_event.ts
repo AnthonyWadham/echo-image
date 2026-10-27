@@ -14,6 +14,7 @@ export interface ProjectileSync {
 export interface ProjectileState {
   EntityID: number // uint32
   Type: string // shot type ID, for its look
+  Caster: number // uint32 EntityID: your Body's shots are drawn from your predictor instead
   Team: number // uint8
   X: number
   Y: number

@@ -4,11 +4,13 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -40,20 +42,21 @@ func (s *LaunchSystem) Run(w *cardinal.World) {
 }
 
 // launch is the one constructor of a shot: a shot of type in.Shot leaves in.From along in.Dir, for
-// in.Owner on in.Team.
-func launch(w *cardinal.World, in component.LaunchIntent, def Shot) {
+// in.Owner on in.Team. Its flight starts as flight.Launch, which the client predictor launches with.
+func launch(w *cardinal.World, in component.LaunchIntent, def flight.Shot) {
+	f := flight.Launch(def, box2d.Vec2(in.From), box2d.Vec2(in.Dir))
 	e := w.Create[projectileRow]()
 	e.Set(component.Projectile{
 		Type:      in.Shot,
 		Cause:     in.Cause,
-		Velocity:  physics2d.Vec2{X: in.Dir.X * def.Speed, Y: in.Dir.Y * def.Speed},
-		Radius:    def.Radius,
+		Velocity:  physics2d.Vec2(f.Velocity),
+		Radius:    f.Radius,
 		Damage:    def.Damage,
-		Remaining: def.Range,
+		Remaining: f.Remaining,
 	})
 	e.Set(team.Team{ID: in.Team})
 	e.Set(team.Owner{Body: in.Owner})
-	e.Set(physics2d.Transform2D{Position: in.From})
+	e.Set(physics2d.Transform2D{Position: physics2d.Vec2(f.Pos)})
 }
 
 func compareLaunch(a, b component.LaunchIntent) int {

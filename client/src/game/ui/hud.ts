@@ -5,7 +5,7 @@ import type { Cooldown } from '../ability/cooldown'
 import type { EchoState } from '../echo/echo_sync_event'
 import type { LocalPlayer } from '../player/local_player'
 
-const Help = 'WASD / arrows move, mouse aims, hold left click to fire.'
+const Help = 'WASD / arrows move, mouse aims. Left click casts your first ability, Space your second.'
 
 /** What the HUD shows. */
 export interface HudSources {
@@ -43,23 +43,34 @@ export class Hud {
       const hp = `${Math.round(e.HP)}/${Math.round(e.MaxHP)} HP`
       lines.push(`Echo of P${e.PlayerID} (team ${e.Team}): ${hp}`)
     }
-    // Only your team's cooldowns are sent to you.
+    // Your kit is predicted, so a cast starts its countdown at once.
+    const kit = player.kit
+    if (kit) {
+      for (const s of kit.Slots) lines.push(`Your ${s.Ability}: ${this.#countdown(s.ReadyTick, kit.Tick)}`)
+    }
+    // The server sends only your team's cooldowns.
     const now = abilities.newestTick
     for (const a of abilities.newest ?? []) {
+      if (a.Body === player.you) continue // yours is the kit above
       const owner = player.bodies.newest?.find((b) => b.EntityID === a.Body)
-      const who = a.Body === player.you ? 'Your' : `${owner?.Nickname ?? `Body ${a.Body}`}'s`
-      const left = (a.ReadyTick - now) * player.tickSeconds
-      lines.push(`${who} ${a.Ability}: ${a.ReadyTick <= now ? 'ready' : `${left.toFixed(1)} s`}`)
+      lines.push(`${owner?.Nickname ?? `Body ${a.Body}`}'s ${a.Ability}: ${this.#countdown(a.ReadyTick, now)}`)
     }
     if (player.playing) {
       const n = player.input.unacked.length
       lines.push(`Inputs in flight: ${n} (~${Math.round(n * player.tickSeconds * 1000)} ms)`)
+      lines.push(`Prediction corrections: ${player.prediction.corrections}`)
     } else if (status.state === 'connected') {
       lines.push('Waiting for the server to give you a Body…')
     }
     const other = this.#playerId === 'dev-player-2' ? 'dev-player-1' : 'dev-player-2'
     lines.push(Help, `Second player: open ?player=${other} in another tab to take the other Body.`)
     return lines
+  }
+
+  // 'ready', or the seconds from now until readyTick.
+  #countdown(readyTick: number, now: number): string {
+    const left = (readyTick - now) * this.#from.player.tickSeconds
+    return readyTick <= now ? 'ready' : `${left.toFixed(1)} s`
   }
 
   #status({ state, error }: ShardStatus): string {

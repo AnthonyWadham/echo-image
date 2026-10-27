@@ -32,6 +32,11 @@ export class InputStream {
     return this.#unacked
   }
 
+  /** Seconds of dt saved toward the next frame. */
+  get stepTime(): number {
+    return this.#stepTime
+  }
+
   /** A move-only frame. Sent on connect, it claims a free Body. */
   join(move: Vec2): Input {
     this.#sentMove = move
@@ -45,14 +50,14 @@ export class InputStream {
     return same ? undefined : this.join(move)
   }
 
-  /** While playing: a frame per tickSeconds of dt, each sent with the newest unacked frames. */
-  step(dt: number, tickSeconds: number, input: FrameInput): Input[] {
+  /** While playing: a frame of next() per tickSeconds of dt, each sent with the newest unacked frames. */
+  step(dt: number, tickSeconds: number, next: () => FrameInput): Input[] {
     if (!(tickSeconds > 0)) return []
     this.#stepTime = Math.min(this.#stepTime + dt, MaxStepsPerFrame * tickSeconds)
     const sends: Input[] = []
     while (this.#stepTime >= tickSeconds) {
       this.#stepTime -= tickSeconds
-      this.#unacked.push(this.#frame(input))
+      this.#unacked.push(this.#frame(next()))
       if (this.#unacked.length > MaxUnacked) this.#unacked.shift()
       sends.push({ Session: this.session, Frames: this.#unacked.slice(-MaxResend) })
     }
