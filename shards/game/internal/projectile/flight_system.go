@@ -8,29 +8,19 @@ import (
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/team"
 )
 
-// targetRow is an entity whose Body or Echo circles a shot can meet.
-type targetRow struct {
-	Team      team.Team
-	Owner     team.Owner
-	Transform physics2d.Transform2D
-	Body      physics2d.PhysicsBody2D
-	Effects   effectcomp.Effects
-}
-
 // FlightSystem (Update, after LaunchSystem, before combat.DamageResolveSystem) moves every shot one
 // tick along its path with flight.Fly, the code the client predictor flies its own shots with, and
 // resolves the first thing on it that the shot doesn't pass. Rules decide what a shot does on meeting
 // each thing: the shot type's own, then the defaults (GDD §7). It passes the thing or stops there, and
 // a payload rule gives the thing its damage as a DamageIntent. A shot launched this tick moves this
-// tick, so its path starts at the shooter. O(P·T·R) for P shots, T Body/Echo circles and R rules,
-// plus one Box2D shape cast per shot.
+// tick, so its path starts at the shooter. One Box2D shape cast per shot finds the map, Bodies and
+// Echoes on its path, so the cost is O(P·(log N + K·R)) for P shots, N shapes, K found and R rules.
 type FlightSystem struct {
 	Data    *data.Plugin
 	Physics *physics2d.Plugin
@@ -45,15 +35,15 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 		return
 	}
 	tuning := data.Get[ProjectileTuning](s.Data)
-	targets := collectTargets(w)
 	world := s.Physics.Engine()
+	targets := targetsOf(w, world)
 	// Resolved after the search finished, since a resolved shot is destroyed.
 	for _, shot := range shots {
 		fly(w, world, tuning, shot, targets)
 	}
 }
 
-func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot cardinal.Entity, targets []flight.Target) {
+func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot cardinal.Entity, targets flight.Targets) {
 	p := shot.Get[component.Projectile]()
 	def, ok := tuning.Shots[p.Type]
 	if !ok {
@@ -87,28 +77,18 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot ca
 	shot.Destroy()
 }
 
-// collectTargets lists every Body and Echo circle once per tick, so each shot tests plain values.
-func collectTargets(w *cardinal.World) []flight.Target {
+// targetsOf says whose each Body and Echo shape in world is, with its side and its tags this tick.
+func targetsOf(w *cardinal.World, world *box2d.World) flight.Targets {
 	tick := w.TickHeight()
-	var targets []flight.Target
-	for e := range w.Contains[targetRow]().Iter() {
-		pose := e.Get[physics2d.Transform2D]()
-		side := team.SideOf(e)
-		tags := e.Get[effectcomp.Effects]().Status(tick).Tags
-		for shape := range e.Get[physics2d.PhysicsBody2D]().Shapes.Values() {
-			kind := interact.Kind(shape.CategoryBits) & (interact.Body | interact.Echo)
-			if kind == 0 || shape.ShapeType != physics2d.ShapeTypeCircle {
-				continue
-			}
-			targets = append(targets, flight.Target{
-				ID:     uint32(e.ID()),
-				Kind:   kind,
-				Side:   side,
-				Tags:   tags,
-				Center: box2d.Vec2(physics.WorldPoint(pose, shape.LocalOffset)),
-				Radius: shape.Radius,
-			})
+	return func(shape box2d.ShapeID) (flight.Target, bool) {
+		e := w.Entity(physics.EntityOf(world, shape))
+		if !e.Has[team.Team]() || !e.Has[team.Owner]() || !e.Has[effectcomp.Effects]() {
+			return flight.Target{}, false
 		}
+		return flight.Target{
+			ID:   uint32(e.ID()),
+			Side: team.SideOf(e),
+			Tags: e.Get[effectcomp.Effects]().Status(tick).Tags,
+		}, true
 	}
-	return targets
 }

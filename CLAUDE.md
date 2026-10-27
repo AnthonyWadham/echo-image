@@ -247,8 +247,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Tags are a closed Go list, append only** (snapshots keep the bits). Add one only when several
   features read it; state one champion alone reads stays in its own component.
 - **Areas test who is inside every tick.** An `area/component.Area{Kind, Start}` makes its entity's
-  first shape act on what overlaps it: one `OverlapAABB` query, an exact circle test, then the first
-  matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
+  first shape act on what overlaps it: one Box2D circle overlap (`Physics.Engine().OverlapShape`), then
+  the first matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
   the Echo's area (`content/area/tuning.json`, kind `anticamp`), and its `Start` is the warmup.
 
 ### Collision handling: deferred intents, rule-driven shots, per-feature contact reactions
@@ -267,11 +267,11 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   (`ability/component.Cause{Caster, Ability, Tick}`, which `AbilityCast` embeds), carried by shots. A
   reflect would change the shot's Owner and keep Cause. An area's damage has no cause.
 - **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
-  each shot every tick and resolves the **first** thing on its path that its rules don't pass: the map
-  with one physics2d `CircleSweep` (masked to the map kinds its rules stop at), Bodies and Echoes with
-  its own swept-circle test, with each target's relation and tags. Box2D's sweep returns only the
-  closest hit and can't skip allies (team isn't a collision bit), so the rule part lives in gameplay
-  code. A shot's `Type` names its shot type, whose rules are looked up each tick; its numbers are copied
+  each shot every tick and resolves the **first** thing on its path that its rules don't pass, with one
+  Box2D shape cast on `Physics.Engine()` over the map kinds its rules stop at and every Body and Echo.
+  The cast's callback judges each shape found by its owner's relation and tags (team isn't a collision
+  bit) and keeps the nearest it doesn't pass. Bodies and Echoes mask `interact.Shot` so the cast finds
+  them. A shot's `Type` names its shot type, whose rules are looked up each tick; its numbers are copied
   at launch.
   - First hit wins, which is what makes body-blocking exact, and a swept path can't tunnel at any
     speed. At the same point the earlier rule wins, then the lower entity ID, so by default a Body
@@ -301,6 +301,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   mutation; add a new *kind* of contact reaction as a **new feature reactor**.
 
 ### Collision filtering & teams
+- **Every collision or overlap check is a Box2D query. Never hand-write one.** No distance or overlap
+  math between entities, and no loop over every target: ask Box2D with a cast, overlap or ray, through
+  physics2d or `Physics.Engine()`, and decide pass or stop in its callback. Box2D's tree is what keeps
+  it scalable, and every shape is already in it.
 - **Category bits describe what a shape IS (its kind, `interact.Kind`)** — `Body`, `Echo`, `Shot`,
   `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
   the bits, so never renumber one.
@@ -387,10 +391,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     the last step, so a wall created this tick blocks from the next one.
   - `physics.NewPlugin()` builds the plugin first so Movement can hold it. Where `world.RegisterPlugin`
     is called is what places its step.
-- **Hooks, shots and areas run after the Echo replay:** `ability.CastHookSystem` →
-  `projectile.LaunchSystem` → `projectile.FlightSystem` → `area.AreaSystem`, after `echo.ReplaySystem`,
-  so they see this tick's Echo poses. A Body can cast the tick it is claimed (Equip runs before Cast),
-  and a shot launched this tick moves this tick, its path starting at the shooter.
+- **`echo.ReplaySystem` runs in PreUpdate, after Movement and before the physics plugin,** so Box2D
+  holds this tick's Echo poses when shots and areas query it (`TestShotMeetsEchoWhereItIsNow`). An
+  Echo spawned this tick joins Box2D next tick.
+- **Hooks, shots and areas run in Update:** `ability.CastHookSystem` → `projectile.LaunchSystem` →
+  `projectile.FlightSystem` → `area.AreaSystem`. A Body can cast the tick it is claimed (Equip runs
+  before Cast), and a shot launched this tick moves this tick, its path starting at the shooter.
 - **`effect.ResolveSystem` runs after every system that reads status, just before the syncs.** What it
   adds applies from the next tick, and it drops what is over by then, so a whole tick reads one status.
 - **Sync systems run last** (`player`, `echo`, `ability`, `projectile`), so each sends the tick's final

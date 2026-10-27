@@ -64,7 +64,7 @@ func spawnBody(w *cardinal.World, tuning MovementTuning, champion string, id uin
 		Radius:       def.Radius,
 		Density:      1,
 		CategoryBits: uint64(interact.Body),
-		MaskBits:     uint64(interact.Wall | interact.Area), // walls and areas; Bodies pass through each other, for now
+		MaskBits:     uint64(interact.Wall | interact.Area | interact.Shot), // Bodies pass through each other, for now
 	}))
 	w.Logger().Info().
 		Uint32("id", id).Str("nickname", nickname).Str("champion", champion).Uint8("team", teamID).

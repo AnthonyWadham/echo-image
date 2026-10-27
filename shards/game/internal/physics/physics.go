@@ -5,6 +5,8 @@ package physics
 import (
 	"math"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
+	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
 
@@ -40,6 +42,11 @@ func NewPlugin() *physics2d.Plugin {
 // FixedRotation on the result before writing it to ECS.
 func NewBody2D(bodyType physics2d.BodyType, shapes ...physics2d.ColliderShape) physics2d.PhysicsBody2D {
 	return component.NewPhysicsBody2D(bodyType, shapes...)
+}
+
+// EntityOf returns the entity a Box2D shape belongs to. physics2d keeps it in the body's user data.
+func EntityOf(world *box2d.World, shape box2d.ShapeID) cardinal.EntityID {
+	return cardinal.EntityID(uint32(world.BodyUserData(world.ShapeBody(shape))))
 }
 
 // WorldPoint returns a shape's local offset in world space, at pose.

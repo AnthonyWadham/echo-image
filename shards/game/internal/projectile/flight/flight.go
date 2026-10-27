@@ -31,15 +31,16 @@ func Launch(def Shot, from, dir box2d.Vec2) Flight {
 	}
 }
 
-// Target is a Body or Echo circle a shot can meet, in world space.
+// Target is whose a Body or Echo shape is, as a shot's rules see it.
 type Target struct {
-	ID     uint32 // its entity
-	Kind   interact.Kind
-	Side   interact.Side
-	Tags   interact.Tags
-	Center box2d.Vec2
-	Radius float64
+	ID   uint32 // its entity
+	Side interact.Side
+	Tags interact.Tags
 }
+
+// Targets returns the Target a Body or Echo shape in the world belongs to, or false for none. Nil means
+// the world has no Bodies or Echoes for shots to meet, as in the client predictor's.
+type Targets func(shape box2d.ShapeID) (Target, bool)
 
 // Hit is what a shot ended at. It is zero when the shot flew its range, and has no Target on the map.
 type Hit struct {
@@ -56,11 +57,11 @@ type hit struct {
 	meet     Meet
 }
 
-// Fly flies f, a shot of type def from side, one tick of dt seconds through world's map and past
-// targets. It returns f after the tick, and over=true when the shot ends in it: at its range, or at
-// hit, the first thing on its path that its rules don't pass. A shot launched this tick flies this
-// tick, so its path starts at the shooter.
-func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, targets []Target, dt float64,
+// Fly flies f, a shot of type def from side, one tick of dt seconds through world, where targets says
+// whose each Body and Echo shape is. It returns f after the tick, and over=true when the shot ends in
+// it: at its range, or at hit, the first thing on its path that its rules don't pass. A shot launched
+// this tick flies this tick, so its path starts at the shooter.
+func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, targets Targets, dt float64,
 ) (next Flight, over bool, h Hit) {
 	speed := box2d.Length(f.Velocity)
 	seconds := dt
@@ -81,43 +82,77 @@ func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, 
 	return f, false, Hit{}
 }
 
-// firstHit returns the nearest thing on the path that the shot doesn't pass. At the same point the
-// earlier rule wins, then the map, then the lower target ID, so by default a Body standing on its
-// Echo shields it.
+// firstHit returns the nearest thing on the path that the shot doesn't pass, from one Box2D shape cast
+// over the map and the Bodies and Echoes. At the same point the earlier rule wins, then the map, then
+// the lower target ID, so by default a Body standing on its Echo shields it.
 func (t Tuning) firstHit(world *box2d.World, def Shot, start, end box2d.Vec2, radius float64, side interact.Side,
-	targets []Target,
+	targets Targets,
 ) (hit, bool) {
-	var first hit
-	found := false
-	keep := func(h hit) {
-		if !found || cmp.Or(cmp.Compare(h.fraction, first.fraction), cmp.Compare(h.rule, first.rule),
-			compareBool(h.onMap, first.onMap), cmp.Compare(h.target, first.target)) < 0 {
-			first, found = h, true
-		}
+	if radius <= 0 || start == end {
+		return hit{}, false
 	}
-	// The map is neutral and has no tags or Health, so one sweep covers the map kinds it stops at.
-	var stops interact.Kind
-	rule := math.MaxInt
+	c := &cast{tuning: t, def: def, world: world, side: side, targets: targets, mapRule: math.MaxInt}
+	// The map is neutral and has no tags or Health, so one rule covers the map kinds it stops at.
+	var mask interact.Kind
 	for _, k := range []interact.Kind{interact.Wall, interact.Bounds} {
 		if m, i := t.meet(def, k, interact.Neutral, 0); m.Do != Pass {
-			stops, rule = stops|k, min(rule, i)
+			mask, c.mapRule = mask|k, min(c.mapRule, i)
 		}
 	}
-	if stops != 0 {
-		if f, ok := sweepMap(world, start, end, radius, stops); ok {
-			keep(hit{fraction: f, rule: rule, onMap: true, meet: Meet{Do: Stop}})
-		}
+	if targets != nil {
+		mask |= interact.Body | interact.Echo
 	}
-	for _, target := range targets {
-		m, i := t.meet(def, target.Kind, side.Relation(target.Side), target.Tags)
+	if mask == 0 {
+		return hit{}, false
+	}
+	var proxy box2d.ShapeProxy
+	proxy.Points[0] = start
+	proxy.Count = 1
+	proxy.Radius = radius
+	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Shot), MaskBits: uint64(mask)}
+	world.CastShape(&proxy, box2d.Vec2{X: end.X - start.X, Y: end.Y - start.Y}, filter, meetShape, c)
+	return c.first, c.found
+}
+
+// cast is one shot's shape cast: what judging a shape needs, and the nearest hit so far.
+type cast struct {
+	tuning  Tuning
+	def     Shot
+	world   *box2d.World
+	side    interact.Side
+	targets Targets
+	mapRule int // the earliest rule that stops the shot at the map
+	first   hit
+	found   bool
+}
+
+// meetShape judges each shape the cast finds by the shot's rules and keeps the nearest it doesn't
+// pass. It returns 1 to keep looking, so a shape at the same point can still win the tie.
+func meetShape(shape box2d.ShapeID, _, _ box2d.Vec2, fraction float64, ctx any) float64 {
+	c, ok := ctx.(*cast)
+	if !ok {
+		return 0
+	}
+	if c.world.IsShapeSensor(shape) {
+		return -1 // skip sensors
+	}
+	h := hit{fraction: fraction, rule: c.mapRule, onMap: true, meet: Meet{Do: Stop}}
+	if kind := interact.Kind(c.world.ShapeFilter(shape).CategoryBits) & (interact.Body | interact.Echo); kind != 0 {
+		target, ok := c.targets(shape)
+		if !ok {
+			return -1
+		}
+		m, i := c.tuning.meet(c.def, kind, c.side.Relation(target.Side), target.Tags)
 		if m.Do == Pass {
-			continue
+			return -1
 		}
-		if f, ok := sweep(start, end, target.Center, target.Radius+radius); ok {
-			keep(hit{fraction: f, rule: i, target: target.ID, meet: m})
-		}
+		h = hit{fraction: fraction, rule: i, target: target.ID, meet: m}
 	}
-	return first, found
+	if !c.found || cmp.Or(cmp.Compare(h.fraction, c.first.fraction), cmp.Compare(h.rule, c.first.rule),
+		compareBool(h.onMap, c.first.onMap), cmp.Compare(h.target, c.first.target)) < 0 {
+		c.first, c.found = h, true
+	}
+	return 1
 }
 
 // compareBool orders true before false.
@@ -129,62 +164,4 @@ func compareBool(a, b bool) int {
 		return -1
 	}
 	return 1
-}
-
-// sweepMap returns the first fraction of the path start→end at which a circle of radius meets a map
-// shape of a kind in mask, as physics2d's CircleSweep finds it: Box2D's shape cast, skipping sensors.
-func sweepMap(world *box2d.World, start, end box2d.Vec2, radius float64, mask interact.Kind) (float64, bool) {
-	if radius <= 0 || start == end {
-		return 0, false
-	}
-	var proxy box2d.ShapeProxy
-	proxy.Points[0] = start
-	proxy.Count = 1
-	proxy.Radius = radius
-	c := &mapHit{world: world}
-	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Shot), MaskBits: uint64(mask)}
-	world.CastShape(&proxy, box2d.Vec2{X: end.X - start.X, Y: end.Y - start.Y}, filter, closest, c)
-	return c.fraction, c.hit
-}
-
-// mapHit is the nearest map hit a shape cast has found so far.
-type mapHit struct {
-	world    *box2d.World
-	hit      bool
-	fraction float64
-}
-
-// closest keeps each hit that isn't a sensor and returns its fraction, so Box2D only looks closer.
-func closest(shape box2d.ShapeID, _, _ box2d.Vec2, fraction float64, ctx any) float64 {
-	c, ok := ctx.(*mapHit)
-	if !ok {
-		return 0
-	}
-	if c.world.IsShapeSensor(shape) {
-		return -1 // skip sensors
-	}
-	c.hit, c.fraction = true, fraction
-	return fraction
-}
-
-// sweep returns the first fraction of the path start→end at which a point comes within r of c. A path
-// that starts within r hits at 0. Each product is rounded, so no target fuses it into an FMA.
-func sweep(start, end, c box2d.Vec2, r float64) (float64, bool) {
-	dx, dy := end.X-start.X, end.Y-start.Y
-	fx, fy := start.X-c.X, start.Y-c.Y
-	cc := float64(fx*fx) + float64(fy*fy) - float64(r*r)
-	if cc <= 0 {
-		return 0, true
-	}
-	b := float64(fx*dx) + float64(fy*dy)
-	if b >= 0 {
-		return 0, false // not moving toward c
-	}
-	a := float64(dx*dx) + float64(dy*dy)
-	disc := float64(b*b) - float64(a*cc)
-	if disc < 0 {
-		return 0, false
-	}
-	t := (-b - math.Sqrt(disc)) / a
-	return t, t <= 1
 }

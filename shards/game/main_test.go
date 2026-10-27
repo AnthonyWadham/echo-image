@@ -649,7 +649,7 @@ func TestShotPassesThroughAllies(t *testing.T) {
 		ShapeType:    physics2d.ShapeTypeCircle,
 		Radius:       0.5,
 		CategoryBits: uint64(interact.Body),
-		MaskBits:     uint64(interact.Body | interact.Wall),
+		MaskBits:     uint64(interact.Body | interact.Wall | interact.Shot),
 	}))
 
 	// The shot starts inside alice's own Body and Echo, then crosses carol.
@@ -743,6 +743,43 @@ func TestPointBlankShotHitsEcho(t *testing.T) {
 	_, shot := primary(t)
 	if got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))); got.HP != got.MaxHP-shot.Damage {
 		t.Fatalf("bob's Echo HP = %v after a point-blank shot, want %v", got.HP, got.MaxHP-shot.Damage)
+	}
+}
+
+// A shot meets an Echo where its replay puts it this tick, not a step behind: the replay runs before
+// the physics step, so Box2D holds the new pose when shots query it.
+func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
+	w, _, bob, fx := fxDuel(t)
+	body := yourBody(t, bodiesFor(t, w, "bob"))
+	// bob walks until his Echo walks after him, the same step each tick.
+	var xs []float64
+	steady := func() bool {
+		n := len(xs)
+		return n >= 3 && xs[n-1] > xs[n-2] && xs[n-1]-xs[n-2] == xs[n-2]-xs[n-3]
+	}
+	for !steady() {
+		if len(xs) > 200 {
+			t.Fatal("bob's Echo never walked")
+		}
+		bob.move(1, 0)
+		w.Tick()
+		xs = append(xs, echoOf(t, w, "alice", body).X)
+	}
+	now := echoOf(t, w, "alice", body)
+	step := xs[len(xs)-1] - xs[len(xs)-2]
+
+	// alice's shot flies up past the Echo's leading edge next tick: it touches the Echo there, and
+	// would miss it a step behind.
+	def, shot := primary(t)
+	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
+	a := yourBody(t, bodiesFor(t, w, "alice"))
+	x := now.X + step + tuningOf[echo.EchoTuning](t).HitRadius + shot.Radius - step/2
+	emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Owner: cardinal.EntityID(a.EntityID), Team: a.Team,
+		From: physics2d.Vec2{X: x, Y: now.Y - 0.3}, Dir: physics2d.Vec2{Y: 1}})
+	bob.move(1, 0)
+	w.Tick()
+	if got := echoOf(t, w, "alice", body); got.HP != got.MaxHP-shot.Damage {
+		t.Fatalf("bob's Echo HP = %v, want %v: the shot missed where it is now", got.HP, got.MaxHP-shot.Damage)
 	}
 }
 

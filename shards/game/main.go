@@ -73,6 +73,11 @@ func registerWith(world *cardinal.World, src data.Source) {
 	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin, Physics: physicsPlugin},
 		cardinal.WithHook(cardinal.PreUpdate))
 
+	// Echo replay (PreUpdate, after Movement): record the Body's pose and drive the Echo to the pose
+	// from delay_seconds ago. Before the physics plugin, so Box2D holds this tick's Echo poses when
+	// shots and areas query it.
+	world.RegisterSystem(&echo.ReplaySystem{}, cardinal.WithHook(cardinal.PreUpdate))
+
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick. Kept for queries.
 	world.RegisterPlugin(physicsPlugin)
 
@@ -84,11 +89,6 @@ func registerWith(world *cardinal.World, src data.Source) {
 	// PreUpdate is still visible (system events clear at tick end). Claim-triggered, not Init — see
 	// echo.SpawnSystem.
 	world.RegisterSystem(&echo.SpawnSystem{Data: dataPlugin})
-
-	// Echo replay (Update): record the Body's post-step pose and drive the Echo to the pose from
-	// delay_seconds ago. Registered before projectile and areas so the Echo's pose is current when they
-	// read it.
-	world.RegisterSystem(&echo.ReplaySystem{})
 
 	// Ability hooks (Update): each cast runs its ability's hook, which asks the features that own the
 	// state for changes with intents (a shot to launch, a dash's forced move). Before every receiver of

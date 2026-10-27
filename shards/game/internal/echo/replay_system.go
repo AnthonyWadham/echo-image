@@ -25,10 +25,10 @@ type ownerPoseRow struct {
 	Transform physics2d.Transform2D
 }
 
-// ReplaySystem (Update, after the physics PreUpdate step so the Body pose is current) samples each
-// Body's pose into its Echo's ring buffer and moves the Echo to the pose from delayTicks ago — the
-// delayed replay. Each Echo's ring is sized to its champion's delay at spawn. The Echo is BodyTypeManual, so writing its Transform teleports the Box2D body on the
-// next reconcile.
+// ReplaySystem (PreUpdate, after player.MovementSystem so the Body pose is current, before the physics
+// plugin) samples each Body's pose into its Echo's ring buffer and moves the Echo to the pose from
+// delayTicks ago — the delayed replay. Each Echo's ring is sized to its champion's delay at spawn. The
+// Echo is BodyTypeManual, so the reconcile before this tick's step moves its Box2D body there.
 //
 // It is the SOLE writer of PathHistory, so the Get→mutate→Set on that aliasing slice stays inside one
 // system (see component.PathHistory).
