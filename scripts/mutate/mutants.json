@@ -1449,8 +1449,8 @@
    "edits": [
     {
      "file": "shards/game/prediction_test.go",
-     "old": "\t\tfor _, f := range s.Frames {\n\t\t\t_, ended = p.Step",
-     "new": "\t\tfor _, f := range s.Frames[len(s.Frames)-1:] {\n\t\t\t_, ended = p.Step"
+     "old": "\t\tfor _, f := range s.Frames {\n\t\t\t_, e := p.Step",
+     "new": "\t\tfor _, f := range s.Frames[len(s.Frames)-1:] {\n\t\t\t_, e := p.Step"
     }
    ]
   },
@@ -1461,8 +1461,8 @@
    "edits": [
     {
      "file": "client/src/game/player/predictor.test.ts",
-     "old": "frames.map((f) => predictor.step(f)).at(-1)",
-     "new": "frames.slice(-1).map((f) => predictor.step(f)).at(-1)"
+     "old": "const steps = frames.map((f) => predictor.step(f))",
+     "new": "const steps = frames.slice(-1).map((f) => predictor.step(f))"
     }
    ]
   },
@@ -1739,6 +1739,30 @@
      "file": "shards/game/main.go",
      "old": "\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n",
      "new": "\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
+    }
+   ]
+  },
+  {
+   "id": "F14-B7",
+   "breaks": "the bad network's backlog ends before her bolt reaches bob",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "max(len(gap), ready+flight-len(head))",
+     "new": "max(len(gap), ready+flight-len(head)-ready-flight)"
+    }
+   ]
+  },
+  {
+   "id": "F14-B8",
+   "breaks": "the recording keeps only the newest frame's ends",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "\t\t\tended = append(ended, e...)\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}",
+     "new": "\t\t\tended = e\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}"
     }
    ]
   }

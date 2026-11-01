@@ -4,6 +4,7 @@ import (
 	"cmp"
 	echoimage "echo_image"
 	"echo_image/shards/game/content"
+	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
@@ -15,6 +16,7 @@ import (
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"os/exec"
@@ -527,6 +529,16 @@ func TestPredictionMatchesServer(t *testing.T) {
 	}
 
 	run = append(run, badNetwork(t, w, p, alice)...)
+	// Shots end out of range and on bob, after one frame and after several, so the wasm build meets each.
+	pairs := map[[2]bool]bool{}
+	for _, s := range run {
+		for _, e := range s.Ended {
+			pairs[[2]bool{len(s.Frames) > 1, e.OnTarget}] = true
+		}
+	}
+	if len(pairs) != 4 {
+		t.Fatalf("the run ends shots as (several frames, on target) %v, want all four", slices.Collect(maps.Keys(pairs)))
+	}
 
 	// The run's digest, a line a step, is the golden, so a change to the sim shows as a reviewed diff. Each
 	// tick rate has its own. -record writes the run itself, for the wasm build to match (predictor.mjs).
@@ -570,7 +582,8 @@ func TestPredictionMatchesServer(t *testing.T) {
 		p.Reset(predictFrom(t, s.Sync))
 		var ended []predict.Ended
 		for _, f := range s.Frames {
-			_, ended = p.Step(predictFrame(f))
+			_, e := p.Step(predictFrame(f))
+			ended = append(ended, e...)
 		}
 		got := record(p, s.Sync, s.Targets, s.Frames, ended)
 		if got.X != s.X || got.Y != s.Y || !slices.Equal(got.Shots, s.Shots) || got.Kit.Tick != s.Kit.Tick ||
@@ -594,13 +607,21 @@ func TestPredictionMatchesServer(t *testing.T) {
 // coasted or frame it dropped. It returns each tick's replay, for the recording.
 func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice *client) []predictionStep {
 	t.Helper()
+	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
 	queue, gap := tuningOf[player.MovementTuning](t).BufferFrames(), strings.Repeat(".", ticks(0.2))
-	script := strings.Repeat(".", ticks(0.3)) + strings.Repeat("h", queue+2) + "." + strings.Repeat("0", queue-1) +
-		strings.Repeat(".", ticks(0.3)) + "l" + gap + "2" + gap + "l" + gap + "0" + gap + "0" + gap + "h.h" +
-		strings.Repeat(".", ticks(0.6))
+	head := strings.Repeat(".", ticks(0.3)) + strings.Repeat("h", queue+2) + "." + strings.Repeat("0", queue-1) +
+		strings.Repeat(".", ticks(0.3))
+	// From the lost frame on, the server stays a frame behind her until her bolt is ready again and has
+	// flown to bob, so a replay of several frames ends it on him at any rate.
+	_, bolt := primary(t)
+	i := before.You.Cooldowns.IndexFunc(func(c cast.Cooldown) bool { return c.Ability == kit(t)[0] })
+	ready := int(before.You.Cooldowns.At(i).ReadyTick - before.Tick)
+	a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
+	flight := ticks(math.Hypot(b.X-a.X, b.Y-a.Y)/bolt.Speed + 0.25)
+	script := head + "l" + strings.Repeat(".", max(len(gap), ready+flight-len(head))) + "2" + gap + "l" + gap + "0" +
+		gap + "0" + gap + "h.h" + strings.Repeat(".", ticks(0.6))
 	resend := ticks(0.4) // frames each Input repeats: ResendSeconds in client/src/game/player/input_stream.ts
 	moves := [][2]float64{{1, 0}, {0.6, 0.8}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}}
-	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
 	walk, me := before.You.MoveSpeed*physics.SecondsPerTick, before.You.Body
 	type replay struct { // a replay's guess, until the server applies its frame
 		seq, ack uint32
@@ -609,25 +630,27 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 		ended    []predict.Ended
 	}
 	var (
-		run                                           []predictionStep
-		open                                          []replay
-		unacked                                       []playercomp.InputFrame
-		held                                          []player.Input
-		drawn                                         box2d.Vec2 // her Body after her newest frame, as last predicted
-		surprises                                     int        // since her client last predicted
-		exact, deep, hits, coasts, dropped, corrected int
+		run                             []predictionStep
+		open                            []replay
+		unacked                         []playercomp.InputFrame
+		held                            []player.Input
+		drawn                           box2d.Vec2 // her Body after her newest frame, as last predicted
+		surprises                       int        // since her client last predicted
+		exact, deep, coasts, dropped    int
+		deepHits, deepMisses, corrected int
 	)
 	for i, c := range script {
 		at := fmt.Sprintf("bad network tick %d", i)
-		var ended []predict.Ended // her client's last step's
+		var ended []predict.Ended // every shot her client's steps ended this tick
 		// Her client starts over from the newest body_sync and replays what the server hasn't applied.
 		see(t, p, targets)
 		p.Reset(predictFrom(t, before))
 		ack := before.You.InputAck
 		unacked = slices.DeleteFunc(unacked, func(f playercomp.InputFrame) bool { return f.Seq <= ack })
 		for _, f := range unacked {
-			_, ended = p.Step(predictFrame(f))
-			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), ended})
+			_, e := p.Step(predictFrame(f))
+			ended = append(ended, e...)
+			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})
 		}
 		if i > 0 {
 			moved := box2d.Length(box2d.Sub(p.State().Center, drawn))
@@ -649,8 +672,9 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 			f := alice.next(playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: bob.X - from.X, AimY: bob.Y - from.Y,
 				Buttons: 1})
 			alice.seq = f.Seq
-			_, ended = p.Step(predictFrame(f))
-			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), ended})
+			_, e := p.Step(predictFrame(f))
+			ended = append(ended, e...)
+			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})
 			unacked = append(unacked, f)
 			if c != 'l' {
 				held = append(held, input(alice.session, unacked[max(len(unacked)-resend, 0):]...))
@@ -686,9 +710,13 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 				exact++
 				if r.seq-r.ack > 1 {
 					deep++
-				}
-				if slices.ContainsFunc(r.ended, func(e predict.Ended) bool { return e.End.Hit.OnTarget() }) {
-					hits++
+					for _, e := range r.ended {
+						if e.End.Hit.OnTarget() {
+							deepHits++
+						} else {
+							deepMisses++
+						}
+					}
 				}
 			default:
 				waiting = append(waiting, r)
@@ -697,9 +725,11 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 		open = waiting
 		before, targets = after, sentTo[projectile.TargetSync](t, w, "alice")
 	}
-	if exact < len(script) || deep == 0 || hits == 0 || coasts < 3 || dropped == 0 || corrected == 0 {
-		t.Fatalf("bad network: %d exact replays, %d of several frames, %d ending on bob; %d coasts, %d frames "+
-			"dropped, %d corrections: want each", exact, deep, hits, coasts, dropped, corrected)
+	if exact < len(script) || deep == 0 || deepHits == 0 || deepMisses == 0 || coasts < 3 || dropped == 0 ||
+		corrected == 0 {
+		t.Fatalf("bad network: %d exact replays, %d of several frames, ending %d shots on bob and %d elsewhere; "+
+			"%d coasts, %d frames dropped, %d corrections: want each", exact, deep, deepHits, deepMisses, coasts,
+			dropped, corrected)
 	}
 	return run
 }

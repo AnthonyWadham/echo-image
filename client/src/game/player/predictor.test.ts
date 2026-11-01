@@ -38,8 +38,11 @@ beforeAll(async () => {
   predictor = await loadPredictor(readFileSync(new URL('predictor.wasm', import.meta.url)))
 })
 
-// Steps each frame in turn, and returns what the last gave.
-const stepAll = (frames: InputFrame[]) => frames.map((f) => predictor.step(f)).at(-1)
+// Steps each frame in turn, and returns where the last left her and every shot the steps ended.
+const stepAll = (frames: InputFrame[]) => {
+  const steps = frames.map((f) => predictor.step(f))
+  return { at: steps.at(-1)?.at, ended: steps.flatMap((s) => s.ended) }
+}
 
 test("runs this tree's sim: the version a shard built from it sends", () => {
   expect(predictor.version).toMatch(/^go[\d.]+\+\d+hz\+[0-9a-f]{16}$/)
@@ -48,9 +51,9 @@ test("runs this tree's sim: the version a shard built from it sends", () => {
 
 test('the wasm build lands on the server bits each tick, ended shots included, and so does a replay', () => {
   expect(run.length).toBeGreaterThan(0)
-  // Shots end out of range and on bob, and on the bad network her client replays several frames.
-  expect(new Set(run.flatMap((s) => s.Ended.map((e) => e.OnTarget)))).toStrictEqual(new Set([false, true]))
-  expect(run.some((s) => s.Frames.length > 1)).toBe(true)
+  // Shots end out of range and on bob, after one frame and after several (her replays on the bad network).
+  const ends = new Set(run.flatMap((s) => s.Ended.map((e) => `${s.Frames.length > 1} ${e.OnTarget}`)))
+  expect(ends).toStrictEqual(new Set(['false false', 'false true', 'true false', 'true true']))
   expect(new Set(run.map((s) => s.Echo?.X)).size).toBeGreaterThan(1) // her Echo moves
   predictor.forget()
   for (const [i, s] of run.entries()) {
@@ -81,7 +84,7 @@ test('a shot ends the same after a step as after a reset: from where its last ti
   predictor.forget()
   predictor.reset(before.Sync, you)
   stepAll(before.Frames)
-  expect(stepAll(run[last]!.Frames)?.ended).toStrictEqual(run[last]!.Ended)
+  expect(stepAll(run[last]!.Frames).ended).toStrictEqual(run[last]!.Ended)
 })
 
 test('an Echo is hit where your screen drew it, unless it died before your frame', () => {
