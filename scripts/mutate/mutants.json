@@ -2355,6 +2355,18 @@
      "new": ""
     }
    ]
+  },
+  {
+   "id": "F29-M1",
+   "breaks": "a short pass that meets a new wall ends the move",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/mover/mover.go",
+     "old": "if box2d.LengthSquared(step) < minStep*minStep && (len(planes) > 0 || fraction >= 1) {",
+     "new": "if box2d.LengthSquared(step) < minStep*minStep {"
+    }
+   ]
   }
  ]
 }

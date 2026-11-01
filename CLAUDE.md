@@ -429,8 +429,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **One tick's move is `motion.Step`,** which the server and the client predictor both run. It
   lands a Body that's inside a blocker, picks its velocity and runs the mover.
 - **The move is Box2D's geometric mover,** `physics/mover.Move`: up to 5 passes of collide → solve
-  planes → cast, then the velocity is clipped. It writes `Transform2D`. Walls stop a Body and it
-  slides along them.
+  planes → cast, then the velocity is clipped. A pass under 1 cm ends it, unless it met a wall it had
+  no plane for yet, so a Body slides on the tick it meets a wall. It writes `Transform2D`. Walls stop a
+  Body and it slides along them.
 - **The mover's query filter decides what blocks a Body:** `{Category: interact.Body, Mask:
   motion.Blockers &^ passes}`. The filter is two-way, which is why map shapes mask all bits. The Body's own
   `MaskBits` doesn't drive the mover.

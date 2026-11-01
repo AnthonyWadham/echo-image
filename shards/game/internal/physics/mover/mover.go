@@ -13,7 +13,7 @@ import (
 
 const (
 	passes  = 5    // collide, solve and cast at most this many times per move
-	minStep = 0.01 // a pass that moves less than this many meters ends the move
+	minStep = 0.01 // a pass that moves less than this many meters ends the move, unless it met a new wall
 )
 
 // Move moves circle by velocity for dt seconds through world, stopping at the shapes filter accepts
@@ -43,7 +43,8 @@ func Move(world *box2d.World, circle box2d.Circle, velocity box2d.Vec2, dt float
 		fraction := world.CastMover(&capsule, solved.Translation, filter)
 		step := box2d.MulSV(fraction, solved.Translation)
 		center = box2d.Add(center, step)
-		if box2d.LengthSquared(step) < minStep*minStep {
+		// A short pass that met a wall it has no plane for yet goes on, to collect it and slide.
+		if box2d.LengthSquared(step) < minStep*minStep && (len(planes) > 0 || fraction >= 1) {
 			break
 		}
 	}

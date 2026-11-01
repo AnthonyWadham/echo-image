@@ -245,6 +245,20 @@ func TestBodySlidesAlongWall(t *testing.T) {
 		w.Tick()
 		requireMoved(t, before, bodiesFor(t, w, "alice"), 0, math.Sqrt2/2)
 	}
+
+	// 2 mm short of a wall, the tick she meets it still slides the whole way along it.
+	w, alice, _ = duel(t)
+	a = yourBody(t, bodiesFor(t, w, "alice"))
+	addWall(w, physics2d.Vec2{X: a.X + radiusOf(w, a) + 0.002 + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
+	w.Tick()
+	before := bodiesFor(t, w, "alice")
+	alice.move(1, 1)
+	w.Tick()
+	after := bodiesFor(t, w, "alice")
+	want := after.You.MoveSpeed * after.TickSeconds * math.Sqrt2 / 2
+	if dy := yourBody(t, after).Y - yourBody(t, before).Y; !(math.Abs(dy-want) <= 1e-4) {
+		t.Fatalf("meeting the wall, she slid %.4f along it, want %.4f", dy, want)
+	}
 }
 
 // Bodies don't block each other, for now: two walking into each other pass straight through.
