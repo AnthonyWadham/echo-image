@@ -29,26 +29,27 @@ func TestPhasePassesWallsNotBounds(t *testing.T) {
 }
 
 // A phase that ends inside a wall lands the Body on the nearest clear spot, instead of letting it walk
-// out the far side.
+// out the far side. Land takes the nearest clear cell of its 0.25 m grid, ties in grid order: it has no
+// notion of the side she came from.
 func TestPhaseEndingInsideWallLands(t *testing.T) {
 	w, alice, _, fx := fxDuel(t)
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	face := a.X + 1.5
 	addWall(w, physics2d.Vec2{X: face + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-	n := int(2 / (bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick)) // to the middle of the wall
+	n := ticks(1.75 / bodiesFor(t, w, "alice").You.MoveSpeed) // a quarter of the way in, at either rate
 	fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(n + 2)})
 	w.Tick()
 
 	moveFor(w, alice, 1, 0, n)
-	if x := yourBody(t, bodiesFor(t, w, "alice")).X; x <= face || x >= face+1 {
-		t.Fatalf("alice at x = %.4f, want her center inside the wall", x)
+	in := yourBody(t, bodiesFor(t, w, "alice"))
+	if in.X <= face || in.X >= face+1 {
+		t.Fatalf("alice at x = %.4f, want her center inside the wall", in.X)
 	}
 	moveFor(w, alice, 0, 0, 2) // the phase runs out
-	// She lands clear of the wall, on the side she came from, within one 0.25 m grid step of it (and a
-	// rounding: steps of 1/60 s aren't exact).
-	b := yourBody(t, bodiesFor(t, w, "alice"))
-	if edge := b.X + radiusOf(w, a); !(edge < face && edge >= face-0.25-1e-9) || b.Y != a.Y {
-		t.Fatalf("landed at (%.4f, %.4f), want her edge within 0.25 m short of the wall at x = %.4f", b.X, b.Y, face)
+	// Her edge would touch the wall 0.75 m back, which counts as touching, so 1 m back is the nearest
+	// clear cell. Grid offsets are exact.
+	if b := yourBody(t, bodiesFor(t, w, "alice")); b.X != in.X-1 || b.Y != in.Y {
+		t.Fatalf("landed at (%v, %v), want (%v, %v): the nearest clear cell", b.X, b.Y, in.X-1, in.Y)
 	}
 }
 
