@@ -29,11 +29,11 @@ describe('Timeline', () => {
     expect(tl.size).toBe(1)
   })
 
-  test('keeps the newest 64 states', () => {
-    const tl = timeline(...Array.from({ length: 70 }, (_, i) => i + 1))
-    expect(tl.size).toBe(64)
-    expect(tl.sample(7.5)?.from).toBe('s7')
-    expect(tl.sample(6.5)).toBeUndefined()
+  test('drops the states before a tick', () => {
+    const tl = timeline(1, 2, 3, 4)
+    tl.dropBefore(3)
+    expect(tl.size).toBe(2)
+    expect(tl.sample(4)).toEqual({ from: 's3', to: 's4', t: 1 })
   })
 
   test('samples a view from the states at its tick and the tick before: a whole tick is its end', () => {
@@ -71,6 +71,27 @@ describe('Timelines', () => {
     expect(tl.newest).toBe('s7')
     expect(tl.newestTick).toBe(7)
   })
+
+  test.each([20, 60])(
+    'keeps the 0.35 s a view can reach back at %i Hz, behind the newest tick every timeline has',
+    (rate) => {
+      const timelines = new Timelines()
+      timelines.tickSeconds = 1 / rate
+      const a = timelines.create<string>()
+      const b = timelines.create<string>()
+      const keep = Math.ceil(0.35 * rate) // MaxDrift + InterpolationDelay
+      for (let tick = 1; tick <= 3 * rate; tick++) timelines.add(a, BigInt(tick), `a${tick}`)
+      expect(a.size).toBe(3 * rate) // b has nothing yet, so no view is drawn and nothing drops
+      for (let tick = 1; tick <= 2 * rate; tick++) timelines.add(b, BigInt(tick), `b${tick}`)
+      // The render clock draws behind b's newest: a keeps those states, though it is a second ahead.
+      const newest = 2 * rate
+      const oldestView = newest - keep
+      expect(a.sample(oldestView)?.from).toBe(`a${oldestView - 1}`)
+      expect(b.sample(oldestView)?.from).toBe(`b${oldestView - 1}`)
+      expect(a.sample(oldestView - 1)).toBeUndefined()
+      expect(b.size).toBe(keep + 2)
+    },
+  )
 
   test('a tick going backwards in any timeline starts them all over', () => {
     const timelines = new Timelines()

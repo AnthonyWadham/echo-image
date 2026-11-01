@@ -1,12 +1,14 @@
 // Server time: ticks off the wire, each sync event's recent states, and the clock they're drawn at.
 
-const MaxStates = 64 // a memory cap: views are drawn at most MaxDrift + InterpolationDelay (0.35 s) back
 const MaxDrift = 0.25 // seconds behind its target past which the render clock jumps ahead to it
 const EaseSeconds = 0.5 // the render clock closes 63% of its gap to its target in this time
 const MaxSafeTick = BigInt(Number.MAX_SAFE_INTEGER)
 
 /** Seconds behind the newest tick to draw: about two ticks, so the clock seldom reaches it and waits. */
 export const InterpolationDelay = 0.1
+
+/** The farthest back of the newest tick a view is drawn, in seconds: older states are dropped. */
+const KeepSeconds = MaxDrift + InterpolationDelay
 
 /** A Go uint64 tick as a number. Throws past Number.MAX_SAFE_INTEGER, where it loses precision. */
 export function toTick(tick: bigint): number {
@@ -55,8 +57,14 @@ export class Timeline<T> {
     const newest = this.#states.at(-1)
     if (newest && tick < newest.tick) return false
     if (!newest || tick > newest.tick) this.#states.push({ tick, state })
-    if (this.#states.length > MaxStates) this.#states.shift()
     return true
+  }
+
+  /** Drops the states before tick. */
+  dropBefore(tick: number): void {
+    let n = 0
+    while (n < this.#states.length && this.#states[n]!.tick < tick) n++
+    this.#states.splice(0, n)
   }
 
   clear(): void {
@@ -87,6 +95,8 @@ export class Timeline<T> {
 
 /** Every sync event's timeline. They start over together and are drawn on one render clock. */
 export class Timelines {
+  /** Seconds a tick lasts (body_sync's TickSeconds); until it's known, no state is dropped. */
+  tickSeconds = 0
   readonly #all: Timeline<unknown>[] = []
   readonly #onReset: (() => void)[] = []
   #renderTime = NaN
@@ -98,12 +108,22 @@ export class Timelines {
     return timeline
   }
 
-  /** Adds a state at a uint64 tick. A tick going backwards (a server restart) resets them all. */
+  /**
+   * Adds a state at a uint64 tick. A tick going backwards (a server restart) resets them all. Then each
+   * drops what no view can draw again: states over KeepSeconds older than the newest tick every timeline
+   * has, but the one a view there pairs with. So each holds the same seconds at any rate, hidden tab
+   * included.
+   */
   add<T>(timeline: Timeline<T>, tick: bigint, state: T): void {
     const at = toTick(tick)
-    if (timeline.add(at, state)) return
-    this.reset()
-    timeline.add(at, state)
+    if (!timeline.add(at, state)) {
+      this.reset()
+      timeline.add(at, state)
+    }
+    const newest = this.newestTick
+    if (newest === undefined || !(this.tickSeconds > 0)) return
+    const oldest = newest - Math.ceil(KeepSeconds / this.tickSeconds) - 1
+    for (const t of this.#all) t.dropBefore(oldest)
   }
 
   /** Calls listener after each reset, for state learned along with the timelines. */

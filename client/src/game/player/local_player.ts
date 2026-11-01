@@ -109,6 +109,7 @@ export class LocalPlayer {
 
   onBodySync(s: BodySync): void {
     this.received++
+    this.#timelines.tickSeconds = s.TickSeconds
     // Your predictor runs its own sim: against another, it would mispredict every frame.
     this.#sameSim = s.SimVersion === this.sim
     if (!this.#sameSim) {
