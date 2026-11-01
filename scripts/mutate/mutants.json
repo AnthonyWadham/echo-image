@@ -1684,13 +1684,13 @@
   },
   {
    "id": "X6-C5",
-   "breaks": "reads the 20 Hz recording",
+   "breaks": "the wasm's run recorded at another rate than the wasm",
    "check": "ts60",
    "edits": [
     {
-     "file": "client/src/game/player/predictor.test.ts",
-     "old": "prediction-${hz}hz.msgpack",
-     "new": "prediction-20hz.msgpack"
+     "file": "client/scripts/predictor.mjs",
+     "old": "`-record=${run}`])",
+     "new": "`-record=${run}`], { GOFLAGS: '' })"
     }
    ]
   },
@@ -1727,6 +1727,18 @@
      "file": "shards/game/prediction_test.go",
      "old": "\t\techo = fmt.Sprintf(\"%+v\", *s.Echo)\n",
      "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F31-M1",
+   "breaks": "Equip after Cast: a Body can't cast the tick it's claimed",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n",
+     "new": "\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
     }
    ]
   }

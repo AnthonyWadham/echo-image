@@ -28,10 +28,14 @@ func readyTick(t *testing.T, w *cardinal.TestWorld, viewer string, body uint32) 
 // Everyone sees her shot leave her Body: its first tick flies from her spot, and each next from where
 // the last one got to.
 func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
-	w, alice, _ := duel(t)
+	w := cardinal.NewTestWorld(t, register)
 	def, _ := primary(t)
 	cooldown := def.CooldownTicks()
 
+	// Her first frame claims her Body and fires: Equip runs before Cast, so a Body casts the tick it's
+	// claimed.
+	alice := &client{w: w, id: "alice", session: 1, back: drawLag}
+	(&client{w: w, id: "bob", session: 1, back: drawLag}).move(0, 0)
 	fired := w.TickHeight()
 	alice.fire(0, 1)
 	w.Tick()
