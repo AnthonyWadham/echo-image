@@ -28,6 +28,23 @@ type PathHistory struct {
 // Name is the ECS component name.
 func (PathHistory) Name() string { return "path_history" }
 
+// Delay is how many ticks the Echo trails its Body.
+func (h PathHistory) Delay() int { return max(h.Poses.Len()-1, 0) }
+
+// Path is the Echo's spot this tick, then where it will be on each of the next n ticks, as far as the
+// ring holds: its Body's poses from Delay ticks ago on, so at most Delay of them.
+func (h PathHistory) Path(n int) []physics2dcomp.Vec2 {
+	size := h.Poses.Len()
+	if size == 0 {
+		return nil
+	}
+	path := make([]physics2dcomp.Vec2, min(n, size-1)+1)
+	for i := range path {
+		path[i] = h.Poses.At((h.Head + 1 + i) % size).Pose.Position // the oldest first
+	}
+	return path
+}
+
 // Echo marks a delayed replay of a Body: the Body in its team.Owner.
 type Echo struct {
 	PlayerID uint32

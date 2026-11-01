@@ -11,11 +11,13 @@ import (
 
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
 // projectileRow is a shot in flight.
 type projectileRow struct {
+	Spawn      ref.Spawn
 	Projectile component.Projectile
 	Team       team.Team
 	Owner      team.Owner
@@ -42,14 +44,17 @@ func (s *LaunchSystem) Run(w *cardinal.World) {
 }
 
 // launch is the one constructor of a shot: a shot of type in.Shot leaves in.From along in.Dir, for
-// in.Owner on in.Team. Its flight starts as flight.Launch, which the client predictor launches with.
+// in.Owner on in.Team. Its flight starts as flight.Launch, which the client predictor launches with. A
+// shot an input frame cast is predicted by its caster's client.
 func launch(w *cardinal.World, in component.LaunchIntent, def flight.Shot) {
 	f := flight.Launch(def, box2d.Vec2(in.From), box2d.Vec2(in.Dir))
 	e := w.Create[projectileRow]()
+	e.Set(ref.Spawn{Serial: ref.Next(w)})
 	e.Set(component.Projectile{
 		Type:      in.Shot,
 		Cause:     in.Cause,
 		Launch:    in.Launch,
+		Predicted: in.Cause.Seq != 0,
 		Velocity:  physics2d.Vec2(f.Velocity),
 		Radius:    f.Radius,
 		Damage:    def.Damage,

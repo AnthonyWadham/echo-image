@@ -9,24 +9,14 @@ import (
 // InputFrame is one tick of a client's input, with its sequence number. Move and Aim are directions
 // of any length; read them through Move() and Aim(). Buttons has bit N set while the button for kit
 // slot N is held (bit 0 is primary fire), so a new ability never changes this type. ViewTick is the
-// render tick on the client's screen when it made the frame, and Claims are the shots its step ended
-// on Bodies and Echoes there.
+// render tick on the client's screen when it made the frame: the client's shots meet Bodies and Echoes
+// where it drew them then.
 type InputFrame struct {
 	Seq          uint32
 	MoveX, MoveY float64
 	AimX, AimY   float64
 	Buttons      uint32
 	ViewTick     float64
-	Claims       cardinal.Slice[HitClaim]
-}
-
-// HitClaim says a frame's step ended one of its Body's shots on a Body or Echo, as its client drew
-// them at the frame's ViewTick. Seq, Ability and Launch are the shot's key.
-type HitClaim struct {
-	Seq     uint32
-	Ability string
-	Launch  uint32
-	Target  uint32 // the Body's or Echo's EntityID
 }
 
 // ButtonCount is how many buttons, and so kit slots, an InputFrame carries.
@@ -40,12 +30,15 @@ func (f InputFrame) Aim() (x, y float64) { return motion.Unit(f.AimX, f.AimY) }
 
 // InputQueue is a Body's input stream. Frames wait in Pending, in Seq order, and one is applied per
 // tick: Last is the frame applied most recently and LastTick the tick it was applied. Session tells a
-// restarted client (Seq back at 1) from a stale frame.
+// restarted client (Seq back at 1) from a stale frame. ViewFloor is the largest ViewTick applied, from 0,
+// kept across sessions: a frame's view below it, or not a number, is taken at it, so a client can lag
+// but never pick an older moment for each shot.
 type InputQueue struct {
-	Session  uint32
-	Pending  cardinal.Slice[InputFrame]
-	Last     InputFrame
-	LastTick uint64
+	Session   uint32
+	Pending   cardinal.Slice[InputFrame]
+	Last      InputFrame
+	LastTick  uint64
+	ViewFloor float64
 }
 
 func (InputQueue) Name() string { return "input_queue" }
@@ -57,4 +50,10 @@ func (q InputQueue) Ack() uint32 { return q.Last.Seq }
 // each frame acts once.
 func (q InputQueue) Applied(tick uint64) (InputFrame, bool) {
 	return q.Last, q.Last.Seq != 0 && q.LastTick == tick
+}
+
+// View is the render tick on the client's screen at tick: the last frame's ViewTick, moved on by the
+// ticks since it was applied. False before any frame.
+func (q InputQueue) View(tick uint64) (float64, bool) {
+	return q.Last.ViewTick + float64(tick-q.LastTick), q.Last.Seq != 0
 }

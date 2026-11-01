@@ -29,6 +29,13 @@ export class Hud {
 
   draw(status: ShardStatus, problem: string | undefined): void {
     const lines = this.#lines(status)
+    const { player } = this.#from
+    if (player.otherSim !== undefined) {
+      lines.unshift(
+        `This page runs game build ${player.sim}, the server ${player.otherSim}. ` +
+          'Reload the page (in dev, restart bun run dev first).',
+      )
+    }
     if (problem) lines.unshift(problem)
     const text = lines.join('\n')
     if (text === this.#text) return

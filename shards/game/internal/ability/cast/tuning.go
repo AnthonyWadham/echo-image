@@ -53,12 +53,6 @@ func (t *Tuning) Bind() error {
 	return nil
 }
 
-// Hook returns ability id's hook, once Bind has bound it.
-func (t Tuning) Hook(id string) (hooks.Hook, bool) {
-	h, ok := t.bound[id]
-	return h, ok
-}
-
 // Validate checks every cooldown, and that every kit names known abilities.
 func (t Tuning) Validate() error {
 	for id, d := range t.Abilities {

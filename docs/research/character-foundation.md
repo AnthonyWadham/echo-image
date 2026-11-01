@@ -139,11 +139,19 @@ These were checked against primary sources (docs, engine source, data-mined file
 - Shared core, built: `physics/mover`, `physics/timestep`, `effect/status`, `interact`, `ability/hooks`,
   `ability/cast`, `projectile/flight`, `player/motion`, `predict`. Planned: `ability/charges`, `echo/rewind`. None may
   import Cardinal or a component leaf (a leaf pulls in about 737 packages).
-- Predicted: your own movement, cast gate, cooldowns, self effects, your shots' flight, and where they stop on a Body
-  or Echo your screen drew (built 2026-10-26: the frame claims the hit, and the server checks it; see
-  `favor-the-shooter.md`). Not damage, death or other players.
-- `YouState` carries your champion, cooldown ticks, effect entries (with `EffectsNext`) and shots. Send the entries,
-  never the folded mask.
+- Predicted: your own movement, cast gate, cooldowns, self effects, your shots' flight (each cast's hook through the
+  server's own `cast.Run`, 2026-11-01), and where they stop on a Body or Echo your screen drew (rebuilt 2026-10-31:
+  the server flies your shot at your view, the same way; see `favor-the-shooter.md`). Screen, predictor and server
+  read a view by one rule (2026-11-01), pinned by `testdata/view.json`, and the render clock never passes the newest
+  tick. Your own Echo too (2026-10-31): body_sync sends its next spots, which the server's ring already holds. Not
+  damage, death or other players.
+- `YouState` carries your champion, cooldown ticks, effect entries (with `EffectsNext`), shots, and your Echo's delay
+  and path. Send the entries, never the folded mask.
+- One build (2026-11-01): body_sync's `SimVersion` hashes the sim's Go code, content and modules, and the
+  predictor is stamped with the same. A client whose predictor differs doesn't play, so a server-only deploy
+  or a `world reload` can't leave it mispredicting every frame.
+- An Input carries at most the server queue's frames (2026-11-01, `YouState.InputCap`). A bigger one is dropped
+  whole, so one command can't stall a tick with an O(frames²) merge.
 - Determinism: round every product, no `math.Sin`, `Exp`, `Pow` or `Hypot` (it fuses on arm64; use `box2d.Length`),
   integer stats, fixed orders, and an assembly-scan test for FMA and inexact `math` calls over the shared packages
   (built: `TestSharedCoreIsDeterministic`). The mover gave the same bits on amd64 (v1 and v3), js/wasm and wasip1.
@@ -152,7 +160,8 @@ These were checked against primary sources (docs, engine source, data-mined file
 
 - The values-only component rule is a convention, not checked by code.
 - Snapshots store MessagePack keyed by Go field name. A renamed field comes back as zero, silently.
-- Entity IDs are reused at once, smallest first, with no generation.
+- Entity IDs are reused at once, smallest first, with no generation. Syncs carry each entity's `ref.Spawn` serial
+  (2026-11-01), which is never reused.
 - Adding or removing a component moves the entity to a new archetype, about 15x the cost of a plain `Set`.
 - System events last one tick. A reader registered before the emitter misses them.
 - The data plugin ignores unknown JSON keys, and `Validate` sees one kind only. Cross-file checks need a test.

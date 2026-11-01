@@ -13,4 +13,5 @@ func RegisterTypes(w *cardinal.World) {
 	w.RegisterSystemEvent[component.LaunchIntent]()
 	w.RegisterSystemEvent[component.ShotEnded]()
 	w.RegisterEvent[ProjectileSync]()
+	w.RegisterEvent[TargetSync]()
 }

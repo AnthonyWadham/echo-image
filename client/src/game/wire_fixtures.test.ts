@@ -6,6 +6,7 @@ import type { EchoSync } from './echo/echo_sync_event'
 import type { BodySync } from './player/body_sync_event'
 import type { Input } from './player/input_command'
 import type { ProjectileSync } from './projectile/projectile_sync_event'
+import type { TargetSync } from './projectile/target_sync_event'
 
 // Golden payloads from TestWireFixtures (shards/game/main_test.go), built from the same samples.
 // They pin each *_event.ts and input_command.ts type to its Go struct: a Go uint64 decodes as a
@@ -16,10 +17,13 @@ const read = (name: string) => new Uint8Array(readFileSync(new URL(`${name}.msgp
 const bodySync: BodySync = {
   Tick: 9007199254740993n,
   TickSeconds: 0.05,
+  SimVersion: 'go1.27.1+0123456789abcdef',
   You: {
     Body: 1,
     InputSession: 4294967295,
     InputAck: 42,
+    InputQueued: 3,
+    InputCap: 10,
     MoveSpeed: 5,
     Champion: 'starter',
     Cooldowns: [
@@ -61,6 +65,8 @@ const bodySync: BodySync = {
         Ability: 'bolt',
         Seq: 4294967295,
         Launch: 1,
+        PrevX: -4.75,
+        PrevY: 2.125,
         X: -4.25,
         Y: 1.5,
         VelX: 9,
@@ -69,19 +75,27 @@ const bodySync: BodySync = {
         Remaining: 17.75,
       },
     ],
+    EchoDelay: 100,
+    EchoPath: [
+      { X: -3.5, Y: 0.25 },
+      { X: -3.25, Y: 0.5 },
+    ],
   },
   Bodies: [
-    { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 0n },
-    { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75, Radius: 0.75, Tags: 3n },
+    { EntityID: 1, Serial: 1n, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 0n },
+    {
+      ...{ EntityID: 2, Serial: 9007199254740993n, PlayerID: 2, Nickname: 'Échø ✦', Team: 1 },
+      ...{ X: -0.25, Y: 3.75, Radius: 0.75, Tags: 3n },
+    },
   ],
 }
 const echoSync: EchoSync = {
   Tick: 7n,
   Echoes: [
-    { EntityID: 3, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n, HP: 62.5, MaxHP: 100,
-      Until: 1 },
-    { EntityID: 4, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, HP: 0, MaxHP: 100,
-      Until: 0.625 },
+    { EntityID: 3, Serial: 3n, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n, HP: 62.5,
+      MaxHP: 100, Until: 1 },
+    { EntityID: 4, Serial: 4n, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, HP: 0,
+      MaxHP: 100, Until: 0.625 },
   ],
 }
 const abilitySync: AbilitySync = {
@@ -91,15 +105,31 @@ const abilitySync: AbilitySync = {
 const projectileSync: ProjectileSync = {
   Tick: 8n,
   Projectiles: [
-    { EntityID: 9, Type: 'bolt', Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1, Ended: false },
-    { EntityID: 10, Type: 'bolt', Caster: 3, Team: 0, X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true },
+    {
+      ...{ EntityID: 9, Serial: 18446744073709551615n, Type: 'bolt', Caster: 4294967295, Predicted: true, Team: 1 },
+      ...{ PrevX: -0.5, PrevY: -6.75, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1, Ended: false },
+      ...{ OnTarget: false, TargetSerial: 0n, OffsetX: 0, OffsetY: 0 },
+    },
+    {
+      ...{ EntityID: 10, Serial: 12n, Type: 'bolt', Caster: 3, Predicted: false, Team: 0 },
+      ...{ PrevX: 2.25, PrevY: 0.5, X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true },
+      ...{ OnTarget: true, TargetSerial: 4n, OffsetX: -0.625, OffsetY: 0.125 },
+    },
   ],
 }
 const projectileSyncEmpty: ProjectileSync = { Tick: 9n, Projectiles: [] }
+const targetSync: TargetSync = {
+  Tick: 9007199254740993n,
+  Targets: [
+    { EntityID: 0, Serial: 1n, Kind: 2n, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 3n, Until: 1 },
+    { EntityID: 4, Serial: 18446744073709551615n, Kind: 4n, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5,
+      Tags: 0n, Until: 0.625 },
+  ],
+}
 const input: Input = {
   Session: 305419896,
   Frames: [
-    { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0, Claims: [] },
+    { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0 },
     {
       Seq: 2,
       MoveX: 0.7071067811865476,
@@ -108,10 +138,6 @@ const input: Input = {
       AimY: -1.25,
       Buttons: 1,
       ViewTick: 41.375,
-      Claims: [
-        { Seq: 1, Ability: 'bolt', Launch: 1, Target: 4294967295 },
-        { Seq: 2, Ability: 'nova', Launch: 0, Target: 3 },
-      ],
     },
   ],
 }
@@ -122,6 +148,7 @@ test.each([
   ['ability_sync', abilitySync],
   ['projectile_sync', projectileSync],
   ['projectile_sync_empty', projectileSyncEmpty],
+  ['target_sync', targetSync],
   ['input', input],
 ])('%s.msgpack decodes to its client type', (name, want) => {
   expect(decodePayload(read(name))).toStrictEqual(want)

@@ -32,35 +32,33 @@ describe('Timeline', () => {
   test('keeps the newest 64 states', () => {
     const tl = timeline(...Array.from({ length: 70 }, (_, i) => i + 1))
     expect(tl.size).toBe(64)
-    expect(tl.sample(0)?.from).toBe('s7')
+    expect(tl.sample(7.5)?.from).toBe('s7')
+    expect(tl.sample(6.5)).toBeUndefined()
   })
 
-  test('samples the two states around a tick', () => {
-    expect(timeline(10, 12).sample(11)).toEqual({ from: 's10', to: 's12', t: 0.5 })
-  })
-
-  test('drops states older than both sides of the sample', () => {
-    const tl = timeline(10, 11, 12, 13)
-    expect(tl.sample(12.25)).toEqual({ from: 's12', to: 's13', t: 0.25 })
-    expect(tl.size).toBe(2)
-  })
-
-  test('clamps t before the first state and past the newest, keeping two', () => {
-    expect(timeline(10, 11).sample(9)).toEqual({ from: 's10', to: 's11', t: 0 })
+  test('samples a view from the states at its tick and the tick before: a whole tick is its end', () => {
     const tl = timeline(10, 11, 12)
-    expect(tl.sample(20)).toEqual({ from: 's11', to: 's12', t: 1 })
-    expect(tl.size).toBe(2)
+    expect(tl.sample(10.5)).toEqual({ from: 's10', to: 's11', t: 0.5 })
+    expect(tl.sample(11)).toEqual({ from: 's10', to: 's11', t: 1 })
+    expect(tl.sample(11.25)).toEqual({ from: 's11', to: 's12', t: 0.25 })
+    expect(tl.sample(10.5)).toEqual({ from: 's10', to: 's11', t: 0.5 }) // older states are kept
   })
 
-  test('samples a single state as both sides', () => {
-    expect(timeline(3).sample(1)).toEqual({ from: 's3', to: 's3', t: 1 })
+  test('samples nothing without both states', () => {
+    const tl = timeline(10, 11, 13)
+    expect(tl.sample(10)).toBeUndefined() // needs 9
+    expect(tl.sample(9.5)).toBeUndefined()
+    expect(tl.sample(12)).toBeUndefined() // needs 12
+    expect(tl.sample(12.5)).toBeUndefined() // needs 12
+    expect(tl.sample(13.5)).toBeUndefined() // needs 14
+    expect(timeline(3).sample(3)).toBeUndefined()
   })
 
   test('samples nothing when empty or cleared', () => {
     const tl = timeline(1, 2)
     tl.clear()
     expect(tl.size).toBe(0)
-    expect(tl.sample(1)).toBeUndefined()
+    expect(tl.sample(1.5)).toBeUndefined()
     expect(tl.newestTick).toBe(0)
   })
 })
@@ -93,22 +91,38 @@ describe('Timelines', () => {
     const timelines = new Timelines()
     const tl = timelines.create<string>()
     timelines.add(tl, 100n, 's100')
-    expect(timelines.renderTick(0, tl, 0.05)).toBeCloseTo(98)
+    expect(timelines.renderTick(0, 0.05)).toBeCloseTo(98)
     timelines.reset()
     expect(tl.size).toBe(0)
     timelines.add(tl, 102n, 's102')
     // A fresh clock starts at its target, tick 100, instead of easing on from tick 98.
-    expect(timelines.renderTick(0.016, tl, 0.05)).toBeCloseTo(100)
+    expect(timelines.renderTick(0.016, 0.05)).toBeCloseTo(100)
   })
 
-  test('draws the newest tick minus the interpolation delay', () => {
+  test('draws the newest tick every timeline has, minus the interpolation delay', () => {
+    const timelines = new Timelines()
+    const a = timelines.create<string>()
+    const b = timelines.create<string>()
+    expect(timelines.renderTick(0.016, 0.05)).toBeUndefined()
+    for (let tick = 95n; tick <= 100n; tick++) timelines.add(a, tick, `a${tick}`)
+    expect(timelines.renderTick(0.016, 0.05)).toBeUndefined() // b has none
+    for (let tick = 95n; tick <= 99n; tick++) timelines.add(b, tick, `b${tick}`)
+    expect(timelines.newestTick).toBe(99)
+    expect(timelines.renderTick(0.016, 0)).toBeUndefined()
+    // 99 ticks * 0.05 s - 0.1 s is tick 97.
+    expect(timelines.renderTick(0.016, 0.05)).toBeCloseTo(97)
+  })
+
+  test('waits at the newest tick while no state comes, never stepping back, then jumps ahead', () => {
     const timelines = new Timelines()
     const tl = timelines.create<string>()
-    expect(timelines.renderTick(0.016, tl, 0.05)).toBeUndefined()
-    for (let tick = 95n; tick <= 100n; tick++) timelines.add(tl, tick, `s${tick}`)
-    expect(timelines.renderTick(0.016, tl, 0)).toBeUndefined()
-    // 100 ticks * 0.05 s - 0.1 s is tick 98.
-    expect(timelines.renderTick(0.016, tl, 0.05)).toBeCloseTo(98)
+    for (let tick = 90n; tick <= 100n; tick++) timelines.add(tl, tick, `s${tick}`)
+    const drawn = [timelines.renderTick(0, 0.05)!]
+    for (let i = 0; i < 60; i++) drawn.push(timelines.renderTick(1 / 60, 0.05)!) // a second with no state
+    expect(drawn.at(-1)).toBe(100)
+    expect(drawn.every((tick, i) => i === 0 || tick >= drawn[i - 1]!)).toBe(true)
+    for (let tick = 101n; tick <= 120n; tick++) timelines.add(tl, tick, `s${tick}`)
+    expect(timelines.renderTick(1 / 60, 0.05)).toBeCloseTo(118) // a second behind its target
   })
 })
 
@@ -126,17 +140,34 @@ describe('toTick', () => {
 
 describe('stepRenderTime', () => {
   test('starts at the target', () => {
-    expect(stepRenderTime(NaN, 4.9, 0.016)).toBe(4.9)
+    expect(stepRenderTime(NaN, 4.9, 5, 0.016)).toBe(4.9)
   })
 
-  test('advances by dt, then eases 5% toward the target', () => {
-    expect(stepRenderTime(1, 1.1, 0.02)).toBeCloseTo(1.02 + 0.08 * 0.05, 12)
-    expect(stepRenderTime(1, 0.9, 0.02)).toBeCloseTo(1.02 - 0.12 * 0.05, 12)
+  test('advances by dt, then eases toward the target by time', () => {
+    expect(stepRenderTime(1, 1.1, 2, 0.02)).toBeCloseTo(1.02 + 0.08 * (1 - Math.exp(-0.04)), 12)
+    expect(stepRenderTime(1, 0.98, 2, 0.02)).toBeCloseTo(1.02 - 0.04 * (1 - Math.exp(-0.04)), 12)
   })
 
-  test('jumps to the target when more than 0.25 s off', () => {
-    expect(stepRenderTime(1, 2, 0.016)).toBe(2)
-    expect(stepRenderTime(1, 0.5, 0.016)).toBe(0.5)
-    expect(stepRenderTime(1, 1, 10)).toBe(1)
+  test('runs the same at any frame rate', () => {
+    const run = (fps: number) => {
+      let at = 1
+      for (let i = 0; i < fps / 10; i++) at = stepRenderTime(at, 1.2, 2, 1 / fps) // 0.1 s, its target ahead
+      return at
+    }
+    expect(Math.abs(run(240) - run(60))).toBeLessThan(0.002)
+  })
+
+  test('jumps ahead to the target when more than 0.25 s behind', () => {
+    expect(stepRenderTime(1, 2, 3, 0.016)).toBe(2)
+  })
+
+  test('never steps back', () => {
+    expect(stepRenderTime(1, 0.5, 2, 0.016)).toBe(1)
+    expect(stepRenderTime(1, 0.9, 2, 10)).toBe(1)
+  })
+
+  test('never passes newest', () => {
+    expect(stepRenderTime(1, 1.1, 1.05, 0.2)).toBe(1.05)
+    expect(stepRenderTime(1, 2, 1.5, 0.016)).toBe(1.5)
   })
 })

@@ -4,6 +4,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
+	echoimage "echo_image"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/area"
@@ -13,6 +14,7 @@ import (
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/projectile"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -48,6 +50,7 @@ func registerWith(world *cardinal.World, src data.Source) {
 
 	// Every component, command, event and system event a system uses must be registered before
 	// StartGame; an unregistered one panics on first use.
+	ref.RegisterTypes(world)
 	team.RegisterTypes(world)
 	player.RegisterTypes(world)
 	echo.RegisterTypes(world)
@@ -115,14 +118,15 @@ func registerWith(world *cardinal.World, src data.Source) {
 	world.RegisterSystem(&effect.ResolveSystem{Data: dataPlugin})
 
 	// Target history (Update, after everything that moves, kills or tags a Body or Echo, before the
-	// syncs): each saves what this tick's syncs show of it, so a hit claim is checked at the shooter's view.
+	// syncs): each saves what this tick's syncs show of it, so a predicted shot meets it at its client's view.
 	world.RegisterSystem(&projectile.HistorySystem{Data: dataPlugin})
 
 	// Client sync (Update): each feature sends each player this tick's final state it may see.
-	world.RegisterSystem(&player.SyncSystem{})
+	world.RegisterSystem(&player.SyncSystem{Data: dataPlugin, SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)})
 	world.RegisterSystem(&echo.SyncSystem{})
 	world.RegisterSystem(&ability.SyncSystem{Data: dataPlugin})
 	world.RegisterSystem(&projectile.SyncSystem{})
+	world.RegisterSystem(&projectile.TargetSyncSystem{})
 
 	// Deaths (Update, last): what died this tick goes, after each sync sent it once more.
 	world.RegisterSystem(&combat.DeathSystem{})

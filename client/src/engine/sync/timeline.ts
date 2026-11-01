@@ -1,10 +1,11 @@
 // Server time: ticks off the wire, each sync event's recent states, and the clock they're drawn at.
 
-const MaxStates = 64 // 3.2 s at 20 Hz
-const MaxDrift = 0.25 // seconds; past this, the render clock jumps to its target
+const MaxStates = 64 // a memory cap: views are drawn at most MaxDrift + InterpolationDelay (0.35 s) back
+const MaxDrift = 0.25 // seconds behind its target past which the render clock jumps ahead to it
+const EaseSeconds = 0.5 // the render clock closes 63% of its gap to its target in this time
 const MaxSafeTick = BigInt(Number.MAX_SAFE_INTEGER)
 
-/** Seconds behind the newest state to draw: about two ticks, so a newer state is usually there. */
+/** Seconds behind the newest tick to draw: about two ticks, so the clock seldom reaches it and waits. */
 export const InterpolationDelay = 0.1
 
 /** A Go uint64 tick as a number. Throws past Number.MAX_SAFE_INTEGER, where it loses precision. */
@@ -13,21 +14,24 @@ export function toTick(tick: bigint): number {
   return Number(tick)
 }
 
-/** The render clock after dt: eased 5% toward target, or at target when unset or too far off. */
-export function stepRenderTime(renderTime: number, target: number, dt: number): number {
-  if (Number.isNaN(renderTime)) return target
+/**
+ * The render clock dt later. It runs at real time, eased toward target by time, not by frame, and jumps
+ * ahead to target when more than MaxDrift behind. It never steps back, and never passes newest: the
+ * newest tick's time every timeline has, so each view it draws has both its states.
+ */
+export function stepRenderTime(renderTime: number, target: number, newest: number, dt: number): number {
+  if (Number.isNaN(renderTime) || target - renderTime > MaxDrift) return Math.min(target, newest)
   const next = renderTime + dt
-  return Math.abs(next - target) > MaxDrift ? target : next + (target - next) * 0.05
+  const eased = next + (target - next) * (1 - Math.exp(-dt / EaseSeconds))
+  return Math.min(Math.max(eased, renderTime), newest)
 }
 
-/** The two states around a tick, and how far the tick is between them (0 = from, 1 = to). */
+/** The two states a view is drawn from, and how far it is through the newer one's tick (0 < t <= 1). */
 export interface Sample<T> {
   from: T
   to: T
   t: number
 }
-
-const clamp01 = (x: number) => Math.min(Math.max(x, 0), 1)
 
 /** One sync event's recent states, oldest first, so it can be drawn between two of them. */
 export class Timeline<T> {
@@ -59,15 +63,25 @@ export class Timeline<T> {
     this.#states.length = 0
   }
 
-  /** The two states around tick. States older than both are dropped. */
-  sample(tick: number): Sample<T> | undefined {
-    const states = this.#states
-    while (states.length > 2 && states[1]!.tick <= tick) states.shift()
-    const from = states[0]
-    if (!from) return undefined
-    const to = states[1] ?? from
-    const span = to.tick - from.tick
-    return { from: from.state, to: to.state, t: span > 0 ? clamp01((tick - from.tick) / span) : 1 }
+  /**
+   * The states view v is drawn from: those at ticks ⌈v⌉ - 1 and ⌈v⌉, so a whole tick is its own end.
+   * Undefined without both. The server judges your shots by the same rule (flight.RowTicks, AtView).
+   */
+  sample(v: number): Sample<T> | undefined {
+    const b = Math.ceil(v)
+    const from = this.#at(b - 1)
+    const to = this.#at(b)
+    if (!from || !to) return undefined
+    return { from: from.state, to: to.state, t: v - from.tick }
+  }
+
+  // The state kept at tick, if any. Views are drawn near the newest, so it looks from there.
+  #at(tick: number): { tick: number; state: T } | undefined {
+    for (let i = this.#states.length - 1; i >= 0; i--) {
+      const s = this.#states[i]!
+      if (s.tick <= tick) return s.tick === tick ? s : undefined
+    }
+    return undefined
   }
 }
 
@@ -104,11 +118,18 @@ export class Timelines {
     for (const listener of this.#onReset) listener()
   }
 
-  /** The tick to draw, dt after the last: InterpolationDelay behind clock's newest state. */
-  renderTick(dt: number, clock: Timeline<unknown>, tickSeconds: number): number | undefined {
-    if (clock.size === 0 || !(tickSeconds > 0)) return undefined
-    const target = clock.newestTick * tickSeconds - InterpolationDelay
-    this.#renderTime = stepRenderTime(this.#renderTime, target, dt)
+  /** The newest tick every timeline has, or undefined until each has a state. */
+  get newestTick(): number | undefined {
+    if (this.#all.length === 0 || this.#all.some((t) => t.size === 0)) return undefined
+    return Math.min(...this.#all.map((t) => t.newestTick))
+  }
+
+  /** The tick to draw, dt after the last: InterpolationDelay behind newestTick, and never past it. */
+  renderTick(dt: number, tickSeconds: number): number | undefined {
+    const newest = this.newestTick
+    if (newest === undefined || !(tickSeconds > 0)) return undefined
+    const at = newest * tickSeconds
+    this.#renderTime = stepRenderTime(this.#renderTime, at - InterpolationDelay, at, dt)
     return this.#renderTime / tickSeconds
   }
 }

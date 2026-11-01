@@ -23,6 +23,9 @@ const (
 	Area   Kind = 1 << 5 // an area's query: a Body or Echo masks it so areas can find it
 )
 
+// Map is the map's kinds. The map is Neutral and has no tags.
+const Map = Wall | Bounds
+
 // Tags are states that several features read. Effects grant them. Snapshots keep the bits, so never
 // renumber one. State only one champion reads stays in that champion's own component.
 type Tags uint64

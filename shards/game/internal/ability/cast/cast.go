@@ -1,7 +1,7 @@
 // Package cast is the Cardinal-free core of abilities: the ability rows, the gate that decides what a
-// frame casts, and the cooldowns it starts. ability.CastSystem runs the gate on the server, and the
-// client predictor (internal/predict) runs the same code. It imports only the standard library and
-// other pure packages, so it builds for wasm.
+// frame casts and the cooldowns it starts, and Run, which runs each cast's hook. ability.CastSystem and
+// ability.CastHookSystem run them on the server, and the client predictor (internal/predict) runs the
+// same code. It imports only the standard library and other pure packages, so it builds for wasm.
 package cast
 
 import (
@@ -10,6 +10,7 @@ import (
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // Cooldown is when an ability can be cast again.
@@ -69,7 +70,38 @@ func (t Tuning) Gate(champion string, cooldowns Cooldowns, tags interact.Tags, b
 	return cooldowns, casts
 }
 
-// EffectIntent is the intent for an effect a hook asks for, from source.
-func EffectIntent(e hooks.Effect, source uint32) status.Intent {
-	return status.Intent{Target: e.Target, Kind: e.Kind, Ticks: e.Ticks, VelX: e.Vel.X, VelY: e.Vel.Y, Source: source}
+// Launch is a shot a cast asks for: the cast's Launch-th, of type Shot, from From along Dir, a unit
+// vector. With the cast's input frame, Ability and Launch are the shot's key.
+type Launch struct {
+	Ability   string
+	Launch    uint32
+	Shot      string
+	From, Dir hooks.Vec2
+}
+
+// Sink acts on what casts ask for: ability.CastHookSystem's emits each request as its feature's intent,
+// and the predictor's predicts the ones its client draws. A new request type is a new method, so neither
+// side can miss it.
+type Sink interface {
+	Launch(l Launch)
+	Effect(in status.Intent)
+}
+
+// Run runs ability id's hook, if it has one, for c at the rate Bind bound it at, and hands sink what it
+// asks for in order: each launch from c.Pos, numbered within the cast, then each effect, from c.Caster.
+func (t Tuning) Run(id string, c hooks.Cast, sink Sink) {
+	h, ok := t.bound[id]
+	if !ok || h.OnCast == nil {
+		return
+	}
+	c.TickRate = timestep.Rate
+	var out hooks.Out
+	h.OnCast(c, &out)
+	for i, l := range out.Launches {
+		sink.Launch(Launch{Ability: id, Launch: uint32(i), Shot: l.Shot, From: c.Pos, Dir: l.Dir})
+	}
+	for _, e := range out.Effects {
+		sink.Effect(status.Intent{Target: e.Target, Kind: e.Kind, Ticks: e.Ticks, VelX: e.Vel.X, VelY: e.Vel.Y,
+			Source: c.Caster})
+	}
 }

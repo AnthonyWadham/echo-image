@@ -22,9 +22,13 @@ export class Controls {
   readonly #keys = new Set<string>()
   #pointer: Vec2 | undefined
   #mouseButtons = 0 // PointerEvent.buttons
+  #pressed = 0 // buttons down at any moment since a frame last took them
 
   constructor(canvas: HTMLElement) {
-    window.addEventListener('keydown', (e) => this.#keys.add(e.code))
+    window.addEventListener('keydown', (e) => {
+      this.#keys.add(e.code)
+      this.#pressed |= this.buttons
+    })
     window.addEventListener('keyup', (e) => this.#keys.delete(e.code))
     window.addEventListener('blur', () => {
       this.#keys.clear()
@@ -33,6 +37,7 @@ export class Controls {
     const onPointer = (e: PointerEvent) => {
       this.#pointer = { x: e.clientX, y: e.clientY }
       this.#mouseButtons = e.buttons
+      this.#pressed |= this.buttons
     }
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId) // so the release counts outside the window too
@@ -52,8 +57,18 @@ export class Controls {
     return this.#pointer
   }
 
-  /** InputFrame.Buttons: see buttonsFrom. */
+  /** InputFrame.Buttons held now: see buttonsFrom. */
   get buttons(): number {
     return buttonsFrom(this.#keys, this.#mouseButtons)
+  }
+
+  /**
+   * InputFrame.Buttons for the next frame: those held now, and those pressed since a frame last took
+   * them, so a tap between two frames still casts.
+   */
+  takeButtons(): number {
+    const buttons = this.buttons | this.#pressed
+    this.#pressed = 0
+    return buttons
   }
 }

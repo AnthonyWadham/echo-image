@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest'
-import { buttonsFrom, moveFrom } from './controls'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+import { Controls, buttonsFrom, moveFrom } from './controls'
 
 describe('moveFrom', () => {
   test('reads WASD and arrows; opposite keys cancel', () => {
@@ -17,5 +17,31 @@ describe('buttonsFrom', () => {
     expect(buttonsFrom(new Set(), 2)).toBe(0) // the right button casts nothing
     expect(buttonsFrom(new Set(['Space']), 0)).toBe(2)
     expect(buttonsFrom(new Set(['Space', 'KeyW']), 1)).toBe(3)
+  })
+})
+
+describe('Controls', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  test('each frame takes the buttons held and those pressed since a frame last took them', () => {
+    const win = new EventTarget()
+    vi.stubGlobal('window', win)
+    const canvas = Object.assign(new EventTarget(), { setPointerCapture: () => {} })
+    const controls = new Controls(canvas as unknown as HTMLElement)
+    const send = (to: EventTarget, type: string, event: object) =>
+      to.dispatchEvent(Object.assign(new Event(type), event))
+    send(win, 'keydown', { code: 'Space' })
+    send(win, 'keyup', { code: 'Space' })
+    expect(controls.takeButtons()).toBe(2) // a tap between two frames
+    expect(controls.takeButtons()).toBe(0) // goes in one
+    const pointer = { pointerId: 1, clientX: 0, clientY: 0 }
+    send(canvas, 'pointerdown', { ...pointer, buttons: 1 })
+    send(win, 'pointerup', { ...pointer, buttons: 0 })
+    expect(controls.takeButtons()).toBe(1) // a click too
+    send(canvas, 'pointerdown', { ...pointer, buttons: 1 })
+    expect(controls.takeButtons()).toBe(1)
+    expect(controls.takeButtons()).toBe(1) // still held
+    send(win, 'pointerup', { ...pointer, buttons: 0 })
+    expect(controls.takeButtons()).toBe(0)
   })
 })

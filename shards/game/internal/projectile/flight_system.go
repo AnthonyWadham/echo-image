@@ -1,7 +1,7 @@
 package projectile
 
 import (
-	"math"
+	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
@@ -15,6 +15,7 @@ import (
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -26,11 +27,12 @@ import (
 // component.ShotEnded: where, when in the tick and on what. A shot launched this tick moves this tick,
 // so its path starts at the shooter.
 //
-// A shot an input frame cast meets the map now, and a Body or Echo only through a hit claim in its
-// caster's frame applied this tick: flight.Confirm checks it where the client drew them, from their
-// TargetHistory. A shot no frame cast (an Echo's) meets them where they are now. One Box2D shape cast
-// per shot finds what it meets, so the cost is O(P·(log N + K·R)) for P shots, N shapes, K found and R
-// rules, plus O(log N + K) per claim.
+// A predicted shot meets the map now, and each Body and Echo where its caster's client drew it: at the
+// view of the caster's frame this tick, from their TargetHistory (flight.FlyAtView). That is what the
+// client's predictor flies it against, so a hit on screen is a hit on the server. Any other shot (an
+// Echo's) meets them where they are now. One Box2D cast or tree query per shot finds what it meets, so
+// the cost is O(P·(log N + K·R)) for P shots, N shapes, K found and R rules, plus O(T·W) a tick for the
+// tree of T targets keeping W rows.
 type FlightSystem struct {
 	Data    *data.Plugin
 	Physics *physics2d.Plugin
@@ -46,14 +48,16 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 	}
 	tuning := data.Get[ProjectileTuning](s.Data)
 	world := s.Physics.Engine()
-	targets := targetsOf(w, world)
+	targets, reach := targetsOf(w, world), reachOf(w)
 	// Resolved after the search finished, since a resolved shot is destroyed.
 	for _, shot := range shots {
-		fly(w, world, tuning, shot, targets)
+		fly(w, world, tuning, shot, targets, reach)
 	}
 }
 
-func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot cardinal.Entity, targets flight.Targets) {
+func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot cardinal.Entity, targets flight.Targets,
+	reach *flight.Reach,
+) {
 	p := shot.Get[component.Projectile]()
 	def, ok := tuning.Shots[p.Type]
 	if !ok {
@@ -68,16 +72,20 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot ca
 		Remaining: p.Remaining,
 	}
 	side := team.SideOf(shot)
-	meets := targets
-	if p.Cause.Seq != 0 {
-		meets = nil // the map only
-	}
-	next, end, over := tuning.Fly(world, def, f, side, meets, physics.SecondsPerTick)
-	if claim, ok := claimed(w, world, tuning, p, def, f, side); ok {
-		end, over = claim, true
+	var next flight.Flight
+	var end flight.End
+	var over bool
+	if view, ok := viewOf(w, tuning, p); ok {
+		tick := w.TickHeight()
+		sights := func(id uint32) (flight.Seen, bool) {
+			return seenAt(w.Entity(cardinal.EntityID(id)), p.Cause.Caster, view, tick)
+		}
+		next, end, over = tuning.FlyAtView(world, def, f, side, reach, sights, physics.SecondsPerTick)
+	} else {
+		next, end, over = tuning.Fly(world, def, f, side, targets, physics.SecondsPerTick)
 	}
 	if !over {
-		p.Remaining = next.Remaining
+		p.Remaining, p.Prev = next.Remaining, physics2d.Vec2(f.Pos)
 		shot.Set(p)
 		shot.Set(physics2d.Transform2D{Position: physics2d.Vec2(next.Pos)})
 		return
@@ -89,86 +97,79 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, shot ca
 		})
 	}
 	w.EmitSystemEvent(component.ShotEnded{
-		Shot: shot.ID(), Type: p.Type, Cause: p.Cause, Team: shot.Get[team.Team]().ID, Radius: p.Radius, End: end,
+		Shot: shot.ID(), Serial: shot.Get[ref.Spawn]().Serial, Type: p.Type, Cause: p.Cause, Predicted: p.Predicted,
+		Team: shot.Get[team.Team]().ID, Radius: p.Radius, Prev: f.Pos, End: end,
 	})
 	shot.Destroy()
 }
 
-// claimed checks the hit claim on shot p, flying f this tick, in the frame its caster applied this
-// tick. It returns how the shot ends, or false with no claim or a rejected one. A frame names a shot by
-// its key, and the first claim on it counts.
-func claimed(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, p component.Projectile, def flight.Shot,
-	f flight.Flight, side interact.Side,
-) (flight.End, bool) {
-	tick := w.TickHeight()
+// viewOf is the view predicted shot p meets Bodies and Echoes at this tick: its caster's (flight's View
+// rule), or false when p isn't predicted or its caster has applied no frame.
+func viewOf(w *cardinal.World, tuning ProjectileTuning, p component.Projectile) (float64, bool) {
 	caster := w.Entity(p.Cause.Caster)
-	if p.Cause.Seq == 0 || !caster.Has[playercomp.InputQueue]() {
-		return flight.End{}, false
+	if !p.Predicted || !caster.Has[playercomp.InputQueue]() {
+		return 0, false
 	}
-	frame, ok := caster.Get[playercomp.InputQueue]().Applied(tick)
-	if !ok || !tuning.ValidView(frame.ViewTick, tick) {
-		return flight.End{}, false
-	}
-	i := frame.Claims.IndexFunc(func(c playercomp.HitClaim) bool {
-		return c.Seq == p.Cause.Seq && c.Ability == p.Cause.Ability && c.Launch == p.Launch
-	})
-	if i < 0 {
-		return flight.End{}, false
-	}
-	view := frame.ViewTick
-	target, ok := seenAt(w.Entity(cardinal.EntityID(frame.Claims.At(i).Target)), caster.ID(), view, tick)
-	if !ok {
-		return flight.End{}, false
-	}
-	sights := func(shape box2d.ShapeID) (flight.Seen, bool) {
-		return seenAt(w.Entity(physics.EntityOf(world, shape)), caster.ID(), view, tick)
-	}
-	return tuning.Confirm(world, def, f, side, target, float64(tick)-view, sights, physics.SecondsPerTick)
+	tick := w.TickHeight()
+	view, ok := caster.Get[playercomp.InputQueue]().View(tick)
+	return tuning.View(view, tick), ok
 }
 
-// seenAt is e where a claim's view had it, from its TargetHistory, or false when e isn't a Body or Echo
-// with rows then. The caster's own Body is where it is now, as its client predicts it.
-func seenAt(e cardinal.Entity, caster cardinal.EntityID, view float64, tick uint64) (flight.Seen, bool) {
-	if !e.Has[component.TargetHistory]() || !e.Has[physics2d.PhysicsBody2D]() || !e.Has[team.Team]() ||
-		!e.Has[team.Owner]() {
+// seenAt is target e where the predictor's view had it, its row there from its TargetHistory, or false
+// when it had none. The predictor's own Body is where it is now, with its tags now, as its client
+// predicts it; so is its Echo, with its rows' tags, since its client predicts that too.
+func seenAt(e cardinal.Entity, predictor cardinal.EntityID, view float64, tick uint64) (flight.Seen, bool) {
+	if !e.Has[component.TargetHistory]() || !e.Has[ref.Spawn]() {
 		return flight.Seen{}, false
 	}
-	shapes := e.Get[physics2d.PhysicsBody2D]().Shapes
-	if shapes.Len() == 0 {
-		return flight.Seen{}, false
-	}
-	s := flight.Seen{
-		Target: flight.Target{ID: uint32(e.ID()), Side: team.SideOf(e)},
-		Kind:   interact.Kind(shapes.At(0).CategoryBits) & (interact.Body | interact.Echo),
-	}
-	if e.ID() == caster {
-		s.Center, s.Radius, s.Tags = box2d.Vec2(e.Get[physics2d.Transform2D]().Position), shapes.At(0).Radius, tagsAt(e, tick)
-		return s, s.Kind != 0
+	s := flight.Seen{ID: uint32(e.ID()), Serial: e.Get[ref.Spawn]().Serial}
+	if e.ID() == predictor {
+		s.Row = rowOf(e, tick)
+		s.Tags = tagsAt(e, tick)
+		return s, true
 	}
 	history := e.Get[component.TargetHistory]()
-	a := uint64(math.Floor(view))
-	newer, ok := history.At(a + 1)
+	a, b := flight.RowTicks(view)
+	newer, ok := history.At(b)
 	if !ok {
 		return flight.Seen{}, false
 	}
 	older, hasOlder := history.At(a)
-	row, ok := flight.AtView(older, hasOlder, newer, view)
-	s.Center, s.Radius, s.Tags = row.Center, row.Radius, row.Tags
-	return s, ok && s.Kind != 0
+	s.Row, ok = flight.AtView(older, hasOlder, newer, view)
+	if s.Kind == interact.Echo && s.Side.Owner == uint32(predictor) {
+		s.Center = box2d.Vec2(e.Get[physics2d.Transform2D]().Position)
+	}
+	return s, ok
 }
 
-// targetsOf says whose each Body and Echo shape in world is, with its side and its tags this tick.
+// reachOf is where each target can be at any view this tick: between its kept rows, or where it is
+// now, as seenAt places it.
+func reachOf(w *cardinal.World) *flight.Reach {
+	reach := flight.NewReach()
+	tick := w.TickHeight()
+	for e := range w.Contains[historyRow]().Iter() {
+		if e.Get[physics2d.PhysicsBody2D]().Shapes.Len() == 0 {
+			continue
+		}
+		kept := slices.Collect(e.Get[component.TargetHistory]().Rows.Values())
+		reach.Add(uint32(e.ID()), rowOf(e, tick), kept...)
+	}
+	return reach
+}
+
+// targetsOf says whose each target's shape in world is, with its side and its tags this tick.
 func targetsOf(w *cardinal.World, world *box2d.World) flight.Targets {
 	tick := w.TickHeight()
 	return func(shape box2d.ShapeID) (flight.Target, bool) {
 		e := w.Entity(physics.EntityOf(world, shape))
-		if !e.Has[team.Team]() || !e.Has[team.Owner]() || !e.Has[effectcomp.Effects]() {
+		if !e.Has[team.Team]() || !e.Has[team.Owner]() || !e.Has[effectcomp.Effects]() || !e.Has[ref.Spawn]() {
 			return flight.Target{}, false
 		}
 		return flight.Target{
-			ID:   uint32(e.ID()),
-			Side: team.SideOf(e),
-			Tags: e.Get[effectcomp.Effects]().Status(tick).Tags,
+			ID:     uint32(e.ID()),
+			Serial: e.Get[ref.Spawn]().Serial,
+			Side:   team.SideOf(e),
+			Tags:   e.Get[effectcomp.Effects]().Status(tick).Tags,
 		}, true
 	}
 }

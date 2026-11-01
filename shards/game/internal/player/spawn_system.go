@@ -10,13 +10,15 @@ import (
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
 // bodyRow is a player Body: identity, champion, team, owner (itself), input, speed, the physics2d trio,
-// its effect list, and the rows hit claims are checked against. Deliberately NO Health — the Body is
+// its effect list, and the rows predicted shots meet it by. Deliberately NO Health — the Body is
 // invincible; Health lives on the Echo.
 type bodyRow struct {
+	Spawn         ref.Spawn
 	Player        component.Player
 	Champion      component.Champion
 	Team          team.Team
@@ -50,6 +52,7 @@ func spawnBody(w *cardinal.World, tuning MovementTuning, champion string, id uin
 ) {
 	def := tuning.Champions[champion]
 	b := w.Create[bodyRow]()
+	b.Set(ref.Spawn{Serial: ref.Next(w)})
 	// Persona left empty: the Body is unclaimed until the first Input command from a persona claims it
 	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Set(component.Player{ID: id, Nickname: nickname})

@@ -13,6 +13,7 @@ import (
 	"echo_image/shards/game/internal/physics"
 	playercomp "echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -27,9 +28,10 @@ type bodyRow struct {
 }
 
 // echoRow is the Echo entity: identity + trail, the Health it carries, team and owner, the physics2d
-// trio, its effect list, and the rows hit claims are checked against. BodyTypeManual means the replay
+// trio, its effect list, and the rows predicted shots meet it by. BodyTypeManual means the replay
 // owns the pose; the collider is the hurtbox projectile tests shots against.
 type echoRow struct {
+	Spawn         ref.Spawn
 	Echo          component.Echo
 	History       component.PathHistory
 	Health        combatcomp.Health
@@ -97,6 +99,7 @@ func spawnEcho(w *cardinal.World, tuning EchoTuning, body cardinal.Entity) {
 	hist := component.PathHistory{Poses: cardinal.SliceOf(component.EchoFrame{Pose: pose}).Repeat(delay + 1)}
 
 	e := w.Create[echoRow]()
+	e.Set(ref.Spawn{Serial: ref.Next(w)})
 	e.Set(component.Echo{PlayerID: playerID})
 	e.Set(hist)
 	e.Set(combatcomp.Health{HP: tuning.MaxHP, MaxHP: tuning.MaxHP})

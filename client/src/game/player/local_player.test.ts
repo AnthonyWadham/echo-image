@@ -2,34 +2,35 @@ import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
 import type { BodySync } from './body_sync_event'
 import { LocalPlayer } from './local_player'
-import type { Predictor } from './predictor'
+import type { PredictedEcho, Predictor } from './predictor'
 
 const session = 7
-const still = { move: { x: 0, y: 0 }, ground: undefined, buttons: 0, view: undefined }
+const sim = 'this build'
+const still = { move: { x: 0, y: 0 }, ground: undefined, takeButtons: () => 0, view: undefined }
 
 /**
- * A stand-in for the wasm: each frame moves the Body by its move. A new frame with a view claims a
- * shot of its own on Body 2. seen logs the syncs it was given, and forget.
+ * A stand-in for the wasm: each frame moves the Body by its move, and your Echo stays where the sync had
+ * it. seen logs the syncs it was given, and forget.
  */
 function predictor(seen: string[] = []): Predictor {
   let at = { x: 0, y: 0 }
+  let echo: PredictedEcho | undefined
   return {
-    reset: (_, you) => {
+    version: sim,
+    reset: (s, you) => {
       at = { x: you.X, y: you.Y }
+      const e = s.You.EchoPath[0]
+      echo = e && { ...e, PrevX: e.X, PrevY: e.Y }
     },
-    seeBodies: (s) => seen.push(`bodies ${s.Tick}`),
-    seeEchoes: (s) => seen.push(`echoes ${s.Tick}`),
+    seeTargets: (s) => seen.push(`targets ${s.Tick}`),
     forget: () => seen.push('forget'),
     peek: (x, y) => ({ x: at.x + x, y: at.y + y }),
     step: (f) => {
       at = { x: at.x + f.MoveX, y: at.y + f.MoveY }
-      return { at, claims: f.ViewTick > 0 ? [{ Seq: f.Seq, Ability: 'bolt', Launch: 0, Target: 2 }] : [], ended: [] }
-    },
-    replay: (f) => {
-      at = { x: at.x + f.MoveX, y: at.y + f.MoveY }
-      return at
+      return { at, ended: [] }
     },
     shots: () => [],
+    echo: () => echo,
     kit: () => ({ Tick: 0, Slots: [] }),
   }
 }
@@ -40,20 +41,25 @@ const newPlayer = (timelines = new Timelines(), seen: string[] = []) =>
 const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 }]): BodySync => ({
   Tick: BigInt(tick),
   TickSeconds: 0.05,
+  SimVersion: sim,
   You: {
     Body: 1,
     InputSession: session,
     InputAck: ack,
+    InputQueued: 1,
+    InputCap: 10,
     MoveSpeed: 5,
     Champion: 'starter',
     Cooldowns: [],
     Effects: [],
     EffectsNext: 0,
     Shots: [],
+    EchoDelay: 0,
+    EchoPath: [],
   },
   Bodies: bodies.map((b) => ({
-    ...{ PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, Radius: 0.5, Tags: 0n },
-    ...b,
+    ...{ Serial: BigInt(b.EntityID), PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, Radius: 0.5 },
+    ...{ Tags: 0n, ...b },
   })),
 })
 
@@ -71,7 +77,7 @@ describe('LocalPlayer', () => {
     const echoes = timelines.create<string>()
     const player = newPlayer(timelines)
     expect(player.setConnected(true, { x: 1, y: 0 })?.Frames).toEqual([
-      { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0, Claims: [] },
+      { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0 },
     ])
     expect(player.setConnected(true, { x: 1, y: 0 })).toBeUndefined()
     player.onBodySync(bodySync(100))
@@ -83,7 +89,7 @@ describe('LocalPlayer', () => {
     expect(player.setConnected(false, { x: 0, y: 0 })).toBeUndefined()
     expect(player.playing).toBe(false)
     expect(player.kit).toBeUndefined()
-    expect(player.drawnShots).toEqual([])
+    expect(player.drawnShots()).toEqual([])
     expect(player.bodies.size).toBe(0)
     expect(echoes.size).toBe(0)
     expect(player.input.unacked).toEqual([])
@@ -98,6 +104,19 @@ describe('LocalPlayer', () => {
     player.onBodySync(bodySync(101))
     expect(player.playing).toBe(true)
     expect(player.me?.X).toBe(101)
+  })
+
+  test("plays only while the shard runs your predictor's sim", () => {
+    const player = playing()
+    player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
+    expect(player.otherSim).toBe('another build')
+    expect(player.playing).toBe(false)
+    expect(player.me?.X).toBe(100) // its Bodies aren't kept
+    expect(player.inputsToSend(0.05, { ...still, move: { x: 1, y: 0 } })).toEqual([])
+    player.onBodySync(bodySync(102))
+    expect(player.otherSim).toBeUndefined()
+    expect(player.playing).toBe(true)
+    expect(player.inputsToSend(0.05, still)).not.toEqual([])
   })
 
   test('sends nothing while disconnected', () => {
@@ -115,32 +134,84 @@ describe('LocalPlayer', () => {
   test('while playing, aims from where the frame moves your Body', () => {
     const player = playing()
     player.onBodySync(bodySync(101))
-    const held = { move: { x: 1, y: 0 }, ground: { x: 103, y: -2 }, buttons: 1, view: undefined }
+    const held = { move: { x: 1, y: 0 }, ground: { x: 103, y: -2 }, takeButtons: () => 1, view: undefined }
     const [input] = player.inputsToSend(0.05, held)
     expect(input).toEqual({
       Session: session,
-      Frames: [{ Seq: 2, MoveX: 1, MoveY: 0, AimX: 1, AimY: -2, Buttons: 1, ViewTick: 0, Claims: [] }],
+      Frames: [{ Seq: 2, MoveX: 1, MoveY: 0, AimX: 1, AimY: -2, Buttons: 1, ViewTick: 0 }],
     })
   })
 
-  test('sends the render tick on screen with each frame, and the hits it claims', () => {
+  test('a press goes in the next frame built, once, and one made before you play casts nothing', () => {
+    let pressed = 1 // a tap the controls keep for the next frame
+    const take = () => {
+      const buttons = pressed
+      pressed = 0
+      return buttons
+    }
+    const held = { ...still, takeButtons: take }
+    const player = newPlayer()
+    player.setConnected(true, { x: 0, y: 0 })
+    player.inputsToSend(0.05, held)
+    expect(pressed).toBe(0)
+    player.onBodySync(bodySync(100))
+    pressed = 1
+    expect(player.inputsToSend(0.01, held)).toEqual([]) // no frame yet, so it waits
+    expect(pressed).toBe(1)
+    const inputs = player.inputsToSend(0.1, held) // two frames: the first takes it
+    expect(inputs.map((i) => i.Frames.at(-1)?.Buttons)).toEqual([1, 0])
+  })
+
+  test('paces its frames by the queue each body_sync reports', () => {
+    const player = playing()
+    for (let tick = 101; tick < 140; tick++) {
+      const s = bodySync(tick)
+      player.onBodySync({ ...s, You: { ...s.You, InputQueued: 0 } })
+    }
+    expect(player.input.rate).toBeGreaterThan(1)
+  })
+
+  test('sends the render tick on screen with each frame', () => {
     const player = playing()
     const [input] = player.inputsToSend(0.05, { ...still, view: 98.25 })
-    expect(input?.Frames.at(-1)).toEqual({
-      ...{ Seq: 2, MoveX: 0, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 98.25 },
-      Claims: [{ Seq: 2, Ability: 'bolt', Launch: 0, Target: 2 }],
-    })
-    expect(player.input.unacked.at(-1)?.Claims).toHaveLength(1)
+    expect(input?.Frames.at(-1)).toEqual({ Seq: 2, MoveX: 0, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 98.25 })
   })
 
-  test('gives the predictor every body_sync and echo_sync, and forgets them on leaving the stream', () => {
-    const seen: string[] = []
-    const player = newPlayer(new Timelines(), seen)
+  test('draws your predicted shots, not their syncs; before a body_sync none is yours, as 0 is a Body too', () => {
+    const player = newPlayer()
+    expect(player.drawsShot({ Caster: 0, Predicted: true })).toBe(false)
+    player.onBodySync(bodySync(100))
+    expect(player.drawsShot({ Caster: 1, Predicted: true })).toBe(true)
+    expect(player.drawsShot({ Caster: 1, Predicted: false })).toBe(false)
+    expect(player.drawsShot({ Caster: 2, Predicted: true })).toBe(false)
+  })
+
+  test('draws your Echo where your predictor has it, until you leave the stream', () => {
+    const player = newPlayer()
     player.setConnected(true, { x: 0, y: 0 })
-    player.onBodySync(bodySync(100, 0, [{ EntityID: 2, X: 0, Y: 0 }])) // not playing yet
-    player.onEchoSync({ Tick: 100n, Echoes: [] })
+    const s = bodySync(100)
+    s.You.EchoDelay = 20
+    s.You.EchoPath = [{ X: 80, Y: 0 }]
+    player.onBodySync(s)
+    expect(player.drawnEcho).toEqual({ x: 80, y: 0 })
     player.setConnected(false, { x: 0, y: 0 })
-    expect(seen).toEqual(['bodies 100', 'echoes 100', 'forget'])
+    expect(player.drawnEcho).toBeUndefined()
+  })
+
+  test('gives the predictor each target_sync while the shard runs your sim, and forgets them on leaving', () => {
+    const seen: string[] = []
+    const timelines = new Timelines()
+    const player = newPlayer(timelines, seen)
+    player.setConnected(true, { x: 0, y: 0 })
+    player.onTargetSync({ Tick: 99n, Targets: [] }) // before a body_sync says which sim
+    player.onBodySync(bodySync(100, 0, [{ EntityID: 2, X: 0, Y: 0 }])) // not playing yet
+    expect(timelines.newestTick).toBe(99) // the screen waits for tick 100's target_sync
+    player.onTargetSync({ Tick: 100n, Targets: [] })
+    expect(timelines.newestTick).toBe(100)
+    player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
+    player.onTargetSync({ Tick: 101n, Targets: [] })
+    player.setConnected(false, { x: 0, y: 0 })
+    expect(seen).toEqual(['targets 100', 'forget'])
   })
 
   test('predicts your Body from each body_sync plus the frames it has not applied', () => {

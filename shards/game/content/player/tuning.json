@@ -1,6 +1,7 @@
 {
-  "input_buffer_seconds": 0.1,
+  "input_buffer_seconds": 0.5,
   "input_timeout_seconds": 0.5,
+  "echo_path_seconds": 0.5,
   "champions": {
     "starter": {"move_speed": 5.0, "radius": 0.5}
   },

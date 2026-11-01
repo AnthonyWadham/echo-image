@@ -19,6 +19,7 @@ func (EchoSync) Name() string { return "echo_sync" }
 // EchoState is one Echo. Its position, radius, tags and Until are its projectilecomp.TargetHistory row.
 type EchoState struct {
 	EntityID uint32
+	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID
 	PlayerID uint32
 	Owner    uint32 // its Body's EntityID
 	Team     uint8

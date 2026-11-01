@@ -17,6 +17,7 @@ import { loadPredictor } from './game/player/predictor'
 import { ProjectileSyncEvent } from './game/projectile/projectile_sync_event'
 import type { ProjectileState } from './game/projectile/projectile_sync_event'
 import { newProjectileViews } from './game/projectile/projectile_view'
+import { TargetSyncEvent } from './game/projectile/target_sync_event'
 import { showHome } from './game/ui/home'
 import { Hud } from './game/ui/hud'
 
@@ -51,11 +52,11 @@ async function play(playerId: string): Promise<void> {
   const shots = timelines.create<ProjectileState[]>()
 
   const stage = new Stage(document.body)
-  const views = [
-    newBodyViews(stage, player),
-    newEchoViews(stage, echoes),
-    newProjectileViews(stage, shots, player),
-  ]
+  const bodyViews = newBodyViews(stage, player)
+  const echoViews = newEchoViews(stage, echoes, player)
+  // Shots draw last, so one that ended on a Body or Echo ends where this frame draws it.
+  const targetAt = (serial: bigint) => bodyViews.at(serial) ?? echoViews.at(serial)
+  const views = [bodyViews, echoViews, newProjectileViews(stage, shots, player, targetAt)]
   const controls = new Controls(stage.canvas)
   const hud = new Hud(hudElement, playerId, { player, echoes, abilities })
   let problem: string | undefined
@@ -67,15 +68,12 @@ async function play(playerId: string): Promise<void> {
   void net
     .subscribe([
       on(BodySyncEvent, (s) => player.onBodySync(s)),
-      on(EchoSyncEvent, (s) => {
-        timelines.add(echoes, s.Tick, s.Echoes)
-        player.onEchoSync(s)
-      }),
+      on(EchoSyncEvent, (s) => timelines.add(echoes, s.Tick, s.Echoes)),
       on(AbilitySyncEvent, (s) => timelines.add(abilities, s.Tick, cooldowns(s))),
-      // Yours are drawn from the predictor.
       on(ProjectileSyncEvent, (s) =>
-        timelines.add(shots, s.Tick, s.Projectiles.filter((p) => p.Caster !== player.you)),
+        timelines.add(shots, s.Tick, s.Projectiles.filter((p) => !player.drawsShot(p))),
       ),
+      on(TargetSyncEvent, (s) => player.onTargetSync(s)),
     ])
     .then((error) => {
       if (error) problem = `Subscribing to sync events failed: ${error.message}. Reload to retry.`
@@ -91,11 +89,11 @@ async function play(playerId: string): Promise<void> {
     const held = {
       move: controls.move,
       ground: pointer && stage.groundPoint(pointer),
-      buttons: controls.buttons,
+      takeButtons: () => controls.takeButtons(),
       view: drawn,
     }
     for (const input of player.inputsToSend(dt, held)) net.send(InputCommand, input)
-    drawn = timelines.renderTick(dt, player.bodies, player.tickSeconds)
+    drawn = timelines.renderTick(dt, player.tickSeconds)
     for (const view of views) view.draw(drawn)
     stage.render()
     hud.draw(net.status, problem)

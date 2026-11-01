@@ -18,9 +18,10 @@ type inputRow struct {
 
 // InputSystem (PreUpdate, first) queues each Input command's frames on the sender's Body, then
 // applies exactly one queued frame per Body per tick, in Seq order. One frame per tick keeps the Body,
-// and the Echo replaying it, smooth when frames arrive late or bunched. Systems act on the applied
-// frame through InputQueue.Applied. It is the only writer of InputQueue, and emits BodyClaimed the
-// first tick each Body is claimed.
+// and the Echo replaying it, smooth when frames arrive late or bunched. The client paces its frames by
+// the queue's depth, which YouState sends, so the queue's cap only stops abuse. Systems act on the
+// applied frame through InputQueue.Applied. It is the only writer of InputQueue, and emits BodyClaimed
+// the first tick each Body is claimed.
 type InputSystem struct {
 	Data *data.Plugin
 }
@@ -32,7 +33,8 @@ func (s *InputSystem) Run(w *cardinal.World) {
 	advance(w, bodies)
 }
 
-// receive queues every Input this tick on its sender's Body. O(B + C): Bodies are indexed once.
+// receive queues every Input this tick on its sender's Body. O(B + C·L²) for C commands and a queue of L
+// frames: Bodies are indexed once.
 func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
 	var index *bodyIndex
 	for cmd := range w.Commands[Input]() {
@@ -40,6 +42,12 @@ func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
 		if !ok || player == "" {
 			// An empty player ID would claim a fresh Body every tick. Only players drive Bodies.
 			w.Logger().Warn().Str("sender", cmd.Sender()).Msg("input: not from a player, ignoring command")
+			continue
+		}
+		if n := cmd.Payload.Frames.Len(); n > limit {
+			// YouState.InputCap tells clients the limit, so only abuse sends more, and merging it costs O(n²).
+			w.Logger().Warn().Str("player", player).Int("frames", n).
+				Msg("input: more frames than the queue holds, ignoring command")
 			continue
 		}
 		if index == nil {
@@ -55,10 +63,11 @@ func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
 }
 
 // enqueue merges in's frames into q.Pending in Seq order, skipping applied and duplicate frames, and
-// keeps only the newest limit frames. A new Session starts the stream over.
+// keeps only the newest limit frames. A new Session starts the stream over. O(limit²): receive drops an
+// Input with more frames.
 func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 	if in.Session != q.Session {
-		q = component.InputQueue{Session: in.Session, LastTick: q.LastTick}
+		q = component.InputQueue{Session: in.Session, LastTick: q.LastTick, ViewFloor: q.ViewFloor}
 	}
 	pending := slices.Collect(q.Pending.Values())
 	for f := range in.Frames.Values() {
@@ -79,7 +88,7 @@ func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 	return q
 }
 
-// advance applies each Body's next queued frame. O(B).
+// advance applies each Body's next queued frame, its view no older than the largest so far. O(B).
 func advance(w *cardinal.World, bodies cardinal.Search) {
 	tick := w.TickHeight()
 	for body := range bodies.Iter() {
@@ -88,6 +97,10 @@ func advance(w *cardinal.World, bodies cardinal.Search) {
 			continue
 		}
 		q.Last, q.LastTick = q.Pending.At(0), tick
+		if !(q.Last.ViewTick >= q.ViewFloor) { // NaN too
+			q.Last.ViewTick = q.ViewFloor
+		}
+		q.ViewFloor = q.Last.ViewTick
 		q.Pending = q.Pending.Sub(1, q.Pending.Len())
 		body.Set(q)
 	}

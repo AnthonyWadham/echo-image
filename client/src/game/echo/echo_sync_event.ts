@@ -12,7 +12,8 @@ export interface EchoSync {
 
 /** echo.EchoState */
 export interface EchoState {
-  EntityID: number // uint32
+  EntityID: number // uint32: names it in this tick's syncs
+  Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
   PlayerID: number // uint32
   Owner: number // uint32: its Body's EntityID
   Team: number // uint8

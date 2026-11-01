@@ -3,8 +3,5 @@
 // it as physics.ServerTickRateHz and physics.SecondsPerTick.
 package timestep
 
-// Rate is ticks per second.
-const Rate = 20
-
 // Seconds is one tick: 1 / Rate.
 const Seconds = 1.0 / float64(Rate)

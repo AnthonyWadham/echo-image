@@ -6,9 +6,9 @@ import (
 	"echo_image/shards/game/internal/projectile/flight"
 )
 
-// TargetHistory is a Body's or Echo's rows from its last ticks, as each tick's syncs showed it: oldest
-// first, one per tick. A hit claim is checked against them, at the view the shooter saw. Only
-// projectile.HistorySystem writes it; the Body and Echo constructors add it.
+// TargetHistory is a target's rows from its last ticks, as each tick's syncs showed it: oldest first,
+// one per tick. A predicted shot meets it by them, at the view its client drew. Only
+// projectile.HistorySystem writes it; each target's constructor (a Body's, an Echo's) adds it.
 type TargetHistory struct {
 	Rows cardinal.Slice[flight.Row]
 }

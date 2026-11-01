@@ -19,6 +19,10 @@ import (
 	"echo_image/shards/game/internal/projectile/flight"
 )
 
+// simVersion is the echoimage.SimVersion of the tree this was built from: predictor.mjs stamps it with
+// -ldflags -X, from ./version.
+var simVersion string
+
 func main() {
 	c, err := predict.Load(content.FS)
 	if err != nil {
@@ -27,6 +31,7 @@ func main() {
 	}
 	p := predict.New(c)
 	js.Global().Set("echoPredictor", js.ValueOf(map[string]any{
+		"version": simVersion,
 		"reset": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			p.Reset(state(args[0]))
 			return nil
@@ -35,29 +40,21 @@ func main() {
 			return point(p.Peek(args[0].Float(), args[1].Float()))
 		}),
 		"step": js.FuncOf(func(_ js.Value, args []js.Value) any {
-			at, claims, ended := p.Step(frame(args[0]))
-			out := []any{}
-			for _, c := range claims {
-				out = append(out, map[string]any{"Seq": c.Seq, "Ability": c.Ability, "Launch": c.Launch, "Target": c.Target})
-			}
+			at, ended := p.Step(frame(args[0]))
 			ends := []any{}
 			for _, e := range ended { // drawn from where the tick found it to where it ended
 				ends = append(ends, map[string]any{
-					"Type": e.Type, "X": e.End.At.X, "Y": e.End.At.Y, "PrevX": e.Pos.X, "PrevY": e.Pos.Y,
-					"Radius": e.Radius, "Until": e.End.Until,
+					"Type": e.Type, "Seq": e.Seq, "Ability": e.Ability, "Launch": e.Launch,
+					"X": e.End.At.X, "Y": e.End.At.Y, "PrevX": e.Pos.X, "PrevY": e.Pos.Y,
+					"Radius": e.Radius, "Until": e.End.Until, "OnTarget": e.End.Hit.OnTarget(),
+					"TargetSerial": strconv.FormatUint(e.End.Hit.Serial, 10), "OffsetX": e.End.Hit.Offset.X,
+					"OffsetY": e.End.Hit.Offset.Y,
 				})
 			}
-			return map[string]any{"x": at.X, "y": at.Y, "claims": out, "ended": ends}
+			return map[string]any{"x": at.X, "y": at.Y, "ended": ends}
 		}),
-		"replay": js.FuncOf(func(_ js.Value, args []js.Value) any {
-			return point(p.Replay(frame(args[0])))
-		}),
-		"seeBodies": js.FuncOf(func(_ js.Value, args []js.Value) any {
-			p.See(uint64Of(args[0].Get("Tick")), interact.Body, sights(args[0].Get("Bodies"), false))
-			return nil
-		}),
-		"seeEchoes": js.FuncOf(func(_ js.Value, args []js.Value) any {
-			p.See(uint64Of(args[0].Get("Tick")), interact.Echo, sights(args[0].Get("Echoes"), true))
+		"seeTargets": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			p.See(uint64Of(args[0].Get("Tick")), sights(args[0].Get("Targets")))
 			return nil
 		}),
 		"forget": js.FuncOf(func(js.Value, []js.Value) any {
@@ -68,10 +65,18 @@ func main() {
 			var shots []any
 			for _, s := range p.State().Shots {
 				shots = append(shots, map[string]any{
-					"Type": s.Type, "X": s.Pos.X, "Y": s.Pos.Y, "PrevX": s.Prev.X, "PrevY": s.Prev.Y, "Radius": s.Radius,
+					"Type": s.Type, "Seq": s.Seq, "Ability": s.Ability, "Launch": s.Launch,
+					"X": s.Pos.X, "Y": s.Pos.Y, "PrevX": s.Prev.X, "PrevY": s.Prev.Y, "Radius": s.Radius,
 				})
 			}
 			return shots
+		}),
+		"echo": js.FuncOf(func(js.Value, []js.Value) any {
+			at, prev, ok := p.Echo()
+			if !ok {
+				return nil
+			}
+			return map[string]any{"X": at.X, "Y": at.Y, "PrevX": prev.X, "PrevY": prev.Y}
 		}),
 		"kit": js.FuncOf(func(js.Value, []js.Value) any {
 			var slots []any
@@ -88,42 +93,31 @@ func point(v box2d.Vec2) map[string]any { return map[string]any{"x": v.X, "y": v
 
 // frame reads an InputFrame.
 func frame(f js.Value) predict.Frame {
-	out := predict.Frame{
+	return predict.Frame{
 		Seq:   uint32(f.Get("Seq").Int()),
 		MoveX: f.Get("MoveX").Float(), MoveY: f.Get("MoveY").Float(),
 		AimX: f.Get("AimX").Float(), AimY: f.Get("AimY").Float(),
 		Buttons:  uint32(f.Get("Buttons").Int()),
 		ViewTick: f.Get("ViewTick").Float(),
 	}
-	claims := f.Get("Claims")
-	for i := range claims.Length() {
-		c := claims.Index(i)
-		key := predict.Key{
-			Seq: uint32(c.Get("Seq").Int()), Ability: c.Get("Ability").String(), Launch: uint32(c.Get("Launch").Int()),
-		}
-		out.Claims = append(out.Claims, predict.Claim{Key: key, Target: uint32(c.Get("Target").Int())})
-	}
-	return out
 }
 
-// sights reads a body_sync's Bodies or an echo_sync's Echoes, as predictor.ts sends them. A Body owns
-// itself and lives the whole tick; an Echo names its owner and how much of the tick it lived.
-func sights(list js.Value, echoes bool) []predict.Sight {
+// sights reads a target_sync's Targets, as predictor.ts sends them.
+func sights(list js.Value) []predict.Sight {
 	var out []predict.Sight
 	for i := range list.Length() {
 		v := list.Index(i)
-		id := uint32(v.Get("EntityID").Int())
-		owner, until := id, 1.0
-		if echoes {
-			owner, until = uint32(v.Get("Owner").Int()), v.Get("Until").Float()
-		}
 		out = append(out, predict.Sight{
-			ID:     id,
-			Side:   interact.Side{Owner: owner, Team: uint8(v.Get("Team").Int())},
-			Center: box2d.Vec2{X: v.Get("X").Float(), Y: v.Get("Y").Float()},
-			Radius: v.Get("Radius").Float(),
-			Tags:   interact.Tags(uint64Of(v.Get("Tags"))),
-			Until:  until,
+			ID:     uint32(v.Get("EntityID").Int()),
+			Serial: uint64Of(v.Get("Serial")),
+			Row: flight.Row{
+				Kind:   interact.Kind(uint64Of(v.Get("Kind"))),
+				Side:   interact.Side{Owner: uint32(v.Get("Owner").Int()), Team: uint8(v.Get("Team").Int())},
+				Center: box2d.Vec2{X: v.Get("X").Float(), Y: v.Get("Y").Float()},
+				Radius: v.Get("Radius").Float(),
+				Tags:   interact.Tags(uint64Of(v.Get("Tags"))),
+				Until:  v.Get("Until").Float(),
+			},
 		})
 	}
 	return out
@@ -141,6 +135,12 @@ func state(v js.Value) predict.State {
 		MoveSpeed:   v.Get("MoveSpeed").Float(),
 		Champion:    v.Get("Champion").String(),
 		EffectsNext: uint32(v.Get("EffectsNext").Int()),
+		EchoDelay:   uint32(v.Get("EchoDelay").Int()),
+	}
+	path := v.Get("EchoPath")
+	for i := range path.Length() {
+		at := path.Index(i)
+		s.EchoPath = append(s.EchoPath, box2d.Vec2{X: at.Get("X").Float(), Y: at.Get("Y").Float()})
 	}
 	cooldowns := v.Get("Cooldowns")
 	for i := range cooldowns.Length() {
@@ -177,7 +177,7 @@ func state(v js.Value) predict.State {
 			Velocity:  box2d.Vec2{X: h.Get("VelX").Float(), Y: h.Get("VelY").Float()},
 			Radius:    h.Get("Radius").Float(),
 			Remaining: h.Get("Remaining").Float(),
-		}})
+		}, Prev: box2d.Vec2{X: h.Get("PrevX").Float(), Y: h.Get("PrevY").Float()}})
 	}
 	return s
 }

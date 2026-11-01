@@ -1,19 +1,20 @@
 import type { Vec2 } from '../../engine/math/vec2'
+import type { Spot } from '../../engine/render/entity_views'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
-import type { EchoSync } from '../echo/echo_sync_event'
+import type { TargetState, TargetSync } from '../projectile/target_sync_event'
 import type { BodyState, BodySync } from './body_sync_event'
 import type { Input } from './input_command'
 import { InputStream } from './input_stream'
 import { Prediction } from './prediction'
 import type { DrawnShot } from './prediction'
-import type { PredictedKit, Predictor } from './predictor'
+import type { EndedShot, PredictedKit, Predictor } from './predictor'
 
 /** What the player holds this frame. ground is the point on the ground under the mouse. */
 export interface Held {
   move: Vec2
   ground: Vec2 | undefined
-  /** InputFrame.Buttons: bit N casts kit slot N. */
-  buttons: number
+  /** InputFrame.Buttons for the next frame (bit N casts kit slot N): held, or pressed since a frame took them. */
+  takeButtons: () => number
   /** The render tick on screen: the last one drawn, if any. */
   view: number | undefined
 }
@@ -21,24 +22,34 @@ export interface Held {
 /** You: every Body's recent states, which one is yours, the Input you send, and your Body predicted. */
 export class LocalPlayer {
   readonly bodies: Timeline<BodyState[]>
+  /** What each target_sync shows. The render clock waits for it, so your predictor has every view's rows. */
+  readonly targets: Timeline<TargetState[]>
   readonly input: InputStream
   readonly prediction: Prediction
   /** body_sync events received. */
   received = 0
-  /** Your Body's EntityID, from the newest body_sync. */
-  you = 0
+  /** Your Body's EntityID, from the newest body_sync; undefined before one, since 0 is a Body too. */
+  you: number | undefined
   tickSeconds = 0
+  /** The sim your predictor runs. */
+  readonly sim: string
+  /** The sim the shard runs, while it isn't yours: you don't play until it is. */
+  otherSim: string | undefined
   readonly #timelines: Timelines
   #connected = false
   #playing = false
+  #sameSim = false // the newest body_sync since connecting says the shard runs your sim
 
   constructor(timelines: Timelines, session: number, predictor: Predictor) {
     this.#timelines = timelines
     this.bodies = timelines.create<BodyState[]>()
+    this.targets = timelines.create<TargetState[]>()
     this.input = new InputStream(session)
     this.prediction = new Prediction(predictor)
+    this.sim = predictor.version
     timelines.onReset(() => {
       this.#playing = false
+      this.#sameSim = false
       this.input.reset()
       this.prediction.clear()
     })
@@ -59,9 +70,22 @@ export class LocalPlayer {
     return this.#playing ? this.prediction.drawn(this.#alpha) : undefined
   }
 
-  /** Where to draw your shots: predicted like your Body, so each leaves the moment you cast it. */
-  get drawnShots(): DrawnShot[] {
-    return this.#playing ? this.prediction.shots(this.#alpha) : []
+  /** Where to draw your Echo while playing: predicted like your Body, so the gap between them is the real one. */
+  get drawnEcho(): Vec2 | undefined {
+    return this.#playing ? this.prediction.echo(this.#alpha) : undefined
+  }
+
+  /**
+   * Where to draw your shots: predicted like your Body, so each leaves the moment you cast it. end says
+   * where one that ended on a Body or Echo is drawn ending.
+   */
+  drawnShots(end?: (s: EndedShot) => Spot | undefined): DrawnShot[] {
+    return this.#playing ? this.prediction.shots(this.#alpha, end) : []
+  }
+
+  /** Whether a synced shot is one of yours your predictor draws, so its sync isn't drawn too. */
+  drawsShot(s: { Caster: number; Predicted: boolean }): boolean {
+    return s.Predicted && s.Caster === this.you
   }
 
   /** Your kit's cooldowns while playing, predicted, so a cast starts its cooldown at once. */
@@ -84,37 +108,48 @@ export class LocalPlayer {
   }
 
   onBodySync(s: BodySync): void {
-    this.#timelines.add(this.bodies, s.Tick, s.Bodies)
-    this.prediction.seeBodies(s)
     this.received++
+    // Your predictor runs its own sim: against another, it would mispredict every frame.
+    this.#sameSim = s.SimVersion === this.sim
+    if (!this.#sameSim) {
+      this.otherSim = s.SimVersion
+      this.#playing = false
+      return
+    }
+    this.otherSim = undefined
+    this.#timelines.add(this.bodies, s.Tick, s.Bodies)
     this.you = s.You.Body
     this.tickSeconds = s.TickSeconds
-    this.input.ack(s.You)
+    this.input.ack(s.You, s.TickSeconds)
     const me = this.me
     if (!(this.tickSeconds > 0 && me)) return
     this.#playing = true
     this.prediction.reconcile(s, me, this.input.unacked)
   }
 
-  /** Keeps the Echoes each echo_sync shows, for your shots to meet. */
-  onEchoSync(s: EchoSync): void {
-    this.prediction.seeEchoes(s)
+  /** Keeps the targets each target_sync shows, for your shots to meet, once the shard runs your sim. */
+  onTargetSync(s: TargetSync): void {
+    this.#timelines.add(this.targets, s.Tick, s.Targets)
+    if (this.#sameSim) this.prediction.seeTargets(s)
   }
 
   /** The Inputs to send this animation frame. Each frame runs your predicted Body one tick. */
   inputsToSend(dt: number, held: Held): Input[] {
-    if (!this.#connected) return []
+    if (!this.#playing) held.takeButtons() // so a press made while you can't play casts nothing later
+    if (!this.#connected || this.otherSim !== undefined) return []
     if (!this.#playing) {
       const input = this.input.moveChanged(held.move)
       return input ? [input] : []
     }
-    const { move, ground, buttons, view } = held
+    const { move, ground, view } = held
     return this.input.step(dt, this.tickSeconds, (seq) => {
       // The server casts from where this frame moves your Body, so aim from there.
       const at = this.prediction.peek(move.x, move.y)
       const aim = ground ? { x: ground.x - at.x, y: ground.y - at.y } : { x: 0, y: 0 }
+      const buttons = held.takeButtons()
       const frame = { MoveX: move.x, MoveY: move.y, AimX: aim.x, AimY: aim.y, Buttons: buttons, ViewTick: view ?? 0 }
-      return { ...frame, Claims: this.prediction.step({ Seq: seq, ...frame, Claims: [] }, this.tickSeconds) }
+      this.prediction.step({ Seq: seq, ...frame }, this.tickSeconds)
+      return frame
     })
   }
 }

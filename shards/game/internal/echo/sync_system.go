@@ -8,11 +8,13 @@ import (
 	"echo_image/shards/game/internal/echo/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/netsync"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
 // syncRow is what players see of an Echo.
 type syncRow struct {
+	Spawn     ref.Spawn
 	Echo      component.Echo
 	Health    combatcomp.Health
 	Team      team.Team
@@ -46,6 +48,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 		pos := e.Get[physics2d.Transform2D]().Position
 		echoes.Add(e, netsync.Everyone, EchoState{
 			EntityID: uint32(e.ID()),
+			Serial:   e.Get[ref.Spawn]().Serial,
 			PlayerID: e.Get[component.Echo]().PlayerID,
 			Owner:    uint32(e.Get[team.Owner]().Body),
 			Team:     e.Get[team.Team]().ID,

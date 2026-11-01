@@ -11,12 +11,12 @@ import (
 
 // Tuning is the shot types and their rules, loaded from content/projectile/tuning.json. What a shot
 // does when it meets a thing is a rule: the shot type's own rules first, then the defaults, and the
-// first match wins. A hit claim's view may be up to RewindSeconds old.
+// first match wins. A predicted shot meets Bodies and Echoes as its client drew them, up to RewindSeconds
+// before.
 type Tuning struct {
-	Defaults       []Meet          `json:"defaults"`         // the GDD's rules (§7), under every shot type's own
-	Shots          map[string]Shot `json:"shots"`            // by shot type ID
-	RewindSeconds  float64         `json:"rewind_seconds"`   // how long before its tick a hit claim's view may be
-	MaxTargetSpeed float64         `json:"max_target_speed"` // the fastest a Body or Echo moves, units per second
+	Defaults      []Meet          `json:"defaults"`       // the GDD's rules (§7), under every shot type's own
+	Shots         map[string]Shot `json:"shots"`          // by shot type ID
+	RewindSeconds float64         `json:"rewind_seconds"` // the oldest view a predicted shot is judged at
 }
 
 // Shot is a shot type.
@@ -44,9 +44,12 @@ const (
 	Stop                 // ends at the thing
 )
 
-// meetable is the kinds a shot can meet: the map kinds it sweeps, and the Bodies and Echoes it is
-// flown past.
-const meetable = interact.Wall | interact.Bounds | interact.Body | interact.Echo
+// meetable is the kinds a shot can meet: the map's, and its targets'.
+const meetable = interact.Map | targetKinds
+
+// targetKinds is the kinds a shot meets by whose they are (their side and tags): Bodies and Echoes,
+// which keep rows (Row), so a predicted shot meets them at its view.
+const targetKinds = interact.Body | interact.Echo
 
 // Name is the data-catalog key used by data.Get[projectile.ProjectileTuning]().
 func (Tuning) Name() string { return "projectile_tuning" }
@@ -59,11 +62,14 @@ func (t Tuning) RewindTicks() uint64 {
 	return uint64(math.Round(t.RewindSeconds * float64(timestep.Rate)))
 }
 
+// KeptRows is how many ticks of rows a target keeps: every view View allows is drawn from them.
+func (t Tuning) KeptRows() uint64 { return t.RewindTicks() + 1 }
+
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t Tuning) Validate() error {
-	if !(t.RewindSeconds > 0) || t.RewindTicks() < 1 || !(t.MaxTargetSpeed > 0) {
-		return fmt.Errorf("projectile_tuning: rewind_seconds must be >= 1 tick at %d Hz and max_target_speed > 0, "+
-			"got %v and %v", timestep.Rate, t.RewindSeconds, t.MaxTargetSpeed)
+	if !(t.RewindSeconds > 0) || t.RewindTicks() < 1 {
+		return fmt.Errorf("projectile_tuning: rewind_seconds must be >= 1 tick at %d Hz, got %v", timestep.Rate,
+			t.RewindSeconds)
 	}
 	if err := validMeets("defaults", t.Defaults); err != nil {
 		return err

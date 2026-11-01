@@ -8,6 +8,7 @@ export const BodySyncEvent: Message<BodySync> = { name: 'body_sync' }
 export interface BodySync {
   Tick: bigint // uint64
   TickSeconds: number
+  SimVersion: string // the sim the shard runs: your predictor predicts only with the same
   You: YouState
   Bodies: BodyState[]
 }
@@ -17,12 +18,16 @@ export interface YouState {
   Body: number // uint32 EntityID
   InputSession: number // uint32
   InputAck: number // uint32
+  InputQueued: number // uint32: frames waiting on the server for later ticks, which pace yours
+  InputCap: number // uint32: the most frames the server queues: it drops an Input with more
   MoveSpeed: number
   Champion: string // the champion your Body plays: its kit
   Cooldowns: CooldownEntry[] // when each ability your Body has cast is ready again
   Effects: EffectEntry[] // your Body's timed effects, for the predictor
   EffectsNext: number // uint32: the last serial your Body's effect list gave out
-  Shots: ShotState[] // the shots your Body cast that are in flight
+  Shots: ShotState[] // the shots in flight your predictor flies: your frames cast them
+  EchoDelay: number // uint32: ticks your Echo trails your Body; 0 with no Echo
+  EchoPath: { X: number; Y: number }[] // your Echo this tick, then its spot on each next tick
 }
 
 /** cast.Cooldown: shards/game/internal/ability/cast/cast.go */
@@ -52,6 +57,8 @@ export interface ShotState {
   Ability: string // the ability that cast it
   Seq: number // uint32: the input frame that cast it
   Launch: number // uint32: its place among that cast's launches
+  PrevX: number // where its flight this tick began
+  PrevY: number
   X: number
   Y: number
   VelX: number // units per second
@@ -62,7 +69,8 @@ export interface ShotState {
 
 /** player.BodyState */
 export interface BodyState {
-  EntityID: number // uint32
+  EntityID: number // uint32: names it in this tick's syncs
+  Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
   PlayerID: number // uint32
   Nickname: string
   Team: number // uint8

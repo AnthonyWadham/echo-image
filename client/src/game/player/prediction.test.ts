@@ -1,64 +1,63 @@
 import { describe, expect, test } from 'vitest'
 import type { BodyState, BodySync, ShotState } from './body_sync_event'
-import type { HitClaim, InputFrame } from './input_command'
+import type { InputFrame } from './input_command'
 import { Prediction } from './prediction'
-import type { PredictedShot, Predictor } from './predictor'
+import type { EndedShot, PredictedEcho, PredictedShot, Predictor } from './predictor'
 
 const tickSeconds = 0.05
 const keep = Math.exp(-tickSeconds / 0.1) // what a tick leaves of a correction
 
-type Shot = PredictedShot & Pick<HitClaim, 'Seq' | 'Ability' | 'Launch'>
 
 /**
  * A stand-in for the wasm: each frame moves the Body by its move, and button 0 casts a shot that flies
- * up 1 a tick. A new frame with a view ends every shot in flight on Body 9, half way up its tick: its
- * claims.
+ * up 1 a tick. A frame with a view ends every shot in flight half way up its tick, on Body 2 there.
+ * Your Echo, if the sync has one, trails your Body a tick.
  */
 function predictor(): Predictor {
   let at = { x: 0, y: 0 }
   let tick = 0
-  let shots: Shot[] = []
-  const run = (f: InputFrame, ended: readonly HitClaim[]) => {
-    tick++
-    at = { x: at.x + f.MoveX, y: at.y + f.MoveY }
-    shots = shots.filter((s) => !ended.some((c) => c.Seq === s.Seq && c.Ability === s.Ability && c.Launch === s.Launch))
-    if (f.Buttons & 1) {
-      const key = { Seq: f.Seq, Ability: 'bolt', Launch: 0 }
-      shots.push({ Type: 'bolt', ...key, X: at.x, Y: at.y, PrevX: at.x, PrevY: at.y, Radius: 0.25 })
-    }
-    shots = shots.map((s) => ({ ...s, PrevX: s.X, PrevY: s.Y, Y: s.Y + 1 }))
-  }
+  let shots: PredictedShot[] = []
+  let echo: PredictedEcho | undefined
   return {
+    version: 'this build',
     reset: (sync, you) => {
       at = { x: you.X, y: you.Y }
       tick = Number(sync.Tick)
-      shots = sync.You.Shots.map(({ Type, Seq, Ability, Launch, X, Y, Radius }) => ({
-        Type, Seq, Ability, Launch, X, Y, PrevX: X, PrevY: Y, Radius,
+      shots = sync.You.Shots.map(({ Type, Seq, Ability, Launch, X, Y, PrevX, PrevY, Radius }) => ({
+        Type, Seq, Ability, Launch, X, Y, PrevX, PrevY, Radius,
       }))
+      const e = sync.You.EchoPath[0]
+      echo = e && { ...e, PrevX: e.X, PrevY: e.Y }
     },
-    seeBodies: () => {},
-    seeEchoes: () => {},
+    seeTargets: () => {},
     forget: () => {},
     peek: (x, y) => ({ x: at.x + x, y: at.y + y }),
     step: (f) => {
-      const hit = ({ Seq, Ability, Launch }: Shot): HitClaim => ({ Seq, Ability, Launch, Target: 9 })
-      const claims = f.ViewTick > 0 ? shots.map(hit) : []
-      const end = ({ Type, X, Y, Radius }: Shot) => ({ Type, X, Y: Y + 0.5, PrevX: X, PrevY: Y, Radius, Until: 0.5 })
+      tick++
+      if (echo) echo = { X: at.x, Y: at.y, PrevX: echo.X, PrevY: echo.Y }
+      at = { x: at.x + f.MoveX, y: at.y + f.MoveY }
+      const end = ({ Type, Seq, Ability, Launch, X, Y, Radius }: PredictedShot): EndedShot => ({
+        ...{ Type, Seq, Ability, Launch, X, Y: Y + 0.5, PrevX: X, PrevY: Y, Radius, Until: 0.5 },
+        ...{ OnTarget: true, TargetSerial: 2n, OffsetX: 0, OffsetY: -0.75 },
+      })
       const ended = f.ViewTick > 0 ? shots.map(end) : []
-      run(f, claims)
-      return { at, claims, ended }
+      if (f.ViewTick > 0) shots = []
+      if (f.Buttons & 1) {
+        const key = { Seq: f.Seq, Ability: 'bolt', Launch: 0 }
+        shots.push({ Type: 'bolt', ...key, X: at.x, Y: at.y, PrevX: at.x, PrevY: at.y, Radius: 0.25 })
+      }
+      shots = shots.map((s) => ({ ...s, PrevX: s.X, PrevY: s.Y, Y: s.Y + 1 }))
+      return { at, ended }
     },
-    replay: (f) => {
-      run(f, f.Claims)
-      return at
-    },
-    shots: () => shots.map(({ Type, X, Y, PrevX, PrevY, Radius }) => ({ Type, X, Y, PrevX, PrevY, Radius })),
+    shots: () => [...shots],
+    echo: () => echo,
     kit: () => ({ Tick: tick, Slots: [{ Ability: 'bolt', ReadyTick: 0 }] }),
   }
 }
 
 const you = (x: number): BodyState => ({
   EntityID: 1,
+  Serial: 1n,
   PlayerID: 1,
   Nickname: 'P1',
   Team: 0,
@@ -70,16 +69,21 @@ const you = (x: number): BodyState => ({
 const sync = (x: number): BodySync => ({
   Tick: 100n,
   TickSeconds: tickSeconds,
+  SimVersion: 'this build',
   You: {
     Body: 1,
     InputSession: 7,
     InputAck: 0,
+    InputQueued: 1,
+    InputCap: 10,
     MoveSpeed: 5,
     Champion: 'starter',
     Cooldowns: [],
     Effects: [],
     EffectsNext: 0,
     Shots: [],
+    EchoDelay: 0,
+    EchoPath: [],
   },
   Bodies: [you(x)],
 })
@@ -91,7 +95,6 @@ const move = (x: number, buttons = 0, seq = 0): InputFrame => ({
   AimY: 0,
   Buttons: buttons,
   ViewTick: 0,
-  Claims: [],
 })
 const right = (seq: number): InputFrame => move(1, 0, seq)
 
@@ -147,6 +150,7 @@ describe('Prediction', () => {
     expect(p.position).toBeUndefined()
     expect(() => p.step(move(1), tickSeconds)).toThrow()
     expect(() => p.peek(1, 0)).toThrow()
+    expect(() => p.drawn(0)).toThrow()
     expect(p.shots(0)).toEqual([])
     expect(p.kit).toBeUndefined()
     p.reconcile(sync(5), you(5), [])
@@ -169,64 +173,137 @@ describe('Prediction', () => {
     expect(p.shots(1)).toEqual([])
     const s = sync(2)
     s.You.Shots = [
-      { Type: 'bolt', Ability: 'bolt', Seq: 3, Launch: 0, X: 2, Y: 3, VelX: 0, VelY: 1, Radius: 0.25, Remaining: 4 },
+      {
+        ...{ Type: 'bolt', Ability: 'bolt', Seq: 3, Launch: 0 },
+        ...{ PrevX: 2, PrevY: 2, X: 2, Y: 3, VelX: 0, VelY: 1, Radius: 0.25, Remaining: 4 },
+      },
     ]
     p.reconcile(s, you(2), [right(4)])
     expect(p.shots(1)).toEqual([{ Type: 'bolt', X: 2, Y: 4, Radius: 0.25 }])
   })
 
-  test('a shot your frame ended stays hidden while a frame claims it or the server lists it', () => {
+  test('a correction keeps your shots where they are drawn, then they fade with your Body to where they end', () => {
+    const p = new Prediction(predictor())
+    p.reconcile(sync(0), you(0), [])
+    const frames = [right(1), move(0, 1, 2)] // walk to x = 1, then cast there
+    for (const f of frames) p.step(f, tickSeconds)
+    p.reconcile(sync(0.5), you(0.5), frames) // the server's Body is half a unit ahead, so its shot left from 1.5
+    expect(p.shots(1)).toEqual([{ Type: 'bolt', X: 1, Y: 1, Radius: 0.25 }])
+    p.step(move(0, 0, 3), tickSeconds)
+    expect(p.shots(0)).toEqual([{ Type: 'bolt', X: 1, Y: 1, Radius: 0.25 }])
+    expect(p.shots(1)[0]?.X).toBeCloseTo(1.5 - 0.5 * keep)
+    expect(p.drawn(1).x).toBeCloseTo(1.5 - 0.5 * keep)
+    p.step({ ...move(0, 0, 4), ViewTick: 97.5 }, tickSeconds) // it ends at y = 2.5
+    expect(p.shots(0)[0]?.X).toBeCloseTo(1.5 - 0.5 * keep)
+    expect(p.shots(0.5)).toEqual([{ Type: 'bolt', X: 1.5, Y: 2.5, Radius: 0.25 }])
+  })
+
+  test('a shot cast while your Body fades leaves where your Body is drawn', () => {
+    const p = ahead()
+    p.reconcile(sync(0.5), you(0.5), [right(2)]) // the server is half a unit behind
+    p.step(move(0, 1, 3), tickSeconds) // casts at x = 1.5
+    expect(p.shots(0)[0]?.X).toBeCloseTo(1.5 + 0.5 * keep)
+    expect(p.shots(0)[0]?.X).toBeCloseTo(p.drawn(1).x)
+  })
+
+  test('a shot a correction moves far jumps', () => {
+    const p = new Prediction(predictor())
+    p.reconcile(sync(0), you(0), [])
+    const cast = move(0, 1, 1)
+    p.step(cast, tickSeconds)
+    p.reconcile(sync(5), you(5), [cast]) // the server's Body, and so its shot, are 5 units over
+    expect(p.shots(0.5)).toEqual([{ Type: 'bolt', X: 5, Y: 0.5, Radius: 0.25 }])
+  })
+
+  test('a replay ends your shot as the step did, and a shot the server flew on shows', () => {
     const p = new Prediction(predictor())
     p.reconcile(sync(0), you(0), [])
     const cast = move(0, 1, 1)
     p.step(cast, tickSeconds)
     const hit: InputFrame = { ...move(0, 0, 2), ViewTick: 97.5 }
-    const claims = p.step(hit, tickSeconds)
-    expect(claims).toEqual([{ Seq: 1, Ability: 'bolt', Launch: 0, Target: 9 }])
+    p.step(hit, tickSeconds)
     expect(p.shots(1)).toEqual([])
-    p.reconcile(sync(0), you(0), [cast, { ...hit, Claims: claims }]) // the server has neither frame
+    p.reconcile(sync(0), you(0), [cast, hit]) // the server has applied neither frame
     expect(p.shots(1)).toEqual([])
-    const listed = sync(0)
+    const flying = sync(0)
     const shot: ShotState = {
       ...{ Type: 'bolt', Ability: 'bolt', Seq: 1, Launch: 0 },
-      ...{ X: 0, Y: 1, VelX: 0, VelY: 1, Radius: 0.25, Remaining: 4 },
+      ...{ PrevX: 0, PrevY: 1, X: 0, Y: 2, VelX: 0, VelY: 1, Radius: 0.25, Remaining: 4 },
     }
-    listed.You.Shots = [shot]
-    p.reconcile(listed, you(0), [{ ...hit, Claims: claims }]) // the server hasn't applied the claim yet
-    expect(p.shots(1)).toEqual([])
-    p.reconcile(listed, you(0), []) // it rejected the claim, and its shot flies on
-    expect(p.shots(1)).toEqual([])
-    p.reconcile(sync(0), you(0), []) // then that shot is gone too
-    p.reconcile(listed, you(0), []) // so a shot with its key would show
-    expect(p.shots(1)).toEqual([{ Type: 'bolt', X: 0, Y: 1, Radius: 0.25 }])
+    flying.You.Shots = [shot]
+    p.reconcile(flying, you(0), []) // it applied both, and its shot met nothing
+    expect(p.shots(1)).toEqual([{ Type: 'bolt', X: 0, Y: 2, Radius: 0.25 }])
+    expect(p.shots(0.5)).toEqual([{ Type: 'bolt', X: 0, Y: 1.5, Radius: 0.25 }]) // flying the server's tick
   })
 
-  test('a shot that ended in the newest tick flies on to where it ended, even after a body_sync', () => {
+  test('a shot that ended in the newest tick flies on to where it ended, through body_syncs', () => {
     const p = new Prediction(predictor())
     p.reconcile(sync(0), you(0), [])
     const cast = move(0, 1, 1)
     p.step(cast, tickSeconds) // the shot flies up to y = 1
     const hit: InputFrame = { ...move(0, 0, 2), ViewTick: 97.5 }
-    const claims = p.step(hit, tickSeconds) // and ends at y = 1.5, half way through the tick
+    p.step(hit, tickSeconds) // and ends at y = 1.5, half way through the tick
     expect(p.shots(0)).toEqual([{ Type: 'bolt', X: 0, Y: 1, Radius: 0.25 }])
     expect(p.shots(0.25)).toEqual([{ Type: 'bolt', X: 0, Y: 1.25, Radius: 0.25 }])
     expect(p.shots(0.5)).toEqual([{ Type: 'bolt', X: 0, Y: 1.5, Radius: 0.25 }])
     expect(p.shots(0.6)).toEqual([])
-    p.reconcile(sync(0), you(0), [cast, { ...hit, Claims: claims }])
+    p.reconcile(sync(0), you(0), [cast, hit]) // the replay ends it again
+    expect(p.shots(0.25)).toEqual([{ Type: 'bolt', X: 0, Y: 1.25, Radius: 0.25 }])
+    p.reconcile(sync(0), you(0), []) // the server applied both: nothing to replay
     expect(p.shots(0.25)).toEqual([{ Type: 'bolt', X: 0, Y: 1.25, Radius: 0.25 }])
     p.step(move(0, 0, 3), tickSeconds)
     expect(p.shots(0)).toEqual([])
   })
 
-  test('a replay ends the shots its frame claimed, and claims none', () => {
+  test('a correction keeps where an ending shot is drawn from, and it still ends where it ended', () => {
     const p = new Prediction(predictor())
     p.reconcile(sync(0), you(0), [])
     const cast = move(0, 1, 1)
+    const hit: InputFrame = { ...move(0, 0, 2), ViewTick: 97.5 }
     p.step(cast, tickSeconds)
-    const viewed: InputFrame = { ...move(0, 0, 2), ViewTick: 97.5, Claims: [] }
-    p.reconcile(sync(0), you(0), [cast, viewed])
-    expect(p.shots(1)).toEqual([{ Type: 'bolt', X: 0, Y: 2, Radius: 0.25 }])
-    p.reconcile(sync(0), you(0), [cast, { ...viewed, Claims: [{ Seq: 1, Ability: 'bolt', Launch: 0, Target: 9 }] }])
-    expect(p.shots(1)).toEqual([])
+    p.step(hit, tickSeconds) // the shot flies on from y = 1 and ends at y = 1.5
+    p.reconcile(sync(0.5), you(0.5), [cast, hit]) // the server's shot left half a unit over
+    expect(p.shots(0)).toEqual([{ Type: 'bolt', X: 0, Y: 1, Radius: 0.25 }])
+    expect(p.shots(0.5)).toEqual([{ Type: 'bolt', X: 0.5, Y: 1.5, Radius: 0.25 }])
+  })
+
+  test('a shot that ended on a Body ends where end says this screen draws it', () => {
+    const p = new Prediction(predictor())
+    p.reconcile(sync(0), you(0), [])
+    p.step(move(0, 1, 1), tickSeconds) // the shot flies up to y = 1
+    p.step({ ...move(0, 0, 2), ViewTick: 97.5 }, tickSeconds) // and ends on Body 2, half way through the tick
+    const end = (s: EndedShot) => (s.OnTarget && s.TargetSerial === 2n ? { X: 3, Y: 4 } : undefined)
+    expect(p.shots(0.25, end)).toEqual([{ Type: 'bolt', X: 1.5, Y: 2.5, Radius: 0.25 }])
+    expect(p.shots(0.25)).toEqual([{ Type: 'bolt', X: 0, Y: 1.25, Radius: 0.25 }])
+  })
+
+  test('draws your Echo where the frames take it, through the newest tick, and none without one', () => {
+    const p = new Prediction(predictor())
+    const s = sync(0)
+    p.reconcile(s, you(0), [])
+    expect(p.echo(0.5)).toBeUndefined()
+    s.You.EchoDelay = 20
+    s.You.EchoPath = [{ X: -1, Y: 0 }]
+    p.reconcile(s, you(0), [right(1), right(2)]) // after the replays, it goes from x = 0 to 1
+    expect(p.echo(0)).toEqual({ x: 0, y: 0 })
+    expect(p.echo(0.5)).toEqual({ x: 0.5, y: 0 })
+    p.step(right(3), tickSeconds)
+    expect(p.echo(1)).toEqual({ x: 2, y: 0 })
+    p.clear()
+    expect(p.echo(0.5)).toBeUndefined()
+  })
+
+  test('a correction keeps your Echo where it is drawn, then fades', () => {
+    const p = new Prediction(predictor())
+    const s = sync(0)
+    s.You.EchoDelay = 20
+    s.You.EchoPath = [{ X: -1, Y: 0 }]
+    p.reconcile(s, you(0), [])
+    const frames = [right(1), right(2)]
+    for (const f of frames) p.step(f, tickSeconds) // your Echo goes from x = 0 to 1
+    p.reconcile(s, you(0.5), frames) // the server's Body is half a unit ahead, and so is your Echo
+    expect(p.echo(1)).toEqual({ x: 1, y: 0 })
+    p.step(right(3), tickSeconds)
+    expect(p.echo(1)?.x).toBeCloseTo(2.5 - 0.5 * keep)
   })
 })

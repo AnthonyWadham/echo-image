@@ -166,7 +166,7 @@ type Owner struct{ Body uint32 }
 - **Owns:** `Abilities` (cooldowns built; recast stage new), `Kit{ID}` (what a thing can cast).
 - **Executor:** `CastSystem` (the gate, built). It calls a pure `Gate` func, so the predictor runs the same gate.
 - **Hook runners:** `CastHookSystem` (OnCast, before LaunchSystem) and `HitHookSystem` (OnHit and procs, after
-  FlightSystem).
+  FlightSystem). OnCast runs through a pure `cast.Run`, so the predictor runs the same glue (built 2026-11-01).
 - **Ability row:** `cooldown_seconds`, `aimed` (built), `hook`, `params`, `recast_seconds`, `button` (false for a
   passive or item), `target` (a filter, for targeted abilities).
 - **Passives and items:** an ability with `button: false`. Holding it applies its forever effect (stats, tags, shot
@@ -235,8 +235,9 @@ type Projectile struct {
   `echo_delay` stat changes it. When the target delay changes, the Echo moves toward it along its recorded path at a
   bounded rate, so it never jumps. The rate is data, and the history buffer covers the longest delay content allows
   (GDD §9 #5 stays open: all three answers work).
-- **Rewind** is a one-shot effect that ReplaySystem reads, used by Echo-Swap. The reverse logic stays inside
-  ReplaySystem until the client predicts Echoes.
+- **Rewind** is a one-shot effect that ReplaySystem reads, used by Echo-Swap. Your client predicts your Echo from
+  the ring's next poses (`PathHistory.Path`, sent in body_sync), so a rewind or a delay change must change that path
+  the same way: build its rule as shared code, with its first user.
 - **`SpawnEchoIntent{Body, X, Y}`** means replace, so there is still one Echo per Body (GDD §3).
 
 ### Area (new; replaces `combat.AntiCampSystem`)
@@ -249,7 +250,9 @@ type Projectile struct {
 - **Consume:** a rule can use the area up for N seconds. The area itself sets `ReadyTick`, so a pickup needs no
   feature of its own.
 - **Placed things:** `area.PlaceSystem` is the one constructor for zones, barriers and pickups. Abilities place
-  them with an `AreaIntent`; the map places pickups.
+  them with an `AreaIntent`; the map places pickups. A barrier shots meet carries `TargetHistory`, and its kind
+  joins `flight.targetKinds`: shots judge it by its rows, and `TargetSync` sends them. That target record is built
+  (2026-11-01); barriers aren't.
 - **Anti-camp is its first user.** The Echo's constructor gives it an area with the `anticamp` rule. The warmup is
   the area's `Start`. A champion could carry a different rule.
 
@@ -263,6 +266,9 @@ type Projectile struct {
 - A component-only leaf: `Spawn{Serial}` on every entity, stamped by its constructor from one world counter, and
   `Ref{ID, Serial}`.
 - A lookup through a Ref treats a serial mismatch as "gone".
+- Built 2026-11-01 for syncs, its first user: `ref.Spawn` and `ref.Next` (the counter is saved with the world).
+  Every synced state carries `Serial`, and clients and the predictor key what they keep across ticks by it. The
+  `Ref{ID, Serial}` struct comes with the first component that stores a reference to a thing that can die.
 
 ### Sync
 - `netsync` is unchanged. A new feature adds its own `SyncSystem` (areas: `AreaSync`).
@@ -361,7 +367,8 @@ var echoSwap = Def[echoSwapParams]{
 - `ability.HitHookSystem` (Update, after `projectile.FlightSystem`): each `ShotHit` runs `OnHit` of
   `hit.Cause.Ability`, then the OnHit of passives the involved things hold (attacker, then target), sorted.
 - `OnHit` may not launch shots yet. No case needs it. When one does, add a per-hit cap and an inherited budget.
-- The runner turns `Out` into each owner's intents. Seconds become ticks here.
+- The runner turns `Out` into each owner's intents. Seconds become ticks here. For OnCast, `cast.Run` hands each
+  request to a `cast.Sink`: the server's emits intents, and the predictor's keeps what your client draws.
 - A hit reaches its hook through `ShotHit`, which comes from projectile's own leaf and carries `Cause`. Projectile
   never learns that abilities exist.
 

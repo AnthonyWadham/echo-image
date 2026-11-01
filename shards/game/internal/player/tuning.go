@@ -11,8 +11,9 @@ import (
 // Read it via data.Get[MovementTuning]() at system entry — never hardcode the speed. It's a Singleton
 // (one JSON object).
 type MovementTuning struct {
-	InputBufferSeconds  float64                `json:"input_buffer_seconds"`  // most input a Body queues; older frames drop
+	InputBufferSeconds  float64                `json:"input_buffer_seconds"`  // abuse cap on queued input; older drops
 	InputTimeoutSeconds float64                `json:"input_timeout_seconds"` // a Body with no input this long stops
+	EchoPathSeconds     float64                `json:"echo_path_seconds"`     // how much Echo path YouState sends
 	Champions           map[string]ChampionDef `json:"champions"`             // by champion ID
 	DevChampion         string                 `json:"dev_champion"`          // the champion DevSpawnSystem's Bodies play
 }
@@ -34,6 +35,12 @@ func (t MovementTuning) BufferFrames() int {
 	return int(math.Round(t.InputBufferSeconds * float64(physics.ServerTickRateHz)))
 }
 
+// EchoPathTicks converts EchoPathSeconds to ticks: how much of your Echo's coming path YouState
+// carries.
+func (t MovementTuning) EchoPathTicks() int {
+	return int(math.Round(t.EchoPathSeconds * float64(physics.ServerTickRateHz)))
+}
+
 // TimeoutTicks converts InputTimeoutSeconds to ticks.
 func (t MovementTuning) TimeoutTicks() uint64 {
 	return uint64(math.Round(t.InputTimeoutSeconds * float64(physics.ServerTickRateHz)))
@@ -41,9 +48,9 @@ func (t MovementTuning) TimeoutTicks() uint64 {
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t MovementTuning) Validate() error {
-	if t.BufferFrames() < 1 || t.TimeoutTicks() < 1 {
-		return fmt.Errorf("movement_tuning: input_buffer_seconds and input_timeout_seconds must be >= 1 tick at %d Hz, got %+v",
-			physics.ServerTickRateHz, t)
+	if t.BufferFrames() < 1 || t.TimeoutTicks() < 1 || t.EchoPathTicks() < 0 {
+		return fmt.Errorf("movement_tuning: input_buffer_seconds and input_timeout_seconds must be >= 1 tick at %d Hz, "+
+			"and echo_path_seconds >= 0, got %+v", physics.ServerTickRateHz, t)
 	}
 	for id, c := range t.Champions {
 		if c.MoveSpeed < 0 || c.Radius <= 0 {

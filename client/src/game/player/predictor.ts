@@ -1,13 +1,16 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
-import type { EchoSync } from '../echo/echo_sync_event'
+import type { TargetSync } from '../projectile/target_sync_event'
 import type { BodyState, BodySync } from './body_sync_event'
-import type { HitClaim, InputFrame } from './input_command'
+import type { InputFrame } from './input_command'
 import wasmUrl from './predictor.wasm?url'
 
-/** One of your shots after the newest tick: where it is, and where it was a tick before. */
+/** One of your shots after the newest tick: its key, where it is, and where it was a tick before. */
 export interface PredictedShot {
   Type: string
+  Seq: number
+  Ability: string
+  Launch: number
   X: number
   Y: number
   PrevX: number
@@ -21,50 +24,65 @@ export interface PredictedKit {
   Slots: { Ability: string; ReadyTick: number }[]
 }
 
-/** One of your shots that ended in the newest tick: X, Y is where it ended, Until (0 to 1) through the tick. */
-export interface EndedShot extends PredictedShot {
-  Until: number
+/** Your Echo after the newest tick, and where it was a tick before. */
+export interface PredictedEcho {
+  X: number
+  Y: number
+  PrevX: number
+  PrevY: number
 }
 
-/** A new frame's tick: where it leaves your Body, its claims, and your shots that ended in it. */
+/**
+ * One of your shots that ended in the newest tick: X, Y is where it ended, Until (0 to 1) through the
+ * tick. One that met a Body or Echo (OnTarget) did so Offset from the center of the one with serial
+ * TargetSerial.
+ */
+export interface EndedShot extends PredictedShot {
+  Until: number
+  OnTarget: boolean
+  TargetSerial: bigint
+  OffsetX: number
+  OffsetY: number
+}
+
+/** A frame's tick: where it leaves your Body, and your shots that ended in it. */
 export interface Stepped {
   at: Vec2
-  claims: HitClaim[]
   ended: EndedShot[]
 }
 
 /** The server's own code for your Body and what it casts: shards/game/predictor, built to wasm. */
 export interface Predictor {
+  /** The sim it runs: the SimVersion a shard built from the same tree sends. */
+  readonly version: string
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync, you: BodyState): void
-  /** Keeps the Bodies a body_sync shows, so your shots meet them where your screen drew them. */
-  seeBodies(sync: BodySync): void
-  /** Keeps the Echoes an echo_sync shows, the same way. */
-  seeEchoes(sync: EchoSync): void
-  /** Forgets the Bodies and Echoes it saw: after a reconnect or a server restart. */
+  /** Keeps the targets a target_sync shows, so your shots meet them where your screen drew them. */
+  seeTargets(sync: TargetSync): void
+  /** Forgets the targets it saw: after a reconnect or a server restart. */
   forget(): void
   /** Where a frame's move would leave your Body next tick, without stepping: aim from there. */
   peek(moveX: number, moveY: number): Vec2
-  /** Runs the next tick for a new frame, as the server will. Your shots meet others where its ViewTick drew them. */
+  /** Runs the next tick for a frame, new or replayed, as the server will. Shots meet others at its ViewTick. */
   step(frame: InputFrame): Stepped
-  /** Runs the next tick for a frame stepped before: the shots it claimed end, and it claims none. */
-  replay(frame: InputFrame): Vec2
   /** Your shots after the newest tick. */
   shots(): PredictedShot[]
+  /** Your Echo after the newest tick, or undefined with none. */
+  echo(): PredictedEcho | undefined
   /** Your kit after the newest tick. */
   kit(): PredictedKit
 }
 
 /** What shards/game/predictor/main.go sets on globalThis. */
 interface Exports {
+  version: string
   reset(state: object): void
-  seeBodies(sync: object): void
-  seeEchoes(sync: object): void
+  seeTargets(sync: object): void
   forget(): void
   peek(moveX: number, moveY: number): Vec2
-  step(frame: InputFrame): Vec2 & { claims: HitClaim[]; ended: EndedShot[] }
-  replay(frame: InputFrame): Vec2
+  step(frame: InputFrame): Vec2 & { ended: (Omit<EndedShot, 'TargetSerial'> & { TargetSerial: string })[] }
   shots(): PredictedShot[]
+  echo(): PredictedEcho | null
   kit(): PredictedKit
 }
 
@@ -75,9 +93,10 @@ export async function loadPredictor(wasm?: BufferSource): Promise<Predictor> {
   const exports = globals.echoPredictor
   if (!exports) throw new Error(globals.echoPredictorError ?? 'predictor.wasm ran but set no echoPredictor')
   return {
+    version: exports.version,
     // A uint64 goes as a decimal string, since a number can't hold every one.
     reset: (sync, you) => {
-      const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots } = sync.You
+      const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } = sync.You
       exports.reset({
         Tick: String(sync.Tick),
         Body,
@@ -97,20 +116,23 @@ export async function loadPredictor(wasm?: BufferSource): Promise<Predictor> {
         })),
         EffectsNext,
         Shots,
+        EchoDelay,
+        EchoPath,
       })
     },
-    seeBodies: (sync) =>
-      exports.seeBodies({ Tick: String(sync.Tick), Bodies: sync.Bodies.map((b) => ({ ...b, Tags: String(b.Tags) })) }),
-    seeEchoes: (sync) =>
-      exports.seeEchoes({ Tick: String(sync.Tick), Echoes: sync.Echoes.map((e) => ({ ...e, Tags: String(e.Tags) })) }),
+    seeTargets: (sync) =>
+      exports.seeTargets({
+        Tick: String(sync.Tick),
+        Targets: sync.Targets.map((t) => ({ ...t, Serial: String(t.Serial), Kind: String(t.Kind), Tags: String(t.Tags) })),
+      }),
     forget: () => exports.forget(),
     peek: (moveX, moveY) => exports.peek(moveX, moveY),
     step: (frame) => {
-      const { x, y, claims, ended } = exports.step(frame)
-      return { at: { x, y }, claims, ended }
+      const { x, y, ended } = exports.step(frame)
+      return { at: { x, y }, ended: ended.map((e) => ({ ...e, TargetSerial: BigInt(e.TargetSerial) })) }
     },
-    replay: (frame) => exports.replay(frame),
     shots: () => exports.shots(),
+    echo: () => exports.echo() ?? undefined,
     kit: () => exports.kit(),
   }
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"maps"
 	"math"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
@@ -26,6 +28,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"github.com/vmihailenco/msgpack/v5"
 
+	echoimage "echo_image"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
@@ -46,6 +49,7 @@ import (
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -75,6 +79,13 @@ func tuningOf[T interface{ JSONFile() string }](t *testing.T) T {
 // test can add a shot type or a champion. Objects merge, and anything else replaces.
 func withContent(t *testing.T, patches map[string]string) func(*cardinal.World) {
 	t.Helper()
+	files := patched(t, patches)
+	return func(world *cardinal.World) { registerWith(world, files) }
+}
+
+// patched is the content withContent registers, which a predictor can load too.
+func patched(t *testing.T, patches map[string]string) overlay {
+	t.Helper()
 	files := overlay{}
 	for file, patch := range patches {
 		var base, add map[string]any
@@ -93,7 +104,7 @@ func withContent(t *testing.T, patches map[string]string) func(*cardinal.World) 
 			t.Fatal(err)
 		}
 	}
-	return func(world *cardinal.World) { registerWith(world, files) }
+	return files
 }
 
 func merge(dst, src map[string]any) {
@@ -117,6 +128,14 @@ func (o overlay) Fetch(ctx context.Context, file, hash string) ([]byte, string, 
 		return raw, hex.EncodeToString(sum[:]), nil
 	}
 	return data.EmbedSource{FS: content.FS}.Fetch(ctx, file, hash)
+}
+
+// Open serves the same content as an fs.FS, for a predictor.
+func (o overlay) Open(name string) (fs.File, error) {
+	if raw, ok := o[name]; ok {
+		return fstest.MapFS{name: {Data: raw}}.Open(name)
+	}
+	return content.FS.Open(name)
 }
 
 // sentTo returns the T the last tick sent to player, failing if any T was broadcast or player didn't
@@ -205,17 +224,24 @@ func TestFramesApplyOnePerTickInSeqOrder(t *testing.T) {
 	start := bodiesFor(t, w, "alice")
 
 	// Frames 2 and 3 arrive bunched and out of order: neither is dropped, and they apply in Seq order.
+	// The client is told one waits, so it can pace its frames.
 	w.Command("alice", input(1, frame(3, 0, 1)))
 	w.Command("alice", input(1, frame(2, 1, 0)))
 	w.Tick()
 	a := bodiesFor(t, w, "alice")
 	requireAck(t, a, 2)
 	requireMoved(t, start, a, 1, 0)
+	if a.You.InputQueued != 1 {
+		t.Fatalf("InputQueued = %d with frame 3 waiting, want 1", a.You.InputQueued)
+	}
 
 	w.Tick()
 	b := bodiesFor(t, w, "alice")
 	requireAck(t, b, 3)
 	requireMoved(t, a, b, 0, 1)
+	if b.You.InputQueued != 0 {
+		t.Fatalf("InputQueued = %d with none waiting, want 0", b.You.InputQueued)
+	}
 }
 
 func TestResentAndStaleFramesAreIgnored(t *testing.T) {
@@ -254,19 +280,37 @@ func TestNewSessionStartsOver(t *testing.T) {
 func TestBufferKeepsNewestFrames(t *testing.T) {
 	w := cardinal.NewTestWorld(t, register)
 	limit := uint32(tuningOf[player.MovementTuning](t).BufferFrames())
-
-	// After a stall, 10 frames arrive at once. Only the newest `limit` are kept, so latency stays bounded.
-	var frames []playercomp.InputFrame
-	for seq := uint32(1); seq <= 10; seq++ {
-		frames = append(frames, frame(seq, 1, 0))
+	frames := func(from, to uint32) []playercomp.InputFrame {
+		var fs []playercomp.InputFrame
+		for seq := from; seq <= to; seq++ {
+			fs = append(fs, frame(seq, 1, 0))
+		}
+		return fs
 	}
-	w.Command("alice", input(1, frames...))
+
+	// An Input with more frames than the queue holds is dropped whole, before it claims a Body: YouState
+	// tells clients the cap, so only abuse sends one, and merging it would cost the tick.
+	w.Command("alice", input(1, frames(1, limit+1)...))
 	w.Tick()
-	requireAck(t, bodiesFor(t, w, "alice"), 10-limit+1)
+	if n := len(w.Events[player.BodySync]()); n != 0 {
+		t.Fatalf("sent %d body_syncs after an oversized Input, want it dropped before claiming a Body", n)
+	}
+
+	// More frames than the cap arrive in one tick, over two Inputs, which a paced client never sends.
+	// Only the newest `limit` are kept, so latency stays bounded.
+	n := limit + 5
+	w.Command("alice", input(1, frames(1, limit)...))
+	w.Command("alice", input(1, frames(limit+1, n)...))
+	w.Tick()
+	s := bodiesFor(t, w, "alice")
+	requireAck(t, s, n-limit+1)
+	if s.You.InputCap != limit {
+		t.Fatalf("YouState.InputCap = %d, want the queue's %d", s.You.InputCap, limit)
+	}
 	for range limit - 1 {
 		w.Tick()
 	}
-	requireAck(t, bodiesFor(t, w, "alice"), 10)
+	requireAck(t, bodiesFor(t, w, "alice"), n)
 }
 
 func TestSilentClientStops(t *testing.T) {
@@ -274,13 +318,17 @@ func TestSilentClientStops(t *testing.T) {
 	w.Command("alice", input(1, frame(1, 1, 0)))
 	w.Tick()
 
-	// The client goes silent while moving (alt-tab, crash). After the timeout its Body stops.
-	for range tuningOf[player.MovementTuning](t).TimeoutTicks() + 1 {
+	// The client goes silent while moving (alt-tab, crash). Its Body coasts for input_timeout_seconds,
+	// then stops.
+	for range ticks(tuningOf[player.MovementTuning](t).InputTimeoutSeconds) - 1 {
 		w.Tick()
 	}
 	before := bodiesFor(t, w, "alice")
 	w.Tick()
-	requireMoved(t, before, bodiesFor(t, w, "alice"), 0, 0)
+	after := bodiesFor(t, w, "alice")
+	requireMoved(t, before, after, 1, 0)
+	w.Tick()
+	requireMoved(t, after, bodiesFor(t, w, "alice"), 0, 0)
 }
 
 func TestBadFrameDoesNotMove(t *testing.T) {
@@ -342,20 +390,33 @@ func TestBodyWithoutMovementIsStillShown(t *testing.T) {
 
 // --- Abilities and projectiles ---
 
-// client sends one input frame per call, numbering them the way the Unity client does.
+// client sends one input frame per call, numbering them the way the Unity client does. Its screen
+// draws others back ticks behind the server, so each frame's view is that far before the tick it
+// applies at.
 type client struct {
-	w   *cardinal.TestWorld
-	id  string
-	seq uint32
+	w       *cardinal.TestWorld
+	id      string
+	session uint32
+	seq     uint32
+	back    float64
 }
 
-// send numbers f and sends it, and returns it numbered.
-func (c *client) send(f playercomp.InputFrame) playercomp.InputFrame {
-	c.seq++
-	f.Seq = c.seq
-	c.w.Command(c.id, input(1, f))
+// next is f numbered as c's next frame, with its view.
+func (c *client) next(f playercomp.InputFrame) playercomp.InputFrame {
+	f.Seq, f.ViewTick = c.seq+1, float64(c.w.TickHeight())-c.back
 	return f
 }
+
+// send numbers f, gives it its view and sends it, and returns it as sent.
+func (c *client) send(f playercomp.InputFrame) playercomp.InputFrame {
+	f = c.next(f)
+	c.seq = f.Seq
+	c.w.Command(c.id, input(c.session, f))
+	return f
+}
+
+// restart is c's client starting over: a new session, counting from 1 again.
+func (c *client) restart() { c.session, c.seq = c.session+1, 0 }
 
 func (c *client) move(x, y float64) { c.send(playercomp.InputFrame{MoveX: x, MoveY: y}) }
 
@@ -367,31 +428,6 @@ func (c *client) cast(slot int, aimX, aimY float64) uint32 {
 // fire casts kit slot 0.
 func (c *client) fire(aimX, aimY float64) uint32 { return c.cast(0, aimX, aimY) }
 
-// claim sends a frame with hit claim h, as c drew things back ticks before the tick it applies at.
-func (c *client) claim(h playercomp.HitClaim, back float64) {
-	c.send(playercomp.InputFrame{ViewTick: float64(c.w.TickHeight()) - back, Claims: cardinal.SliceOf(h)})
-}
-
-// fireClaiming fires kit slot 0 aiming (aimX, aimY), and claims in the same frame that the shot hit
-// target at once, as c drew it back ticks before.
-func (c *client) fireClaiming(t *testing.T, aimX, aimY float64, target uint32, back float64) {
-	t.Helper()
-	h := playercomp.HitClaim{Seq: c.seq + 1, Ability: kit(t)[0], Target: target}
-	c.send(playercomp.InputFrame{AimX: aimX, AimY: aimY, Buttons: 1, ViewTick: float64(c.w.TickHeight()) - back,
-		Claims: cardinal.SliceOf(h)})
-}
-
-// claimOn is c's claim that its one shot in flight hit target, keyed as body_sync shows the shot.
-func claimOn(t *testing.T, w *cardinal.TestWorld, c *client, target uint32) playercomp.HitClaim {
-	t.Helper()
-	shots := bodiesFor(t, w, c.id).You.Shots
-	if shots.Len() != 1 {
-		t.Fatalf("%s has %d shots in flight, want 1", c.id, shots.Len())
-	}
-	s := shots.At(0)
-	return playercomp.HitClaim{Seq: s.Seq, Ability: s.Ability, Launch: s.Launch, Target: target}
-}
-
 // firstTouch is the step, counted from the one c's shot left on, whose path first touches a circle of
 // radius r that lies dist from where it left, along its path. Its speed and size come from body_sync.
 func firstTouch(t *testing.T, w *cardinal.TestWorld, c *client, dist, r float64) int {
@@ -400,16 +436,12 @@ func firstTouch(t *testing.T, w *cardinal.TestWorld, c *client, dist, r float64)
 	return int((dist - r - s.Radius) / (math.Hypot(s.VelX, s.VelY) * physics.SecondsPerTick))
 }
 
-// claimAt ticks to step k after the one the shot left on, with c claiming h only in that step's frame,
-// as its predictor would: the step whose path first touches the target.
-func claimAt(w *cardinal.TestWorld, c *client, h playercomp.HitClaim, back float64, k int) {
-	flyFor(w, k-1)
-	c.claim(h, back)
-	w.Tick()
-}
+// drawLag is how far behind the server a client draws, in ticks: its interpolation delay and some ping,
+// 0.125 s.
+const drawLag = 0.125 * physics.ServerTickRateHz
 
-// drawLag is how far behind the server a client draws, in ticks: its interpolation delay and some ping.
-const drawLag = 2.5
+// ticks is seconds in whole ticks at this build's rate, so a test states its times in seconds.
+func ticks(seconds float64) int { return int(math.Round(seconds * physics.ServerTickRateHz)) }
 
 // kit returns the ability IDs of the champion dev Bodies play, slot 0 first.
 func kit(t *testing.T) []string {
@@ -440,7 +472,8 @@ func duel(t *testing.T) (w *cardinal.TestWorld, alice, bob *client) {
 // claim has alice and bob take their Bodies in w (on opposite teams), standing still.
 func claim(t *testing.T, w *cardinal.TestWorld) (alice, bob *client) {
 	t.Helper()
-	alice, bob = &client{w: w, id: "alice"}, &client{w: w, id: "bob"}
+	alice = &client{w: w, id: "alice", session: 1, back: drawLag}
+	bob = &client{w: w, id: "bob", session: 1, back: drawLag}
 	alice.move(0, 0)
 	bob.move(0, 0)
 	w.Tick()
@@ -463,8 +496,8 @@ func echoOf(t *testing.T, w *cardinal.TestWorld, viewer string, owner player.Bod
 }
 
 // fireAtEcho has alice fire at bob's Echo and checks the shot left. It returns the step after that
-// whose path first touches the Echo, short of the shot's range, and her claim that it hit the Echo.
-func fireAtEcho(t *testing.T, w *cardinal.TestWorld, alice *client) (int, playercomp.HitClaim) {
+// whose path first touches the Echo, short of the shot's range.
+func fireAtEcho(t *testing.T, w *cardinal.TestWorld, alice *client) int {
 	t.Helper()
 	from := yourBody(t, bodiesFor(t, w, "alice"))
 	to := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
@@ -478,7 +511,7 @@ func fireAtEcho(t *testing.T, w *cardinal.TestWorld, alice *client) (int, player
 	if dist >= shot.Range-2*shot.Speed*physics.SecondsPerTick {
 		t.Fatalf("bob's Echo is %.1f away, beyond the shot's range", dist)
 	}
-	return firstTouch(t, w, alice, dist, to.Radius), claimOn(t, w, alice, to.EntityID)
+	return firstTouch(t, w, alice, dist, to.Radius)
 }
 
 // moveFor sends c's direction for n ticks, then stops it.
@@ -534,6 +567,8 @@ func readyTick(t *testing.T, w *cardinal.TestWorld, viewer string, body uint32) 
 	return 0, false
 }
 
+// Everyone sees her shot leave her Body: its first tick flies from her spot, and each next from where
+// the last one got to.
 func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
 	w, alice, _ := duel(t)
 	def, _ := primary(t)
@@ -552,8 +587,18 @@ func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
 		t.Fatalf("alice sees %d shots and bob %d, want 1 each", len(shots(t, w, "alice")), len(shots(t, w, "bob")))
 	}
 	// Her client draws it from her predictor instead, by Caster. It flies the whole tick.
-	if s := shots(t, w, "bob")[0]; s.Caster != body || s.Until != 1 {
-		t.Fatalf("the shot's Caster = %d and Until %v, want alice's Body %d and 1", s.Caster, s.Until, body)
+	a, s := yourBody(t, bodiesFor(t, w, "alice")), shots(t, w, "bob")[0]
+	if s.Caster != body || s.Until != 1 || s.PrevX != a.X || s.PrevY != a.Y {
+		t.Fatalf("the shot's Caster = %d, Until %v and start (%v, %v), want alice's Body %d, 1 and her spot (%v, %v)",
+			s.Caster, s.Until, s.PrevX, s.PrevY, body, a.X, a.Y)
+	}
+	if mine := bodiesFor(t, w, "alice").You.Shots.At(0); mine.PrevX != a.X || mine.PrevY != a.Y {
+		t.Fatalf("her own shot starts at (%v, %v), want her spot (%v, %v)", mine.PrevX, mine.PrevY, a.X, a.Y)
+	}
+	w.Tick()
+	if next := shots(t, w, "bob")[0]; next.PrevX != s.X || next.PrevY != s.Y {
+		t.Fatalf("the shot's second tick starts at (%v, %v), want where its first ended, (%v, %v)",
+			next.PrevX, next.PrevY, s.X, s.Y)
 	}
 }
 
@@ -633,15 +678,14 @@ func flyFor(w *cardinal.TestWorld, n int) {
 	}
 }
 
-// alice's client claims her shot hit bob's Echo where it drew it: the server checks the claim, stops
-// the shot there, and damages the Echo. Everyone is sent the shot once more, touching the Echo.
+// alice's shot meets bob's Echo where her screen drew it: the server stops the shot there and damages
+// the Echo. Everyone is sent the shot once more, touching the Echo.
 func TestShotDamagesEnemyEcho(t *testing.T) {
 	w, alice, bob := duel(t)
 	// bob steps off his Echo, which stays at his spawn while its trail warms up.
-	moveFor(w, bob, 0, 1, 10)
+	moveFor(w, bob, 0, 1, ticks(0.5))
 
-	k, h := fireAtEcho(t, w, alice)
-	claimAt(w, alice, h, drawLag, k)
+	flyFor(w, fireAtEcho(t, w, alice))
 
 	bobBody := yourBody(t, bodiesFor(t, w, "bob"))
 	got := echoOf(t, w, "alice", bobBody)
@@ -660,22 +704,26 @@ func TestShotDamagesEnemyEcho(t *testing.T) {
 }
 
 // A shot that kills an Echo (test content: Echoes with one shot of HP): everyone gets it once more, at
-// HP 0, alive until the shot reached it. Then it's gone.
+// HP 0, alive until the shot reached it, in its echo_sync and its target_sync alike. Then it's gone.
 func TestKilledEchoLastsUntilTheShotReachesIt(t *testing.T) {
 	_, shot := primary(t)
 	w := cardinal.NewTestWorld(t, withContent(t, map[string]string{
 		"echo/tuning.json": fmt.Sprintf(`{"max_hp": %v}`, shot.Damage),
 	}))
 	alice, bob := claim(t, w)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
-	k, h := fireAtEcho(t, w, alice)
-	claimAt(w, alice, h, drawLag, k)
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
+	flyFor(w, fireAtEcho(t, w, alice))
 
 	ended := endedShots(t, w, "bob")
 	got := echoOf(t, w, "bob", yourBody(t, bodiesFor(t, w, "bob")))
 	if len(ended) != 1 || got.HP != 0 || got.Until != ended[0].Until || ended[0].Until >= 1 ||
 		!touching(ended[0], got.X, got.Y, got.Radius) {
 		t.Fatalf("bob got his dying Echo %+v and shots ending %+v, want it at 0 HP until the shot touched it", got, ended)
+	}
+	if i := sentTo[projectile.TargetSync](t, w, "bob").Targets.IndexFunc(func(s projectile.TargetState) bool {
+		return s.Serial == got.Serial && s.Until == got.Until
+	}); i < 0 {
+		t.Fatalf("bob's target_sync doesn't show his dying Echo until %v", got.Until)
 	}
 	w.Tick()
 	for e := range sentTo[echo.EchoSync](t, w, "bob").Echoes.Values() {
@@ -691,13 +739,13 @@ func TestKilledEchoLastsUntilTheShotReachesIt(t *testing.T) {
 // A shot's damage carries the cast that fired it, and credits the Body that cast it.
 func TestShotDamageCarriesItsCast(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
-	k, h := fireAtEcho(t, w, alice)
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
+	k := fireAtEcho(t, w, alice)
 	casts := w.Emitted[abilitycomp.AbilityCast]()
 	if len(casts) != 1 {
 		t.Fatalf("%d casts, want 1", len(casts))
 	}
-	claimAt(w, alice, h, drawLag, k)
+	flyFor(w, k)
 	hits := w.Emitted[combatcomp.DamageIntent]()
 	target := cardinal.EntityID(echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))).EntityID)
 	if len(hits) != 1 || hits[0].Target != target || hits[0].Credit != casts[0].Caster || hits[0].Cause != casts[0].Cause {
@@ -708,80 +756,62 @@ func TestShotDamageCarriesItsCast(t *testing.T) {
 	}
 }
 
-// With no claim, a Body's shot passes Bodies and Echoes: it flies through bob's Echo.
-func TestShotWithoutClaimPassesEnemies(t *testing.T) {
-	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
-	k, _ := fireAtEcho(t, w, alice)
-	flyFor(w, k+3)
-
-	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 1 {
-		t.Fatalf("bob's Echo HP = %v with %d shots left, want %v and the shot flying on", got.HP, n, got.MaxHP)
-	}
-}
-
-// An enemy Body on the path in front of the claimed Echo, that tick and where alice drew it, blocks the
-// claim: bob stood half over his Echo, toward her, and walked off after her view. The shot flies on.
+// An enemy Body on the path in front of bob's Echo where alice drew it stops the shot there: bob stood
+// half over his Echo, toward her, and walked off after her view. The Echo takes no damage.
 func TestEnemyBodyBlocksShot(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, -1, 0, 2)
+	moveFor(w, bob, -1, 0, ticks(0.1))
+	drawn := yourBody(t, bodiesFor(t, w, "bob"))
+	flyFor(w, ticks(0.4))                         // her view can't go back past her first frame's, tick 0
+	alice.back = 0.375 * physics.ServerTickRateHz // she draws him from before he leaves
 
-	k, h := fireAtEcho(t, w, alice)
-	for i := 1; i <= k; i++ {
-		if i > k-7 {
+	k := fireAtEcho(t, w, alice)
+	var ended []projectile.ProjectileState
+	for i := 1; i <= k && len(ended) == 0; i++ {
+		if i > k-ticks(0.35) {
 			bob.move(0, 1)
 		}
-		if i == k {
-			alice.claim(h, 7.5) // from before he left
-		}
 		w.Tick()
+		ended = endedShots(t, w, "alice")
 	}
-	flyFor(w, 2)
 
 	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 1 {
-		t.Fatalf("bob's Echo HP = %v behind his Body with %d shots left, want %v and the shot flying on",
-			got.HP, n, got.MaxHP)
+	if len(ended) != 1 || !touching(ended[0], drawn.X, drawn.Y, drawn.Radius) || got.HP != got.MaxHP {
+		t.Fatalf("shots ended %+v and bob's Echo HP is %v, want one touching his Body where alice drew it, "+
+			"(%v, %v), and HP %v", ended, got.HP, drawn.X, drawn.Y, got.MaxHP)
 	}
 }
 
-// A Body standing on its own Echo touches the shot at the same moment, and wins the tie: a claim on the
-// Echo is rejected.
+// A Body standing on its own Echo touches the shot at the same moment, and wins the tie: the shot stops
+// on the Body, and the Echo takes no damage.
 func TestBodyOnItsEchoShieldsIt(t *testing.T) {
 	w, alice, _ := duel(t)
-	k, h := fireAtEcho(t, w, alice)
-	claimAt(w, alice, h, drawLag, k)
-	flyFor(w, 2)
+	flyFor(w, fireAtEcho(t, w, alice))
 
-	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 1 {
-		t.Fatalf("bob's Echo HP = %v under his Body with %d shots left, want %v and the shot flying on",
-			got.HP, n, got.MaxHP)
+	body := yourBody(t, bodiesFor(t, w, "bob"))
+	got, ended := echoOf(t, w, "alice", body), endedShots(t, w, "alice")
+	if len(ended) != 1 || !touching(ended[0], body.X, body.Y, body.Radius) || got.HP != got.MaxHP {
+		t.Fatalf("shots ended %+v and bob's Echo HP is %v under his Body, want one touching it and HP %v",
+			ended, got.HP, got.MaxHP)
 	}
 }
 
-// A claim is checked where alice drew the target: bob walked off the shot's path after the view she
-// claimed, and the shot still stops on him.
-func TestClaimHitsWhereTheViewHadIt(t *testing.T) {
+// A shot meets bob where alice drew him: he walked off its path after her view, and it still stops on
+// him.
+func TestShotHitsWhereTheViewHadIt(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, -1, 10) // off his Echo
+	moveFor(w, bob, 0, -1, ticks(0.5))            // off his Echo
+	alice.back = 0.375 * physics.ServerTickRateHz // her view at step k is from before he leaves, 0.35 s before it
 	from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 	alice.fire(to.X-from.X, to.Y-from.Y)
 	w.Tick()
-	h := claimOn(t, w, alice, to.EntityID)
 	k := firstTouch(t, w, alice, math.Hypot(to.X-from.X, to.Y-from.Y), to.Radius) // where he stood
-	// Her view at step k is from before he leaves, 7 ticks before it.
-	const back = 7.5
 	for i := 1; i <= k; i++ {
 		if n := len(shots(t, w, "alice")); n != 1 {
 			t.Fatalf("%d shots left after %d steps, want the shot until step %d", n, i, k)
 		}
-		if i > k-7 {
+		if i > k-ticks(0.35) {
 			bob.move(0, 1)
-		}
-		if i == k {
-			alice.claim(h, back)
 		}
 		w.Tick()
 	}
@@ -791,35 +821,83 @@ func TestClaimHitsWhereTheViewHadIt(t *testing.T) {
 	if b := yourBody(t, bodiesFor(t, w, "bob")); b.Y-to.Y < 1.5 {
 		t.Fatalf("bob moved %.2f, want him off the path now", b.Y-to.Y)
 	}
+	// His screen draws him off the path, so his sync says the shot ended on his Body, and where on it.
+	if e := endedShots(t, w, "bob"); len(e) != 1 || !e[0].OnTarget || e[0].TargetSerial != to.Serial ||
+		math.Abs(e[0].X-e[0].OffsetX-to.X) > 1e-9 || math.Abs(e[0].Y-e[0].OffsetY-to.Y) > 1e-9 {
+		t.Fatalf("bob's sync ended %+v, want it on his Body (serial %d), offset from where she saw him, (%v, %v)",
+			e, to.Serial, to.X, to.Y)
+	}
 }
 
-// A claim is checked where alice's screen drew bob, partway between two of his rows: he dashes up
-// across her shot's path, a unit a tick. Drawn 0.3 of the way from the row on the path, he is hit there;
-// drawn 0.8 of the way, the shot passes under him and flies on.
-func TestClaimDrawsTargetBetweenRows(t *testing.T) {
+// A view never goes back, so alice can't pick an older moment for each shot. After a frame drawn 0.075 s
+// back, her shot sent seeing bob 0.375 s back, as in TestShotHitsWhereTheViewHadIt, is judged at the newer
+// view, where he has walked off its path, and flies on. A new session or a view that isn't a number in
+// between doesn't let her go back either.
+func TestViewNeverGoesBack(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		between func(w *cardinal.TestWorld, alice *client)
+	}{
+		{"one session", func(*cardinal.TestWorld, *client) {}},
+		{"new session", func(_ *cardinal.TestWorld, alice *client) { alice.restart() }},
+		{"after a view that isn't a number", func(w *cardinal.TestWorld, alice *client) {
+			alice.back = math.NaN()
+			alice.move(0, 0)
+			w.Tick()
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w, alice, bob := duel(t)
+			moveFor(w, bob, 0, -1, ticks(0.5)) // off his Echo
+			alice.back = 0.075 * physics.ServerTickRateHz
+			alice.move(0, 0)
+			w.Tick()
+			c.between(w, alice)
+			alice.back = 0.375 * physics.ServerTickRateHz
+			from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
+			alice.fire(to.X-from.X, to.Y-from.Y)
+			w.Tick()
+			k := firstTouch(t, w, alice, math.Hypot(to.X-from.X, to.Y-from.Y), to.Radius)
+			for i := 1; i <= k; i++ {
+				if i > k-ticks(0.35) {
+					bob.move(0, 1)
+				}
+				w.Tick()
+			}
+			if n := len(shots(t, w, "alice")); n != 1 {
+				t.Fatalf("%d shots left, want hers flying on past where the older view drew bob", n)
+			}
+		})
+	}
+}
+
+// A shot meets bob where alice's screen drew him, partway between two of his rows: he dashes up across
+// her shot's path, a unit a tick at any rate (test content). Drawn 0.3 of the way from the row on the
+// path, he is hit there; drawn 0.7 of the way, the shot passes under him and flies on. A step before, she
+// drew him a unit lower, 0.7 or 0.3 below the path, where the shot can't reach him yet.
+func TestShotMeetsTargetBetweenRows(t *testing.T) {
 	for _, c := range []struct {
 		part float64
 		hits bool
-	}{{0.3, true}, {0.8, false}} {
-		w, alice, bob := duel(t)
-		moveFor(w, bob, -1, 0, 8) // off his Echo, toward her
-		moveFor(w, bob, 0, -1, 4) // a unit below her shot's path
+	}{{0.3, true}, {0.7, false}} {
+		w := cardinal.NewTestWorld(t, withContent(t, map[string]string{"ability/tuning.json": fmt.Sprintf(
+			`{"abilities": {"dash": {"params": {"distance": %v, "seconds": 0.3}}}}`, 0.3*physics.ServerTickRateHz)}))
+		alice, bob := claim(t, w)
+		moveFor(w, bob, -1, 0, ticks(0.4)) // off his Echo, toward her
+		moveFor(w, bob, 0, -1, ticks(0.2)) // a unit below her shot's path
 		from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
-		alice.fire(1, 0)
-		w.Tick()
-		h := claimOn(t, w, alice, to.EntityID)
 		// Drawn 0.3 up, his circle first touches the path in step k; the dash cast at step 5 moves him
 		// from step 6 on, so her view at step k is between his rows at steps 6 and 7.
 		_, shot := primary(t)
 		reach := to.Radius + shot.Radius
 		k := int((to.X - from.X - math.Sqrt(reach*reach-0.3*0.3)) / (shot.Speed * physics.SecondsPerTick))
+		alice.back = float64(k-6) - c.part
+		alice.fire(1, 0)
+		w.Tick()
 		dashSlot, _ := dash(t)
 		for i := 1; i <= k; i++ {
 			if i == 5 {
 				bob.cast(dashSlot, 0, 1)
-			}
-			if i == k {
-				alice.claim(h, float64(k-6)-c.part)
 			}
 			w.Tick()
 		}
@@ -829,54 +907,50 @@ func TestClaimDrawsTargetBetweenRows(t *testing.T) {
 	}
 }
 
-// A claim the server can't check is rejected, and the shot flies on: a view past rewind_seconds or not
-// saved yet, a target that isn't there, or a key that names no shot of hers.
-func TestBadClaimsAreRejected(t *testing.T) {
+// A view the server keeps no rows for is held inside them, so alice's shot still meets bob's Echo, which
+// stands still: one older than rewind_seconds (a high ping), one not saved yet, and one that isn't a
+// number.
+func TestViewOutsideTheRowsStillHits(t *testing.T) {
 	keep := float64(tuningOf[projectile.ProjectileTuning](t).RewindTicks())
 	for _, c := range []struct {
 		name string
 		back float64
-		bad  func(*playercomp.HitClaim)
 	}{
-		{"too old", keep + 0.5, nil},
-		{"not saved yet", 0.5, nil},
-		{"no such target", drawLag, func(h *playercomp.HitClaim) { h.Target = 4294967295 }},
-		{"no such shot", drawLag, func(h *playercomp.HitClaim) { h.Launch = 1 }},
-		{"another ability's", drawLag, func(h *playercomp.HitClaim) { h.Ability = kit(t)[1] }},
+		{"too old", keep + 3.5},
+		{"not saved yet", 0.5},
+		{"ahead of the server", -4},
+		{"not a number", math.NaN()},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w, alice, bob := duel(t)
-			moveFor(w, bob, 0, 1, 10) // off his Echo
-			k, h := fireAtEcho(t, w, alice)
-			if c.bad != nil {
-				c.bad(&h)
-			}
-			claimAt(w, alice, h, c.back, k)
-			flyFor(w, 2)
+			moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
+			alice.back = c.back
+			flyFor(w, fireAtEcho(t, w, alice))
 			got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-			if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 1 {
-				t.Fatalf("bob's Echo HP = %v with %d shots left, want %v and the shot flying on", got.HP, n, got.MaxHP)
+			if _, shot := primary(t); got.HP != got.MaxHP-shot.Damage {
+				t.Fatalf("bob's Echo HP = %v, want %v", got.HP, got.MaxHP-shot.Damage)
 			}
 		})
 	}
 }
 
-// A wall on the path in front of the claimed Echo, that tick, stops the shot first: the claim is
-// rejected.
-func TestWallBeforeClaimedEchoStopsShot(t *testing.T) {
+// A wall on the path in front of bob's Echo, now, stops the shot first, though alice drew the Echo
+// behind it: the map isn't rewound.
+func TestWallBeforeEchoStopsShot(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
 	target := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	// alice walks to 1.25 from the Echo, so her shot's first step reaches it, and a thin wall goes between.
+	// alice walks to 1.25 from the Echo, and a thin wall goes between.
 	speed := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
 	moveFor(w, alice, 1, 0, int(math.Round((target.X-1.25-a.X)/speed)))
 	a = yourBody(t, bodiesFor(t, w, "alice"))
 	addWall(w, physics2d.Vec2{X: (a.X + target.X) / 2, Y: target.Y}, physics2d.Vec2{X: 0.05, Y: 2})
 	w.Tick() // physics picks the wall up
 
-	alice.fireClaiming(t, 1, 0, target.EntityID, drawLag)
-	w.Tick()
+	alice.fire(1, 0)
+	_, shot := primary(t)
+	flyFor(w, int(math.Ceil((target.X-a.X-target.Radius-shot.Radius)/(shot.Speed*physics.SecondsPerTick)))) // to the Echo
 	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 0 {
 		t.Fatalf("bob's Echo HP = %v behind a wall with %d shots left, want %v and the shot stopped",
@@ -884,10 +958,11 @@ func TestWallBeforeClaimedEchoStopsShot(t *testing.T) {
 	}
 }
 
-// A shot no frame cast, like an Echo's, meets Bodies and Echoes where they are now, with no claim.
+// A shot no frame cast, like an Echo's, meets Bodies and Echoes where they are now: no client predicts
+// it.
 func TestEchoShotHitsLive(t *testing.T) {
 	w, _, bob, fx := fxDuel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
 	mine := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")))
 	target := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 	cause := abilitycomp.Cause{Caster: cardinal.EntityID(mine.EntityID), Ability: kit(t)[0]}
@@ -900,12 +975,14 @@ func TestEchoShotHitsLive(t *testing.T) {
 	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP-shot.Damage || n != 0 {
 		t.Fatalf("bob's Echo HP = %v with %d shots left, want %v and the shot gone", got.HP, n, got.MaxHP-shot.Damage)
 	}
-	if len(ended) != 1 || !touching(ended[0], target.X, target.Y, target.Radius) {
-		t.Fatalf("shots ended at %+v, want one touching bob's Echo at (%v, %v)", ended, target.X, target.Y)
+	if len(ended) != 1 || !touching(ended[0], target.X, target.Y, target.Radius) || !ended[0].OnTarget ||
+		ended[0].TargetSerial != target.Serial {
+		t.Fatalf("shots ended at %+v, want one on bob's Echo (serial %d), touching it at (%v, %v)", ended,
+			target.Serial, target.X, target.Y)
 	}
 }
 
-// A claim on an ally is rejected, since shots pass allies: alice's shot flies through carol.
+// Shots pass allies: alice's shot flies through carol where she drew her.
 func TestShotPassesThroughAllies(t *testing.T) {
 	w, alice, _ := duel(t)
 	from := yourBody(t, bodiesFor(t, w, "alice"))
@@ -931,13 +1008,13 @@ func TestShotPassesThroughAllies(t *testing.T) {
 		MaskBits:     uint64(interact.Body | interact.Wall | interact.Shot),
 	}))
 
-	flyFor(w, 4) // carol's rows reach back to alice's view
+	flyFor(w, int(math.Ceil(drawLag))+1) // carol's rows reach back to alice's view
 
 	// The shot starts inside alice's own Body and Echo, then crosses carol.
 	alice.fire(1, 0)
 	w.Tick()
-	claimAt(w, alice, claimOn(t, w, alice, uint32(carol.ID())), drawLag, firstTouch(t, w, alice, 2, 0.5))
-	flyFor(w, 3)
+	_, shot := primary(t)
+	flyFor(w, int(math.Ceil(2.5/(shot.Speed*physics.SecondsPerTick)))) // past her
 
 	s := shots(t, w, "alice")
 	if len(s) != 1 || s[0].X <= from.X+2.5 {
@@ -946,7 +1023,7 @@ func TestShotPassesThroughAllies(t *testing.T) {
 }
 
 // A shot ends at its range in every direction, though a rounded speed can leave its last step short.
-// Each is sent once more, at its range.
+// Each is sent once more, at its range, its last tick flown from where the one before ended.
 func TestShotExpiresAtRange(t *testing.T) {
 	fx := &emitter{}
 	w := cardinal.NewTestWorld(t, withEmitter(register, fx))
@@ -963,23 +1040,70 @@ func TestShotExpiresAtRange(t *testing.T) {
 	}
 	w.Tick() // first step
 	flyFor(w, steps-2)
-	if got := len(shots(t, w, "alice")); got != n {
-		t.Fatalf("%d of %d shots left after %d of %d steps", got, n, steps-1, steps)
+	flying := map[uint32]projectile.ProjectileState{}
+	for _, s := range shots(t, w, "alice") {
+		flying[s.EntityID] = s
+	}
+	if len(flying) != n {
+		t.Fatalf("%d of %d shots left after %d of %d steps", len(flying), n, steps-1, steps)
 	}
 	ended := flyUntilEnded(t, w, "alice", 1)
 	if got := len(shots(t, w, "alice")); got != 0 || len(ended) != n {
 		t.Fatalf("%d shots still flying and %d ended after %d steps, want all %d ended", got, len(ended), steps, n)
 	}
 	for _, s := range ended {
-		if d := math.Hypot(s.X-100, s.Y-100); math.Abs(d-shot.Range) > 1e-9 || !(s.Until > 0 && s.Until <= 1) {
-			t.Fatalf("shot %d ended %v from its start, Until %v, want its range %v", s.EntityID, d, s.Until, shot.Range)
+		was := flying[s.EntityID]
+		if d := math.Hypot(s.X-100, s.Y-100); math.Abs(d-shot.Range) > 1e-9 || !(s.Until > 0 && s.Until <= 1) ||
+			s.PrevX != was.X || s.PrevY != was.Y {
+			t.Fatalf("shot %d ended %v from its start, Until %v, from (%v, %v), want its range %v from (%v, %v)",
+				s.EntityID, d, s.Until, s.PrevX, s.PrevY, shot.Range, was.X, was.Y)
 		}
+	}
+}
+
+// Cardinal gives a freed ID out again at once, so a shot launched the tick after another ended takes its
+// ID. Every synced entity has its own serial, which the new shot doesn't share: a client keys each by
+// it, so it never draws one from the other.
+func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
+	fx := &emitter{}
+	w := cardinal.NewTestWorld(t, withEmitter(register, fx))
+	claim(t, w)
+	def, shot := primary(t)
+	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
+	launch := func(k uint64) {
+		emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: k},
+			From: physics2d.Vec2{X: 100, Y: 100}, Dir: physics2d.Vec2{X: 1}}) // far from everyone
+	}
+	launch(1)
+	w.Tick()
+	first := shots(t, w, "alice")
+	ended := flyUntilEnded(t, w, "alice", int(math.Ceil(shot.Range/(shot.Speed*physics.SecondsPerTick))))
+	launch(2)
+	w.Tick()
+	next := shots(t, w, "alice")
+	if len(first) != 1 || len(ended) != 1 || len(next) != 1 {
+		t.Fatalf("%d shots, then %d ended, then %d, want one each", len(first), len(ended), len(next))
+	}
+	if next[0].EntityID != first[0].EntityID {
+		t.Fatalf("the new shot is entity %d, not the ended one's %d: Cardinal no longer reuses IDs at once",
+			next[0].EntityID, first[0].EntityID)
+	}
+	serials := map[uint64]bool{ended[0].Serial: true}
+	for _, b := range bodiesFor(t, w, "alice").Bodies.All() {
+		serials[b.Serial] = true
+	}
+	for _, e := range sentTo[echo.EchoSync](t, w, "alice").Echoes.All() {
+		serials[e.Serial] = true
+	}
+	if ended[0].Serial != first[0].Serial || serials[next[0].Serial] || serials[0] || len(serials) != 5 {
+		t.Fatalf("serials: shot %d, ended %d, new %d; with Bodies and Echoes %v, want 5 others, none 0",
+			first[0].Serial, ended[0].Serial, next[0].Serial, serials)
 	}
 }
 
 func TestWallStopsShot(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo, so only the wall can stop the shot
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo, so only the wall can stop the shot
 
 	// A wall halfway between them.
 	a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
@@ -987,11 +1111,11 @@ func TestWallStopsShot(t *testing.T) {
 	addWall(w, physics2d.Vec2{X: wallX, Y: 0}, physics2d.Vec2{X: 0.5, Y: 5})
 	w.Tick() // physics picks the wall up
 
-	k, _ := fireAtEcho(t, w, alice)
-	ended := flyUntilEnded(t, w, "alice", k+2)
-	// Sent once more, touching the wall's face, half its width from its center.
-	if len(ended) != 1 || math.Abs(math.Abs(ended[0].X-wallX)-(0.5+ended[0].Radius)) > 2*box2d.LinearSlop {
-		t.Fatalf("shots ended at %+v, want one touching the wall's face", ended)
+	ended := flyUntilEnded(t, w, "alice", fireAtEcho(t, w, alice)+2)
+	// Sent once more, touching the wall's face, half its width from its center: on the map, not a target.
+	if len(ended) != 1 || math.Abs(math.Abs(ended[0].X-wallX)-(0.5+ended[0].Radius)) > 2*box2d.LinearSlop ||
+		ended[0].OnTarget {
+		t.Fatalf("shots ended at %+v, want one touching the wall's face, on no target", ended)
 	}
 
 	if got := echoOf(t, w, "alice", b); got.HP != got.MaxHP {
@@ -1021,7 +1145,7 @@ func TestFireNeedsANewFrame(t *testing.T) {
 // A shot that starts inside an enemy Echo hits it at once, whichever way it's aimed.
 func TestPointBlankShotHitsEcho(t *testing.T) {
 	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, 10) // off his Echo
+	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	target := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 
@@ -1032,7 +1156,7 @@ func TestPointBlankShotHitsEcho(t *testing.T) {
 		t.Fatalf("alice stopped at (%.2f, %.2f), not on bob's Echo at (%.2f, %.2f)", a.X, a.Y, target.X, target.Y)
 	}
 
-	alice.fireClaiming(t, 0, 1, target.EntityID, drawLag) // away from the Echo's center
+	alice.fire(0, 1) // away from the Echo's center
 	w.Tick()
 	_, shot := primary(t)
 	if got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))); got.HP != got.MaxHP-shot.Damage {
@@ -1052,7 +1176,7 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 		return n >= 3 && xs[n-1] > xs[n-2] && xs[n-1]-xs[n-2] == xs[n-2]-xs[n-3]
 	}
 	for !steady() {
-		if len(xs) > 200 {
+		if len(xs) > ticks(10) {
 			t.Fatal("bob's Echo never walked")
 		}
 		bob.move(1, 0)
@@ -1077,12 +1201,13 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	}
 }
 
-// Each Body and Echo keeps its last rewind_seconds of rows, one per tick, and its newest row is what this
-// tick's syncs show of it: a client that claims a hit sees the targets the server checks it against.
+// Each Body and Echo keeps the rows every view rewind_seconds back is drawn from (KeptRows), one per tick,
+// and its newest row is what this tick's syncs show of it: what its screen draws, and the target_sync its
+// predictor places it by, as the server's shots meet it.
 func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 	w, _, bob, fx := fxDuel(t)
 	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 3})
-	keep := int(tuningOf[projectile.ProjectileTuning](t).RewindTicks())
+	keep := int(tuningOf[projectile.ProjectileTuning](t).KeptRows())
 	stunned := false
 	newest := func(id uint32) []flight.Row {
 		return slices.Collect(w.Entity(cardinal.EntityID(id)).Get[projectilecomp.TargetHistory]().Rows.Values())
@@ -1104,16 +1229,30 @@ func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 		bodies, echoes := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice")
 		for b := range bodies.Bodies.Values() {
 			stunned = stunned || b.Tags&interact.Stunned != 0
-			check(fmt.Sprintf("Body %d", b.EntityID), newest(b.EntityID),
-				flight.Row{Tick: bodies.Tick, Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius, Tags: b.Tags, Until: 1},
-				i >= keep)
+			side := interact.Side{Owner: b.EntityID, Team: b.Team}
+			check(fmt.Sprintf("Body %d", b.EntityID), newest(b.EntityID), flight.Row{Tick: bodies.Tick, Kind: interact.Body,
+				Side: side, Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius, Tags: b.Tags, Until: 1}, i >= keep)
 		}
 		for e := range echoes.Echoes.Values() {
-			check(fmt.Sprintf("Echo %d", e.EntityID), newest(e.EntityID),
-				flight.Row{Tick: echoes.Tick, Center: box2d.Vec2{X: e.X, Y: e.Y}, Radius: e.Radius, Tags: e.Tags, Until: e.Until},
-				i >= keep)
+			side := interact.Side{Owner: e.Owner, Team: e.Team}
+			check(fmt.Sprintf("Echo %d", e.EntityID), newest(e.EntityID), flight.Row{Tick: echoes.Tick, Kind: interact.Echo,
+				Side: side, Center: box2d.Vec2{X: e.X, Y: e.Y}, Radius: e.Radius, Tags: e.Tags, Until: e.Until}, i >= keep)
 			if owner := w.Entity(cardinal.EntityID(e.EntityID)).Get[team.Owner]().Body; uint32(owner) != e.Owner {
 				t.Fatalf("Echo %d says its owner is %d, not %d", e.EntityID, e.Owner, owner)
+			}
+		}
+		targets := sentTo[projectile.TargetSync](t, w, "alice")
+		if targets.Tick != bodies.Tick || targets.Targets.Len() != bodies.Bodies.Len()+echoes.Echoes.Len() {
+			t.Fatalf("target_sync %+v, want tick %d's %d Bodies and Echoes", targets, bodies.Tick,
+				bodies.Bodies.Len()+echoes.Echoes.Len())
+		}
+		for s := range targets.Targets.Values() {
+			rows := newest(s.EntityID)
+			r := rows[len(rows)-1]
+			want := projectile.TargetState{EntityID: s.EntityID, Serial: s.Serial, Kind: r.Kind, Owner: r.Side.Owner,
+				Team: r.Side.Team, X: r.Center.X, Y: r.Center.Y, Radius: r.Radius, Tags: r.Tags, Until: r.Until}
+			if s != want || s.Serial != w.Entity(cardinal.EntityID(s.EntityID)).Get[ref.Spawn]().Serial {
+				t.Fatalf("target_sync sent %+v, want its newest row, %+v, and its serial", s, want)
 			}
 		}
 	}
@@ -1122,23 +1261,21 @@ func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 	}
 }
 
-// shootEcho has alice fire kit slot 0 at bob's Echo, claim it hit it on the step it first touches it,
-// and tick until the shot is gone. It returns his Echo's HP then.
+// shootEcho has alice fire kit slot 0 at bob's Echo, and ticks until the shot is gone. It returns his
+// Echo's HP then.
 func shootEcho(t *testing.T, w *cardinal.TestWorld, alice *client) float64 {
 	t.Helper()
 	from, bob := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 	to := echoOf(t, w, "alice", bob)
 	alice.fire(to.X-from.X, to.Y-from.Y)
 	w.Tick()
-	k := firstTouch(t, w, alice, math.Hypot(to.X-from.X, to.Y-from.Y), to.Radius)
-	claimAt(w, alice, claimOn(t, w, alice, to.EntityID), drawLag, k)
-	for range 100 {
+	for range ticks(5) {
 		if len(shots(t, w, "alice")) == 0 {
 			return echoOf(t, w, "alice", bob).HP
 		}
 		w.Tick()
 	}
-	t.Fatal("the shot is still flying after 100 ticks")
+	t.Fatal("the shot is still flying after 5 s")
 	return 0
 }
 
@@ -1152,7 +1289,7 @@ func TestShotTypeRulesComeFirst(t *testing.T) {
 			"meets": [{"kinds": ["body"], "do": "pass"}]}}}`,
 	}))
 	alice, bob := claim(t, w)
-	moveFor(w, bob, -1, 0, 2) // half over his Echo, toward alice
+	moveFor(w, bob, -1, 0, ticks(0.1)) // half over his Echo, toward alice
 	full := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))).MaxHP
 	if hp := shootEcho(t, w, alice); hp != full-10 {
 		t.Fatalf("bob's Echo HP = %v behind his Body, want %v: the shot passes Bodies", hp, full-10)
@@ -1170,12 +1307,12 @@ func TestShotRulesSeeTags(t *testing.T) {
 			"meets": [{"kinds": ["body"], "require": ["stunned"], "do": "pass"}]}}}`,
 	}), fx))
 	alice, bob := claim(t, w)
-	moveFor(w, bob, -1, 0, 2) // half over his Echo, toward alice
+	moveFor(w, bob, -1, 0, ticks(0.1)) // half over his Echo, toward alice
 	full := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))).MaxHP
 	if hp := shootEcho(t, w, alice); hp != full {
 		t.Fatalf("bob's Echo HP = %v behind his Body, want %v: it blocks while not stunned", hp, full)
 	}
-	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 100})
+	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: uint64(ticks(5))})
 	w.Tick() // the stun applies from the next tick
 	if hp := shootEcho(t, w, alice); hp != full-10 {
 		t.Fatalf("bob's Echo HP = %v behind his stunned Body, want %v", hp, full-10)
@@ -1210,12 +1347,10 @@ func TestLaunchOrderIsFixed(t *testing.T) {
 
 // Features key their numbers by champion, ability, shot or effect ID, and the data plugin checks one
 // file at a time. A hook that names a missing shot or effect kind does nothing, and a champion with no
-// kit casts nothing. A hit claim's check finds the targets in front within max_target_speed, so nothing
-// moves faster.
+// kit casts nothing.
 func TestContentIDsLineUp(t *testing.T) {
 	abilities := tuningOf[ability.AbilityTuning](t)
-	projectiles := tuningOf[projectile.ProjectileTuning](t)
-	shots, kinds := projectiles.Shots, tuningOf[effect.EffectTuning](t).Kinds
+	shots, kinds := tuningOf[projectile.ProjectileTuning](t).Shots, tuningOf[effect.EffectTuning](t).Kinds
 	for id, def := range abilities.Abilities {
 		hook, err := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz)
 		if err != nil {
@@ -1250,23 +1385,6 @@ func TestContentIDsLineUp(t *testing.T) {
 			t.Errorf("Echo %q belongs to no champion", id)
 		}
 	}
-	for id, c := range champions {
-		if c.MoveSpeed > projectiles.MaxTargetSpeed {
-			t.Errorf("champion %q moves %v units/s, past max_target_speed %v", id, c.MoveSpeed, projectiles.MaxTargetSpeed)
-		}
-	}
-	for id, def := range abilities.Abilities {
-		if def.Hook != "dash" {
-			continue
-		}
-		var d dashParams
-		if err := json.Unmarshal(def.Params, &d); err != nil {
-			t.Fatal(err)
-		}
-		if speed := d.Distance / (float64(d.Ticks()) * physics.SecondsPerTick); speed > projectiles.MaxTargetSpeed {
-			t.Errorf("ability %q dashes %v units/s, past max_target_speed %v", id, speed, projectiles.MaxTargetSpeed)
-		}
-	}
 	for id := range abilities.Kits {
 		if _, ok := champions[id]; !ok {
 			t.Errorf("kit %q belongs to no champion", id)
@@ -1280,6 +1398,150 @@ func TestContentIDsLineUp(t *testing.T) {
 func echoDelay(t *testing.T) int {
 	t.Helper()
 	return tuningOf[echo.EchoTuning](t).Champions[tuningOf[player.MovementTuning](t).DevChampion].DelayTicks()
+}
+
+// body_sync tells you where your Echo will be: its spot this tick, then each next tick's, as far as
+// echo_path_seconds and its delay reach. It then goes there, whatever your Body does now (test content:
+// an Echo that trails by 2 s, and one by 0.1 s).
+func TestYouStateHasYourEchosPath(t *testing.T) {
+	ahead := tuningOf[player.MovementTuning](t).EchoPathTicks()
+	for _, c := range []struct {
+		name  string
+		delay float64 // seconds
+	}{
+		{"long", 2},
+		{"short", 0.1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := cardinal.NewTestWorld(t, withContent(t, map[string]string{
+				"echo/tuning.json": fmt.Sprintf(`{"champions": {"starter": {"delay_seconds": %v}}}`, c.delay),
+			}))
+			alice, _ := claim(t, w)
+			delay := ticks(c.delay)
+			for i := range delay + 5 { // a curve, until the Echo follows it
+				alice.move(math.Cos(float64(i)/7), math.Sin(float64(i)/7))
+				w.Tick()
+			}
+			s := bodiesFor(t, w, "alice")
+			path := slices.Collect(s.You.EchoPath.Values())
+			if int(s.You.EchoDelay) != delay || len(path) != min(ahead, delay)+1 {
+				t.Fatalf("EchoDelay %d with %d spots, want %d with %d", s.You.EchoDelay, len(path), delay,
+					min(ahead, delay)+1)
+			}
+			body := yourBody(t, s)
+			for k, want := range path {
+				if k > 0 {
+					alice.move(-1, 0)
+					w.Tick()
+				}
+				if e := echoOf(t, w, "alice", body); e.X != want.X || e.Y != want.Y {
+					t.Fatalf("%d ticks on: Echo at (%v, %v), want (%v, %v)", k, e.X, e.Y, want.X, want.Y)
+				}
+			}
+		})
+	}
+}
+
+// Your predictor draws your Echo where the server will have it at your predicted tick: along the path
+// body_sync sends, then where it predicted your Body, once that is the Echo's delay back. She walks a
+// curve first, so her Echo walks during the frames. Ten frames from one state, as when acks lag, land on
+// the server's Echo with an Echo 0.1 s behind. With a path shorter than that lead, your Echo waits at
+// the path's end (test content).
+func TestPredictedEchoMatchesServer(t *testing.T) {
+	rules, err := predict.Load(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name        string
+		delay, path float64 // seconds
+		exact       int     // frames it predicts exactly, of ten
+	}{
+		{"short delay", 0.1, 0.5, 10},
+		{"lead past the path", 2, 0.1, ticks(0.1)}, // as far as the path goes
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := cardinal.NewTestWorld(t, withContent(t, map[string]string{
+				"echo/tuning.json":   fmt.Sprintf(`{"champions": {"starter": {"delay_seconds": %v}}}`, c.delay),
+				"player/tuning.json": fmt.Sprintf(`{"echo_path_seconds": %v}`, c.path),
+			}))
+			alice, _ := claim(t, w)
+			for i := range ticks(c.delay) + 5 { // a curve, until her Echo follows it
+				alice.move(math.Cos(float64(i)/7), math.Sin(float64(i)/7))
+				w.Tick()
+			}
+			p := predict.New(rules)
+			p.Reset(predictFrom(t, bodiesFor(t, w, "alice")))
+			var first, end box2d.Vec2 // the server's Echo after the first frame, and at the path's end
+			for i := range 10 {
+				f := alice.send(playercomp.InputFrame{MoveX: math.Cos(float64(i)), MoveY: math.Sin(float64(i))})
+				w.Tick()
+				p.Step(predictFrame(f))
+				e, ok := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), bodiesFor(t, w, "alice").You.Body)
+				want := box2d.Vec2{X: e.X, Y: e.Y}
+				if i == 0 {
+					first = want
+				}
+				if i == c.exact-1 {
+					end = want
+				}
+				if i >= c.exact {
+					want = end
+				}
+				if at, _, predicted := p.Echo(); !ok || !predicted || at != want {
+					t.Fatalf("frame %d: predicted her Echo at %v (%v), want %v (%v)", i+1, at, predicted, want, ok)
+				}
+			}
+			if end == first {
+				t.Fatalf("her Echo stood at %v, so the frames show nothing", end)
+			}
+		})
+	}
+}
+
+// Your screen draws your Echo where your predictor has it, now, as it does your Body, so a shot that
+// stops on it meets it there, on the server and in your predictor alike (test content: a bolt that stops
+// on its caster's Echo). Her Echo walks toward her along her shot's path, and her view had it 0.125 s
+// further back. Her bolt's hit is offset from where it is now.
+func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
+	files := patched(t, map[string]string{
+		"echo/tuning.json": `{"champions": {"starter": {"delay_seconds": 1}}}`,
+		"projectile/tuning.json": `{"shots": {"bolt": {"meets": [
+			{"kinds": ["echo"], "relations": ["own"], "do": "stop"}]}}}`,
+	})
+	w := cardinal.NewTestWorld(t, func(world *cardinal.World) { registerWith(world, files) })
+	alice, _ := claim(t, w)
+	moveFor(w, alice, 1, 0, physics.ServerTickRateHz) // her Echo walks this a second later
+	flyFor(w, ticks(0.25))
+	rules, err := predict.Load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := predict.New(rules)
+	body := yourBody(t, bodiesFor(t, w, "alice")).EntityID
+	var ended []predict.Ended
+	for i := 0; len(ended) == 0; i++ {
+		if i == ticks(0.5) {
+			t.Fatal("her bolt never met her Echo")
+		}
+		before := bodiesFor(t, w, "alice")
+		see(t, p, sentTo[projectile.TargetSync](t, w, "alice"))
+		p.Reset(predictFrom(t, before))
+		f := playercomp.InputFrame{AimX: -1}
+		if i == 0 {
+			f.Buttons = 1
+		}
+		f = alice.next(f)
+		_, ended = p.Step(predictFrame(f))
+		alice.send(f)
+		w.Tick()
+		requireEnded(t, fmt.Sprintf("step %d", i), ended, w.Emitted[projectilecomp.ShotEnded](), body)
+	}
+	e, _ := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), body)
+	if end := ended[0].End; end.Hit.Target != e.EntityID || math.Abs(end.At.X-end.Hit.Offset.X-e.X) > 1e-9 ||
+		math.Abs(end.At.Y-end.Hit.Offset.Y-e.Y) > 1e-9 {
+		t.Fatalf("her bolt ended %+v, want on her Echo where it is now, %+v", ended[0], e)
+	}
 }
 
 // An Echo sits on its Body's spawn, then retraces the Body's path its champion's delay behind (test
@@ -1349,9 +1611,10 @@ func TestEnemyBodyOnEchoDoesNotHurtIt(t *testing.T) {
 	a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 	step := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
 	walk := int(math.Round((b.X - a.X) / step))
-	moveFor(w, alice, 0, 1, 20)  // 5 m away, so her Echo stays on her spawn until the delay is over
-	moveFor(w, bob, -1, 0, walk) // onto alice's Echo
-	for i := 20 + walk + 3; i <= delay+5; i++ {
+	away := ticks(1)
+	moveFor(w, alice, 0, 1, away) // 5 m away, so her Echo stays on her spawn until the delay is over
+	moveFor(w, bob, -1, 0, walk)  // onto alice's Echo
+	for i := away + walk + 3; i <= delay+5; i++ {
 		w.Tick()
 		e := echoOf(t, w, "alice", a)
 		if i == delay { // the first tick anti-camp could bite
@@ -1605,9 +1868,10 @@ func TestPhaseEndingInsideWallLands(t *testing.T) {
 		t.Fatalf("alice at x = %.4f, want her center inside the wall", x)
 	}
 	moveFor(w, alice, 0, 0, 2) // the phase runs out
-	// She lands clear of the wall, on the side she came from, within one 0.25 m grid step of it.
+	// She lands clear of the wall, on the side she came from, within one 0.25 m grid step of it (and a
+	// rounding: steps of 1/60 s aren't exact).
 	b := yourBody(t, bodiesFor(t, w, "alice"))
-	if edge := b.X + radiusOf(w, a); !(edge < face && edge >= face-0.25) || b.Y != a.Y {
+	if edge := b.X + radiusOf(w, a); !(edge < face && edge >= face-0.25-1e-9) || b.Y != a.Y {
 		t.Fatalf("landed at (%.4f, %.4f), want her edge within 0.25 m short of the wall at x = %.4f", b.X, b.Y, face)
 	}
 }
@@ -1886,14 +2150,14 @@ func TestEffectsAreDeterministic(t *testing.T) {
 		a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 		aID, bID := a.EntityID, b.EntityID
 		addWall(w, physics2d.Vec2{X: a.X + 2, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-		fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: 12}) // ends inside the wall
-		fx.effect(a, effectcomp.EffectIntent{Kind: "slow", Ticks: 30, Value: -2500, Source: bID})
+		fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(ticks(0.6))}) // ends inside the wall
+		fx.effect(a, effectcomp.EffectIntent{Kind: "slow", Ticks: uint64(ticks(1.5)), Value: -2500, Source: bID})
 		slot, _ := dash(t)
 		bob.cast(slot, -0.6, 0.8)
 		w.Tick()
-		for i := range 30 {
-			if i == 3 {
-				fx.effect(b, effectcomp.EffectIntent{Kind: "stun", Ticks: 4, Source: aID})
+		for i := range ticks(1.5) {
+			if i == ticks(0.15) {
+				fx.effect(b, effectcomp.EffectIntent{Kind: "stun", Ticks: uint64(ticks(0.2)), Source: aID})
 			}
 			alice.move(1, 0.1)
 			bob.move(-1, 0)
@@ -1920,29 +2184,65 @@ func TestBodyHasItsChampionsNumbers(t *testing.T) {
 
 // --- Prediction ---
 
-// predictionStep is one tick of TestPredictionMatchesServer's run: the body_sync and echo_sync before
-// it, the frame the server applied with the predictor's claims on it, and what the predictor gave after
-// it, as predictor.wasm returns it.
+// body_sync says which sim the shard runs, so a client predicts only with a predictor of the same
+// (predictor.mjs stamps its wasm from the same function: predictor.test.ts).
+func TestBodySyncSaysWhichSimItRuns(t *testing.T) {
+	w := cardinal.NewTestWorld(t, register)
+	w.Command("alice", input(1, frame(1, 0, 0)))
+	w.Tick()
+	if got, want := bodiesFor(t, w, "alice").SimVersion, echoimage.SimVersion(physics.ServerTickRateHz); got != want {
+		t.Fatalf("body_sync says sim %q, want %q", got, want)
+	}
+}
+
+// predictionStep is one tick of TestPredictionMatchesServer's run: the body_sync and target_sync before
+// it, the frames her client stepped from them (the one the server applied, or on the bad network every
+// one unacked, maybe none), and what the predictor gave after, as predictor.wasm returns it.
 type predictionStep struct {
-	Sync   player.BodySync
-	Echoes echo.EchoSync
-	Frame  playercomp.InputFrame
-	X, Y   float64          // your Body
-	Shots  []shotPrediction // your shots, in the predictor's order
-	Ended  []endedPrediction
-	Kit    kitPrediction
+	Sync    player.BodySync
+	Targets projectile.TargetSync
+	Frames  []playercomp.InputFrame
+	X, Y    float64          // your Body
+	Shots   []shotPrediction // your shots, in the predictor's order
+	Ended   []endedPrediction
+	Kit     kitPrediction
+	Echo    *echoPrediction // nil with no Echo
+}
+
+// digest is s as a line of text, so a new recording shows what changed in a reviewed diff.
+func (s predictionStep) digest() string {
+	echo := "none"
+	if s.Echo != nil {
+		echo = fmt.Sprintf("%+v", *s.Echo)
+	}
+	return fmt.Sprintf("tick %d frames %+v: body %v,%v shots %+v ended %+v kit %+v echo %s\n", s.Sync.Tick, s.Frames,
+		s.X, s.Y, s.Shots, s.Ended, s.Kit, echo)
+}
+
+// echoPrediction is your Echo, as predictor.wasm's echo() returns it.
+type echoPrediction struct {
+	X, Y, PrevX, PrevY float64
 }
 
 // shotPrediction is one of your shots, as predictor.wasm's shots() returns it.
 type shotPrediction struct {
 	Type                       string
+	Seq                        uint32
+	Ability                    string
+	Launch                     uint32
 	X, Y, PrevX, PrevY, Radius float64
 }
 
 // endedPrediction is one of your shots that ended in a step, as predictor.wasm's step() returns it.
 type endedPrediction struct {
 	Type                              string
+	Seq                               uint32
+	Ability                           string
+	Launch                            uint32
 	X, Y, PrevX, PrevY, Radius, Until float64
+	OnTarget                          bool
+	TargetSerial                      uint64
+	OffsetX, OffsetY                  float64
 }
 
 // kitPrediction is your kit, as predictor.wasm's kit() returns it: ticks are JS numbers there.
@@ -1977,65 +2277,106 @@ func predictFrom(t *testing.T, s player.BodySync) predict.State {
 	got := overWire(t, s)
 	b, you := yourBody(t, got), got.You
 	state := predict.State{
-		Tick: got.Tick, Body: you.Body, Team: b.Team, Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius,
-		MoveSpeed: you.MoveSpeed, Champion: you.Champion, Cooldowns: slices.Collect(you.Cooldowns.Values()),
-		Effects: slices.Collect(you.Effects.Values()), EffectsNext: you.EffectsNext,
+		Tick: got.Tick, Body: you.Body, Team: b.Team, Center: box2d.Vec2{X: b.X, Y: b.Y},
+		Radius: b.Radius, MoveSpeed: you.MoveSpeed, Champion: you.Champion,
+		Cooldowns: slices.Collect(you.Cooldowns.Values()), Effects: slices.Collect(you.Effects.Values()),
+		EffectsNext: you.EffectsNext, EchoDelay: you.EchoDelay,
+	}
+	for at := range you.EchoPath.Values() {
+		state.EchoPath = append(state.EchoPath, box2d.Vec2(at))
 	}
 	for shot := range you.Shots.Values() {
 		key := predict.Key{Seq: shot.Seq, Ability: shot.Ability, Launch: shot.Launch}
 		state.Shots = append(state.Shots, predict.Shot{Type: shot.Type, Key: key, Flight: flight.Flight{
 			Pos:      box2d.Vec2{X: shot.X, Y: shot.Y},
 			Velocity: box2d.Vec2{X: shot.VelX, Y: shot.VelY}, Radius: shot.Radius, Remaining: shot.Remaining,
-		}})
+		}, Prev: box2d.Vec2{X: shot.PrevX, Y: shot.PrevY}})
 	}
 	return state
 }
 
-// see gives p the Bodies and Echoes a client's body_sync and echo_sync show, as predictor.ts does.
-func see(t *testing.T, p *predict.Predictor, bodies player.BodySync, echoes echo.EchoSync) {
+// see gives p the targets a client's target_sync shows, as predictor.ts does.
+func see(t *testing.T, p *predict.Predictor, targets projectile.TargetSync) {
 	t.Helper()
 	var sights []predict.Sight
-	for b := range overWire(t, bodies).Bodies.Values() {
-		sights = append(sights, predict.Sight{ID: b.EntityID, Side: interact.Side{Owner: b.EntityID, Team: b.Team},
-			Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius, Tags: b.Tags, Until: 1})
+	for s := range overWire(t, targets).Targets.Values() {
+		sights = append(sights, predict.Sight{ID: s.EntityID, Serial: s.Serial, Row: flight.Row{
+			Kind: s.Kind, Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y},
+			Radius: s.Radius, Tags: s.Tags, Until: s.Until,
+		}})
 	}
-	p.See(bodies.Tick, interact.Body, sights)
-	sights = nil
-	for e := range overWire(t, echoes).Echoes.Values() {
-		sights = append(sights, predict.Sight{ID: e.EntityID, Side: interact.Side{Owner: e.Owner, Team: e.Team},
-			Center: box2d.Vec2{X: e.X, Y: e.Y}, Radius: e.Radius, Tags: e.Tags, Until: e.Until})
+	p.See(targets.Tick, sights)
+}
+
+// ownEcho is the Echo of Body body in echoes.
+func ownEcho(echoes echo.EchoSync, body uint32) (echo.EchoState, bool) {
+	for e := range echoes.Echoes.Values() {
+		if e.Owner == body {
+			return e, true
+		}
 	}
-	p.See(echoes.Tick, interact.Echo, sights)
+	return echo.EchoState{}, false
 }
 
 // predictFrame is f as the predictor takes it.
 func predictFrame(f playercomp.InputFrame) predict.Frame {
-	out := predict.Frame{
+	return predict.Frame{
 		Seq: f.Seq, MoveX: f.MoveX, MoveY: f.MoveY, AimX: f.AimX, AimY: f.AimY, Buttons: f.Buttons, ViewTick: f.ViewTick,
 	}
-	for c := range f.Claims.Values() {
-		key := predict.Key{Seq: c.Seq, Ability: c.Ability, Launch: c.Launch}
-		out.Claims = append(out.Claims, predict.Claim{Key: key, Target: c.Target})
-	}
-	return out
 }
 
-// claimsOf is claims as a frame carries them.
-func claimsOf(claims []predict.Claim) cardinal.Slice[playercomp.HitClaim] {
-	var out []playercomp.HitClaim
-	for _, c := range claims {
-		out = append(out, playercomp.HitClaim{Seq: c.Seq, Ability: c.Ability, Launch: c.Launch, Target: c.Target})
-	}
-	return cardinal.SliceOf(out...)
-}
-
-// requirePredicted fails unless p's state is the server's in after: her Body, cooldowns and shots, and
-// her effects unless something else put one on her this tick.
-func requirePredicted(t *testing.T, at string, p *predict.Predictor, after player.BodySync, effects bool) {
+// requireEnded fails unless ended, the shots a step ended, are the ends the server gave body's predicted
+// shots this tick, to the bit.
+func requireEnded(t *testing.T, at string, ended []predict.Ended, server []projectilecomp.ShotEnded, body uint32) {
 	t.Helper()
-	got, want := p.State(), predictFrom(t, after)
+	type end struct {
+		Seq     uint32
+		Ability string
+		End     flight.End
+	}
+	var got, want []end
+	for _, e := range ended {
+		got = append(got, end{e.Seq, e.Ability, e.End})
+	}
+	for _, e := range server {
+		if e.Predicted && uint32(e.Cause.Caster) == body {
+			want = append(want, end{e.Cause.Seq, e.Cause.Ability, e.End})
+		}
+	}
+	order := func(a, b end) int {
+		return cmp.Or(cmp.Compare(a.Seq, b.Seq), cmp.Compare(a.Ability, b.Ability),
+			cmp.Compare(a.End.At.X, b.End.At.X), cmp.Compare(a.End.At.Y, b.End.At.Y))
+	}
+	slices.SortFunc(got, order)
+	slices.SortFunc(want, order)
+	if !slices.Equal(got, want) {
+		t.Fatalf("%s: predicted ends %+v, the server's %+v", at, got, want)
+	}
+}
+
+// guess is what a predictor gave after a step: its state, and where it has your Echo.
+type guess struct {
+	state   predict.State
+	echo    box2d.Vec2
+	hasEcho bool
+}
+
+// guessOf is p's guess after its last step.
+func guessOf(p *predict.Predictor) guess {
+	at, _, ok := p.Echo()
+	return guess{state: p.State(), echo: at, hasEcho: ok}
+}
+
+// requirePredicted fails unless g is the server's state in after and echoes: her Body, its Echo,
+// cooldowns and shots, and her effects unless something else put one on her this tick.
+func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, echoes echo.EchoSync, effects bool) {
+	t.Helper()
+	got, want := g.state, predictFrom(t, after)
 	if got.Center != want.Center {
 		t.Fatalf("%s: predicted her Body at %v, the server has %v", at, got.Center, want.Center)
+	}
+	if e, found := ownEcho(echoes, after.You.Body); g.hasEcho != found || found && g.echo != (box2d.Vec2{X: e.X, Y: e.Y}) {
+		t.Fatalf("%s: predicted her Echo at %v (%v), the server has %+v (%v)", at, g.echo, g.hasEcho, e, found)
 	}
 	if !slices.Equal(got.Cooldowns, want.Cooldowns) {
 		t.Fatalf("%s: predicted cooldowns %+v, the server has %+v", at, got.Cooldowns, want.Cooldowns)
@@ -2044,57 +2385,67 @@ func requirePredicted(t *testing.T, at string, p *predict.Predictor, after playe
 		t.Fatalf("%s: predicted effects %+v (next %d), the server has %+v (next %d)",
 			at, got.Effects, got.EffectsNext, want.Effects, want.EffectsNext)
 	}
-	// The server lists shots in no set order, and has no Prev.
-	flights := func(shots []predict.Shot) []predict.Shot {
-		out := make([]predict.Shot, len(shots))
-		for i, s := range shots {
-			out[i] = predict.Shot{Type: s.Type, Key: s.Key, Flight: s.Flight}
-		}
+	// The server lists shots in no set order.
+	sorted := func(shots []predict.Shot) []predict.Shot {
+		out := slices.Clone(shots)
 		slices.SortFunc(out, func(a, b predict.Shot) int {
 			return cmp.Or(cmp.Compare(a.Pos.X, b.Pos.X), cmp.Compare(a.Pos.Y, b.Pos.Y))
 		})
 		return out
 	}
-	if g, w := flights(got.Shots), flights(want.Shots); !slices.Equal(g, w) {
+	if g, w := sorted(got.Shots), sorted(want.Shots); !slices.Equal(g, w) {
 		t.Fatalf("%s: predicted shots %+v, the server has %+v", at, g, w)
 	}
 }
 
-// record is p's state as predictor.wasm returns it, for testdata/prediction.msgpack.
-func record(p *predict.Predictor, sync player.BodySync, echoes echo.EchoSync, f playercomp.InputFrame,
+// record is p's state as predictor.wasm returns it, for the recording.
+func record(p *predict.Predictor, sync player.BodySync, targets projectile.TargetSync, frames []playercomp.InputFrame,
 	ended []predict.Ended,
 ) predictionStep {
 	s := p.State()
 	step := predictionStep{
-		Sync: sync, Echoes: echoes, Frame: f, X: s.Center.X, Y: s.Center.Y, Shots: []shotPrediction{},
+		Sync: sync, Targets: targets, Frames: append([]playercomp.InputFrame{}, frames...), X: s.Center.X, Y: s.Center.Y,
+		Shots: []shotPrediction{},
 		Ended: []endedPrediction{}, Kit: kitPrediction{Tick: float64(s.Tick), Slots: []kitSlot{}},
 	}
 	for _, shot := range s.Shots {
 		step.Shots = append(step.Shots, shotPrediction{
-			Type: shot.Type, X: shot.Pos.X, Y: shot.Pos.Y, PrevX: shot.Prev.X, PrevY: shot.Prev.Y, Radius: shot.Radius,
+			Type: shot.Type, Seq: shot.Seq, Ability: shot.Ability, Launch: shot.Launch,
+			X: shot.Pos.X, Y: shot.Pos.Y, PrevX: shot.Prev.X, PrevY: shot.Prev.Y, Radius: shot.Radius,
 		})
 	}
 	for _, e := range ended {
+		hit := e.End.Hit
 		step.Ended = append(step.Ended, endedPrediction{
-			Type: e.Type, X: e.End.At.X, Y: e.End.At.Y, PrevX: e.Pos.X, PrevY: e.Pos.Y, Radius: e.Radius, Until: e.End.Until,
+			Type: e.Type, Seq: e.Seq, Ability: e.Ability, Launch: e.Launch,
+			X: e.End.At.X, Y: e.End.At.Y, PrevX: e.Pos.X, PrevY: e.Pos.Y, Radius: e.Radius, Until: e.End.Until,
+			OnTarget: hit.OnTarget(), TargetSerial: hit.Serial, OffsetX: hit.Offset.X, OffsetY: hit.Offset.Y,
 		})
 	}
 	for _, c := range p.Kit() {
 		step.Kit.Slots = append(step.Kit.Slots, kitSlot{Ability: c.Ability, ReadyTick: float64(c.ReadyTick)})
 	}
+	if at, prev, ok := p.Echo(); ok {
+		step.Echo = &echoPrediction{X: at.X, Y: at.Y, PrevX: prev.X, PrevY: prev.Y}
+	}
 	return step
 }
 
 // The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts
-// and their cooldowns, its dash, and its shots. Started from any tick's state and stepped by the frames
-// after it, it lands on the server's bits, through slows, stuns, forced moves, held buttons, bad frames
-// and a shot flying out its range. Her second bolt meets bob, walking across it, where her screen drew
-// him: the predictor's claim is the one the server accepts, the same tick, and a replay of the frame
-// ends the shot too. Effects others put on her surprise it, and come with the next state.
-// testdata/prediction.msgpack keeps the run, so the client checks that its wasm build lands there too
-// (client/src/game/player/predictor.test.ts).
+// and their cooldowns, its dash, its shots and its Echo. Started from any tick's state and stepped by the
+// frames after it, it lands on the server's bits, through slows, stuns, forced moves, held buttons, bad
+// frames and a shot flying out its range. Her second bolt meets bob, walking across it, where her screen
+// drew him: the server ends it the same tick at the same point, and a replay of the frame ends it there
+// too. Effects others put on her surprise it, and come with the next state. Her Echo trails her by a
+// second (test content), so it retraces her path in the run.
+// testdata/prediction-20hz.msgpack (one per tick rate) keeps the run and the bad network's replays, so the
+// client checks that its wasm build lands there too (client/src/game/player/predictor.test.ts).
 func TestPredictionMatchesServer(t *testing.T) {
-	w, alice, bob, fx := fxDuel(t)
+	fx := &emitter{}
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, map[string]string{
+		"echo/tuning.json": `{"champions": {"starter": {"delay_seconds": 1}}}`,
+	}), fx))
+	alice, bob := claim(t, w)
 	rules, err := predict.Load(content.FS)
 	if err != nil {
 		t.Fatal(err)
@@ -2132,12 +2483,12 @@ func TestPredictionMatchesServer(t *testing.T) {
 		return f
 	}
 	const lag = 2.3 // ticks her screen draws others behind the server: a fractional view
+	alice.back = lag
 	walk := bodiesFor(t, w, "bob").You.MoveSpeed * physics.SecondsPerTick
 
 	// One frame from each tick's state, as when the server acks every frame, for two cooldowns. Her
-	// client sees each tick's syncs, steps the frame from the newest state, and sends it with its claims.
+	// client sees each tick's syncs, steps the frame from the newest state, and sends it.
 	var run []predictionStep
-	var claimed []predict.Claim
 	var ends []predict.Ended
 	for i := range 2 * second {
 		e, surprised := surprises[i]
@@ -2147,8 +2498,8 @@ func TestPredictionMatchesServer(t *testing.T) {
 		if i >= second-6 {
 			bob.move(0, 1) // up across her second bolt's path
 		}
-		before, echoes := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice")
-		see(t, p, before, echoes)
+		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
+		see(t, p, targets)
 		p.Reset(predictFrom(t, before))
 		f := frameAt(i)
 		if i == second {
@@ -2163,32 +2514,34 @@ func TestPredictionMatchesServer(t *testing.T) {
 			}
 			f = frameAt(i)
 		}
-		f.Seq, f.ViewTick = alice.seq+1, float64(w.TickHeight())-lag
-		_, claims, ended := p.Step(predictFrame(f))
-		f.Claims = claimsOf(claims)
-		claimed = append(claimed, claims...)
+		f = alice.next(f)
+		_, ended := p.Step(predictFrame(f))
 		ends = append(ends, ended...)
 		alice.send(f)
 		w.Tick()
-		after := bodiesFor(t, w, "alice")
-		requirePredicted(t, fmt.Sprintf("step %d", i), p, after, !surprised)
-		run = append(run, record(p, before, echoes, f, ended))
+		after, afterEchoes, at := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), fmt.Sprintf("step %d", i)
+		requirePredicted(t, at, guessOf(p), after, afterEchoes, !surprised)
+		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
+		run = append(run, record(p, before, targets, []playercomp.InputFrame{f}, ended))
 		p.Reset(predictFrom(t, before))
-		p.Replay(predictFrame(f))
-		requirePredicted(t, fmt.Sprintf("step %d replayed", i), p, after, !surprised)
+		_, replayed := p.Step(predictFrame(f))
+		requirePredicted(t, at+" replayed", guessOf(p), after, afterEchoes, !surprised)
+		requireEnded(t, at+" replayed", replayed, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
 	}
 	if len(run[0].Shots) != 1 || len(run[second-1].Shots) != 0 {
 		t.Fatalf("predicted %d shots after her first frame and %d before her second bolt, want one, then none",
 			len(run[0].Shots), len(run[second-1].Shots))
 	}
-	if bobBody := yourBody(t, bodiesFor(t, w, "bob")).EntityID; len(claimed) != 1 || claimed[0].Target != bobBody {
-		t.Fatalf("claims %+v, want one: her second bolt on bob's Body %d", claimed, bobBody)
+	if first, last := run[0].Echo, run[len(run)-1].Echo; first == nil || last == nil || *first == *last {
+		t.Fatalf("predicted her Echo at %v after her first frame and %v after her last, want it moved", first, last)
 	}
 	// Her first bolt is drawn out to its range and her second up to bob, each at its speed in its last tick.
 	launch := box2d.Vec2{X: run[0].Shots[0].PrevX, Y: run[0].Shots[0].PrevY}
+	bobBody := yourBody(t, bodiesFor(t, w, "bob")).EntityID
 	if len(ends) != 2 || math.Abs(math.Hypot(ends[0].End.At.X-launch.X, ends[0].End.At.Y-launch.Y)-bolt.Range) > 1e-9 ||
-		ends[1].Key != claimed[0].Key || ends[1].End.Hit.Target != claimed[0].Target {
-		t.Fatalf("ended %+v, want her first bolt at its range from %v, then her second on bob", ends, launch)
+		ends[1].End.Hit.Target != bobBody {
+		t.Fatalf("ended %+v, want her first bolt at its range from %v, then her second on bob's Body %d",
+			ends, launch, bobBody)
 	}
 	for _, e := range ends {
 		if flew := math.Hypot(e.End.At.X-e.Pos.X, e.End.At.Y-e.Pos.Y); !(e.End.Until > 0 && e.End.Until <= 1) ||
@@ -2211,20 +2564,35 @@ func TestPredictionMatchesServer(t *testing.T) {
 		f := alice.send(playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: aim[0], AimY: aim[1], Buttons: 1})
 		w.Tick()
 		p.Step(predictFrame(f))
-		requirePredicted(t, fmt.Sprintf("replayed frame %d", i+1), p, bodiesFor(t, w, "alice"), true)
+		requirePredicted(t, fmt.Sprintf("replayed frame %d", i+1), guessOf(p), bodiesFor(t, w, "alice"),
+			sentTo[echo.EchoSync](t, w, "alice"), true)
 		if shots := len(p.State().Shots); shots != 0 && i < 4 || shots != 1 && i >= 4 {
 			t.Fatalf("replayed frame %d: %d shots predicted, want her bolt from frame 5 only", i+1, shots)
 		}
 	}
 
-	// The recording must still predict its own results, so a change to the sim asks for a new one.
-	path := filepath.Join("testdata", "prediction.msgpack")
+	run = append(run, badNetwork(t, w, p, alice)...)
+
+	// The recording must still predict its own results, so a change to the sim asks for a new one. Its
+	// digest is text, a line a step, so a new recording is a reviewed diff. Each tick rate has its own.
+	name := filepath.Join("testdata", fmt.Sprintf("prediction-%dhz", physics.ServerTickRateHz))
+	path, digestPath := name+".msgpack", name+".txt"
+	digest := func(run []predictionStep) []byte {
+		var b strings.Builder
+		for _, s := range run {
+			b.WriteString(s.digest())
+		}
+		return []byte(b.String())
+	}
 	if *update {
 		raw, err := msgpack.Marshal(run)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(path, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(digestPath, digest(run), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -2237,45 +2605,180 @@ func TestPredictionMatchesServer(t *testing.T) {
 	if err := msgpack.Unmarshal(raw, &recorded); err != nil || len(recorded) == 0 {
 		t.Fatalf("%s holds no run (%v)", path, err)
 	}
+	if text, err := os.ReadFile(digestPath); err != nil || !bytes.Equal(text, digest(recorded)) {
+		t.Fatalf("%s isn't the digest of %s (%v): run with -update to write both", digestPath, path, err)
+	}
 	p.Forget()
 	for i, s := range recorded {
-		see(t, p, s.Sync, s.Echoes)
+		see(t, p, s.Targets)
 		p.Reset(predictFrom(t, s.Sync))
-		_, claims, ended := p.Step(predictFrame(s.Frame))
-		got := record(p, s.Sync, s.Echoes, s.Frame, ended)
+		var ended []predict.Ended
+		for _, f := range s.Frames {
+			_, ended = p.Step(predictFrame(f))
+		}
+		got := record(p, s.Sync, s.Targets, s.Frames, ended)
 		if got.X != s.X || got.Y != s.Y || !slices.Equal(got.Shots, s.Shots) || got.Kit.Tick != s.Kit.Tick ||
-			!slices.Equal(got.Kit.Slots, s.Kit.Slots) || !slices.Equal(claims, predictFrame(s.Frame).Claims) ||
-			!slices.Equal(got.Ended, s.Ended) {
-			t.Fatalf("%s step %d: predicted (%v, %v), shots %+v, ended %+v, kit %+v, claims %+v; recorded (%v, %v), "+
-				"%+v, %+v, %+v, %+v. If the sim changed on purpose, run "+
-				"`go test ./shards/game -run TestPredictionMatchesServer -update`", path, i, got.X, got.Y, got.Shots,
-				got.Ended, got.Kit, claims, s.X, s.Y, s.Shots, s.Ended, s.Kit, predictFrame(s.Frame).Claims)
+			!slices.Equal(got.Kit.Slots, s.Kit.Slots) || !slices.Equal(got.Ended, s.Ended) ||
+			(got.Echo == nil) != (s.Echo == nil) || got.Echo != nil && *got.Echo != *s.Echo {
+			t.Fatalf("%s step %d: predicted (%v, %v), shots %+v, ended %+v, kit %+v, Echo %+v; recorded (%v, %v), %+v, "+
+				"%+v, %+v, %+v. If the sim changed on purpose, run "+
+				"`go test ./shards/game -run TestPredictionMatchesServer -update` (with -tags rate60 at 60 Hz)",
+				path, i, got.X, got.Y, got.Shots, got.Ended, got.Kit, got.Echo, s.X, s.Y, s.Shots, s.Ended, s.Kit, s.Echo)
 		}
 	}
 }
 
-// The predictor places a Body or Echo only from both syncs of both kinds around a frame's view, and only
-// while the newest sync still shows it. Otherwise her shot passes where her screen drew it. A hit ends
-// her shot touching it there, its last tick at its speed.
+// badNetwork plays alice's client through a scripted network, holding fire at bob as she walks. Each
+// tick of the script: '.' her client makes a frame and sends it, '0' its clock runs slow and makes none,
+// '2' it makes two after a hitch, 'l' the frame's Input is lost (the next one resends it), and 'h' the
+// network holds it until the next '.' or '2'. Two more held in a row than the server's queue holds
+// overflow it, and the slow ticks after drain it before her bolt is ready again. Each tick her client
+// starts over from the newest body_sync and replays her unacked frames, as it does. Whenever the server
+// then applies those frames a tick each, it lands where the replay did, to the bit, its shots' ends
+// included. A correction comes only from a surprise: at most a tick of walking for each tick the server
+// coasted or frame it dropped. It returns each tick's replay, for the recording.
+func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice *client) []predictionStep {
+	t.Helper()
+	queue, gap := tuningOf[player.MovementTuning](t).BufferFrames(), strings.Repeat(".", ticks(0.2))
+	script := strings.Repeat(".", ticks(0.3)) + strings.Repeat("h", queue+2) + "." + strings.Repeat("0", queue-1) +
+		strings.Repeat(".", ticks(0.3)) + "l" + gap + "2" + gap + "l" + gap + "0" + gap + "0" + gap + "h.h" +
+		strings.Repeat(".", ticks(0.6))
+	resend := ticks(0.4) // frames each Input repeats: ResendSeconds in client/src/game/player/input_stream.ts
+	moves := [][2]float64{{1, 0}, {0.6, 0.8}, {0, 1}, {-1, 0}, {0, -1}, {1, 1}}
+	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
+	walk, me := before.You.MoveSpeed*physics.SecondsPerTick, before.You.Body
+	type replay struct { // a replay's guess, until the server applies its frame
+		seq, ack uint32
+		from     uint64 // the body_sync's tick it started from
+		guess    guess
+		ended    []predict.Ended
+	}
+	var (
+		run                                           []predictionStep
+		open                                          []replay
+		unacked                                       []playercomp.InputFrame
+		held                                          []player.Input
+		drawn                                         box2d.Vec2 // her Body after her newest frame, as last predicted
+		surprises                                     int        // since her client last predicted
+		exact, deep, hits, coasts, dropped, corrected int
+	)
+	for i, c := range script {
+		at := fmt.Sprintf("bad network tick %d", i)
+		var ended []predict.Ended // her client's last step's
+		// Her client starts over from the newest body_sync and replays what the server hasn't applied.
+		see(t, p, targets)
+		p.Reset(predictFrom(t, before))
+		ack := before.You.InputAck
+		unacked = slices.DeleteFunc(unacked, func(f playercomp.InputFrame) bool { return f.Seq <= ack })
+		for _, f := range unacked {
+			_, ended = p.Step(predictFrame(f))
+			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), ended})
+		}
+		if i > 0 {
+			moved := box2d.Length(box2d.Sub(p.State().Center, drawn))
+			if moved > 0 {
+				corrected++
+			}
+			if moved > float64(surprises)*walk+1e-9 { // positions differ by sums of steps, so allow rounding
+				t.Fatalf("%s: a correction of %v after %d surprises, past a walk (%v) each", at, moved, surprises, walk)
+			}
+		}
+		// Her clock makes this tick's frames, each sent with the newest unacked ones.
+		frames := map[rune]int{'0': 0, '2': 2}[c]
+		if c != '0' && c != '2' {
+			frames = 1
+		}
+		for range frames {
+			m, bob := moves[int(alice.seq)%len(moves)], yourBody(t, bodiesFor(t, w, "bob"))
+			from := p.Peek(m[0], m[1])
+			f := alice.next(playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: bob.X - from.X, AimY: bob.Y - from.Y,
+				Buttons: 1})
+			alice.seq = f.Seq
+			_, ended = p.Step(predictFrame(f))
+			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), ended})
+			unacked = append(unacked, f)
+			if c != 'l' {
+				held = append(held, input(alice.session, unacked[max(len(unacked)-resend, 0):]...))
+			}
+			if c == '.' || c == '2' {
+				for _, in := range held {
+					w.Command(alice.id, in)
+				}
+				held = nil
+			}
+		}
+		drawn = p.State().Center
+		run = append(run, record(p, before, targets, unacked, ended))
+		w.Tick()
+		after := bodiesFor(t, w, "alice")
+		applied := after.You.InputAck
+		// What surprised her client: a tick the server coasted, or frames it dropped.
+		surprises = max(int(applied-ack)-1, 0)
+		if applied == ack {
+			coasts++
+			surprises = 1
+		}
+		dropped += max(int(applied-ack)-1, 0)
+		// A replay from before a surprise is stale; any other is the server's state once its frame applies.
+		echoes, ends := sentTo[echo.EchoSync](t, w, "alice"), w.Emitted[projectilecomp.ShotEnded]()
+		waiting := open[:0]
+		for _, r := range open {
+			switch {
+			case uint64(applied-r.ack) != after.Tick-r.from:
+			case applied == r.seq:
+				requirePredicted(t, at, r.guess, after, echoes, true)
+				requireEnded(t, at, r.ended, ends, me)
+				exact++
+				if r.seq-r.ack > 1 {
+					deep++
+				}
+				if slices.ContainsFunc(r.ended, func(e predict.Ended) bool { return e.End.Hit.OnTarget() }) {
+					hits++
+				}
+			default:
+				waiting = append(waiting, r)
+			}
+		}
+		open = waiting
+		before, targets = after, sentTo[projectile.TargetSync](t, w, "alice")
+	}
+	if exact < len(script) || deep == 0 || hits == 0 || coasts < 3 || dropped == 0 || corrected == 0 {
+		t.Fatalf("bad network: %d exact replays, %d of several frames, %d ending on bob; %d coasts, %d frames "+
+			"dropped, %d corrections: want each", exact, deep, hits, coasts, dropped, corrected)
+	}
+	return run
+}
+
+// The predictor places a target only from the target syncs of both ticks around the view the server
+// judges a frame's shots at, and only while the newest sync shows it alive. Otherwise her shot passes
+// where her screen drew it. A hit ends her shot touching it there, its last tick at its speed (test
+// content: a bolt that flies 0.75 units a tick at any rate).
 func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
-	rules, err := predict.Load(content.FS)
+	_, bolt := primary(t)
+	bolt.Speed = 0.75 * physics.ServerTickRateHz
+	rules, err := predict.Load(patched(t, map[string]string{
+		"projectile/tuning.json": fmt.Sprintf(`{"shots": {"bolt": {"speed": %v}}}`, bolt.Speed),
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, bolt := primary(t)
 	step := bolt.Speed * physics.SecondsPerTick
+	rewind := tuningOf[projectile.ProjectileTuning](t).RewindTicks()
+	now := rewind + 4 // her state's tick: for her first frame the server keeps rows from tick 4
 	// The enemy stands on her shot's path, or farther on it, or a tick later 2 units up off it, or dies
-	// halfway through that tick there.
-	enemy := predict.Sight{ID: 7, Side: interact.Side{Owner: 7, Team: 1}, Center: box2d.Vec2{X: 1}, Radius: 0.5, Until: 1}
-	far, up := enemy, enemy
+	// halfway through that tick there. A newer one can take its ID, never its serial.
+	enemy := predict.Sight{ID: 7, Serial: 70, Row: flight.Row{Kind: interact.Body, Side: interact.Side{Owner: 7, Team: 1},
+		Center: box2d.Vec2{X: 1}, Radius: 0.5, Until: 1}}
+	far, up, dying, newer := enemy, enemy, enemy, enemy
 	far.Center.X = 2
+	farUp := far
+	farUp.Center.Y = 3
 	up.Center.Y = 2
-	dying, dyingUp := enemy, up
-	dying.Until, dyingUp.Until = 0.5, 0.5
-	both := func(p *predict.Predictor, tick uint64, s predict.Sight) {
-		p.See(tick, interact.Body, []predict.Sight{s})
-		p.See(tick, interact.Echo, nil)
-	}
+	dying.Until = 0.5
+	newer.Serial = 71
+	diedUp := up
+	diedUp.Until = 0.5
+	sync := func(p *predict.Predictor, tick uint64, s predict.Sight) { p.See(tick, []predict.Sight{s}) }
 	at := func(x, y float64) *box2d.Vec2 { return &box2d.Vec2{X: x, Y: y} }
 	for _, c := range []struct {
 		name  string
@@ -2283,42 +2786,56 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		view  float64
 		drawn *box2d.Vec2 // where her screen drew the enemy, if her shot hits it
 	}{
-		{"seen", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, enemy) }, 10.5, at(1, 0)},
-		{"seen a tick's flight away", func(p *predict.Predictor) { both(p, 10, far); both(p, 11, far) }, 10.5, at(2, 0)},
-		{"no echo_syncs", func(p *predict.Predictor) {
-			p.See(10, interact.Body, []predict.Sight{enemy})
-			p.See(11, interact.Body, []predict.Sight{enemy})
-		}, 10.5, nil},
+		{"seen", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, enemy) }, 10.5, at(1, 0)},
+		{"seen a tick's flight away", func(p *predict.Predictor) { sync(p, 10, far); sync(p, 11, far) }, 10.5, at(2, 0)},
+		{"no sync of the older tick", func(p *predict.Predictor) { sync(p, 11, enemy); sync(p, 12, enemy) }, 10.5, nil},
 		{"gone from the newest", func(p *predict.Predictor) {
-			both(p, 10, enemy)
-			both(p, 11, enemy)
-			p.See(12, interact.Body, nil)
+			sync(p, 10, enemy)
+			sync(p, 11, enemy)
+			p.See(12, nil)
 		}, 10.5, nil},
-		{"drawn a quarter of the way up", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, up) }, 10.25, at(1, 0.5)},
-		{"drawn most of the way up", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, up) }, 10.9, nil},
-		{"seen before it died", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, dying) }, 10.25, at(1, 0)},
-		{"seen after it died", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, dying) }, 10.75, nil},
-		{"drawn up at its own pace as it died", func(p *predict.Predictor) { both(p, 10, enemy); both(p, 11, dyingUp) },
-			10.1, at(1, 0.4)},
+		{"drawn a quarter of the way up", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, up) }, 10.25,
+			at(1, 0.5)},
+		{"drawn most of the way up", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, up) }, 10.9, nil},
+		// The server removes it at the end of tick 11, before her frames.
+		{"dead before her frames, though drawn alive", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, dying) },
+			10.25, nil},
+		// Judged at the oldest view the server keeps, 5, drawn from syncs 4 and 5: the predictor keeps both.
+		{"drawn before the rows the server keeps", func(p *predict.Predictor) {
+			for tick := range rewind + 1 {
+				sync(p, 4+tick, enemy)
+			}
+		}, 1.5, at(1, 0)},
+		// Each step of a replay is held at its own tick: her second is judged at 6, where the enemy stood on
+		// her path; at 5 it was 3 units up.
+		{"drawn before the rows the server keeps, a step later", func(p *predict.Predictor) {
+			for tick := range rewind + 1 {
+				sync(p, 4+tick, map[bool]predict.Sight{true: farUp, false: far}[tick < 2])
+			}
+		}, 1.5, at(2, 0)},
+		{"drawn after them", func(p *predict.Predictor) {
+			sync(p, now-2, far)
+			sync(p, now-1, enemy)
+			sync(p, now, enemy)
+		}, float64(now) + 0.5, at(1, 0)},
+		// As the server does, it draws the newer one where its first row is, not from the one it took the ID of.
+		{"new with a dead one's ID", func(p *predict.Predictor) { sync(p, 10, diedUp); sync(p, 11, newer) }, 10.25,
+			at(1, 0)},
 	} {
 		p := predict.New(rules)
 		c.see(p)
-		p.Reset(predict.State{Tick: 12, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
-		var claims []predict.Claim
+		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		var ended []predict.Ended
 		for i, buttons := range []uint32{1, 0} { // she casts, then holds
-			_, stepClaims, stepEnded := p.Step(predict.Frame{Seq: uint32(i + 1), AimX: 1, Buttons: buttons, ViewTick: c.view})
-			claims, ended = append(claims, stepClaims...), append(ended, stepEnded...)
+			_, stepEnded := p.Step(predict.Frame{Seq: uint32(i + 1), AimX: 1, Buttons: buttons, ViewTick: c.view})
+			ended = append(ended, stepEnded...)
 		}
 		hits := c.drawn != nil
-		if hit := len(claims) == 1 && claims[0].Target == enemy.ID; hit != hits || len(claims) > 1 {
-			t.Errorf("%s: claims %+v, want a hit on %d: %v", c.name, claims, enemy.ID, hits)
-		}
-		if !hits {
+		if hit := len(ended) == 1 && ended[0].End.Hit.Target == enemy.ID; hit != hits || len(ended) > 1 {
+			t.Errorf("%s: ended %+v, want a hit on %d: %v", c.name, ended, enemy.ID, hits)
 			continue
 		}
-		if len(ended) != 1 {
-			t.Errorf("%s: ended %+v, want her shot", c.name, ended)
+		if !hits {
 			continue
 		}
 		// Box2D stops a cast a slop short of touching.
@@ -2380,7 +2897,8 @@ func TestSharedCoreIsDeterministic(t *testing.T) {
 
 // --- Wire format ---
 
-var update = flag.Bool("update", false, "rewrite testdata from TestWireFixtures and TestPredictionMatchesServer")
+var update = flag.Bool("update", false,
+	"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture")
 
 // TestWireFixtures pins each payload's bytes in testdata/wire, which the client checks too
 // (client/src/game/wire_fixtures.test.ts). A renamed field fails here instead of silently zeroing on
@@ -2390,10 +2908,7 @@ func TestWireFixtures(t *testing.T) {
 		playercomp.InputFrame{Seq: 1, MoveX: 1},
 		playercomp.InputFrame{
 			Seq: 2, MoveX: 0.7071067811865476, MoveY: -0.7071067811865476, AimX: 3.5, AimY: -1.25, Buttons: 1,
-			ViewTick: 41.375, Claims: cardinal.SliceOf(
-				playercomp.HitClaim{Seq: 1, Ability: "bolt", Launch: 1, Target: 4294967295},
-				playercomp.HitClaim{Seq: 2, Ability: "nova", Target: 3},
-			),
+			ViewTick: 41.375,
 		},
 	)}
 	samples := []struct {
@@ -2403,8 +2918,10 @@ func TestWireFixtures(t *testing.T) {
 		{"body_sync", player.BodySync{
 			Tick:        9007199254740993, // 2^53+1, past float64 precision
 			TickSeconds: 0.05,
+			SimVersion:  "go1.27.1+0123456789abcdef",
 			You: player.YouState{
-				Body: 1, InputSession: 4294967295, InputAck: 42, MoveSpeed: 5, Champion: "starter",
+				Body: 1, InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, MoveSpeed: 5,
+				Champion: "starter",
 				Cooldowns: cardinal.SliceOf(
 					cast.Cooldown{Ability: "bolt", ReadyTick: 9007199254740993},
 					cast.Cooldown{Ability: "dash", ReadyTick: 0},
@@ -2417,31 +2934,43 @@ func TestWireFixtures(t *testing.T) {
 				),
 				EffectsNext: 4294967295,
 				Shots: cardinal.SliceOf(player.ShotState{
-					Type: "bolt", Ability: "bolt", Seq: 4294967295, Launch: 1, X: -4.25, Y: 1.5, VelX: 9, VelY: -12,
-					Radius: 0.15, Remaining: 17.75,
+					Type: "bolt", Ability: "bolt", Seq: 4294967295, Launch: 1, PrevX: -4.75, PrevY: 2.125, X: -4.25, Y: 1.5,
+					VelX: 9, VelY: -12, Radius: 0.15, Remaining: 17.75,
 				}),
+				EchoDelay: 100,
+				EchoPath:  cardinal.SliceOf(physics2d.Vec2{X: -3.5, Y: 0.25}, physics2d.Vec2{X: -3.25, Y: 0.5}),
 			},
 			Bodies: cardinal.SliceOf(
-				player.BodyState{EntityID: 1, PlayerID: 1, Nickname: "Player One", Team: 0, X: 1.5, Y: -2, Radius: 0.5},
-				player.BodyState{EntityID: 2, PlayerID: 2, Nickname: "Échø ✦", Team: 1, X: -0.25, Y: 3.75, Radius: 0.75,
+				player.BodyState{EntityID: 1, Serial: 1, PlayerID: 1, Nickname: "Player One", Team: 0, X: 1.5, Y: -2,
+					Radius: 0.5},
+				player.BodyState{EntityID: 2, Serial: 9007199254740993, PlayerID: 2, Nickname: "Échø ✦", Team: 1, X: -0.25,
+					Y: 3.75, Radius: 0.75,
 					Tags: interact.Stunned | interact.CC},
 			),
 		}},
 		{"echo_sync", echo.EchoSync{Tick: 7, Echoes: cardinal.SliceOf(
-			echo.EchoState{EntityID: 3, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5,
+			echo.EchoState{EntityID: 3, Serial: 3, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5,
 				Tags: interact.Unstoppable, HP: 62.5, MaxHP: 100, Until: 1},
-			echo.EchoState{EntityID: 4, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, MaxHP: 100, Until: 0.625},
+			echo.EchoState{EntityID: 4, Serial: 4, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, MaxHP: 100,
+				Until: 0.625},
 		)}},
 		{"ability_sync", ability.AbilitySync{Tick: 7, Abilities: cardinal.SliceOf(
 			ability.AbilityState{Body: 1, Slot: 0, Ability: "bolt", ReadyTick: 18446744073709551615},
 		)}},
 		{"projectile_sync", projectile.ProjectileSync{Tick: 8, Projectiles: cardinal.SliceOf(
-			projectile.ProjectileState{EntityID: 9, Type: "bolt", Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15,
-				Until: 1},
-			projectile.ProjectileState{EntityID: 10, Type: "bolt", Caster: 3, Team: 0, X: 2.5, Y: 1, Radius: 0.15,
-				Until: 0.375, Ended: true},
+			projectile.ProjectileState{EntityID: 9, Serial: 18446744073709551615, Type: "bolt", Caster: 4294967295,
+				Predicted: true, Team: 1, PrevX: -0.5, PrevY: -6.75, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1},
+			projectile.ProjectileState{EntityID: 10, Serial: 12, Type: "bolt", Caster: 3, Team: 0, PrevX: 2.25, PrevY: 0.5,
+				X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true, OnTarget: true, TargetSerial: 4, OffsetX: -0.625,
+				OffsetY: 0.125},
 		)}},
 		{"projectile_sync_empty", projectile.ProjectileSync{Tick: 9}},
+		{"target_sync", projectile.TargetSync{Tick: 9007199254740993, Targets: cardinal.SliceOf(
+			projectile.TargetState{EntityID: 0, Serial: 1, Kind: interact.Body, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5,
+				Tags: interact.Stunned | interact.CC, Until: 1},
+			projectile.TargetState{EntityID: 4, Serial: 18446744073709551615, Kind: interact.Echo, Owner: 2, Team: 1, X: 3,
+				Y: -1.25, Radius: 0.5, Until: 0.625},
+		)}},
 		{"input", in},
 	}
 	for _, s := range samples {
@@ -2487,4 +3016,96 @@ func TestWireFixtures(t *testing.T) {
 				got.Session, gotFrames, in.Session, wantFrames)
 		}
 	})
+}
+
+// viewFixture is testdata/view.json: targets as a few ticks of syncs show them, and where views across
+// those ticks draw each.
+type viewFixture struct {
+	Syncs []viewSync
+	Views []viewDrawn
+}
+
+type viewSync struct {
+	Tick    uint64
+	Targets []viewTarget
+}
+
+type viewTarget struct {
+	EntityID uint32
+	Serial   uint64
+	X, Y     float64
+	Until    float64
+}
+
+type viewDrawn struct {
+	View  float64
+	Drawn []viewSpot
+}
+
+type viewSpot struct {
+	Serial uint64
+	X, Y   float64
+}
+
+// TestViewFixture pins where a view draws each target, which the client's screen draws by too
+// (client/src/engine/render/entity_views.test.ts), to the bit: a frame's shots meet them there. A view
+// draws the syncs at flight.RowTicks with flight.AtView, by serial, and nothing without both syncs, as
+// the predictor places them.
+func TestViewFixture(t *testing.T) {
+	at := func(id uint32, serial uint64, x, y, until float64) viewTarget {
+		return viewTarget{EntityID: id, Serial: serial, X: x, Y: y, Until: until}
+	}
+	// 1 walks; 2 is new at tick 12; 3 dies 0.375 into tick 12; 4 dies as tick 11 begins, so it's never
+	// drawn, and a new target takes its ID at tick 12, drawn where it first is.
+	fixture := viewFixture{Syncs: []viewSync{
+		{10, []viewTarget{at(1, 11, 0, 0, 1), at(3, 13, -1, 2, 1), at(4, 14, 7, 7, 1)}},
+		{11, []viewTarget{at(1, 11, 0.1, 0.7, 1), at(3, 13, -2.2, 2.5, 1), at(4, 14, 7, 7, 0)}},
+		{12, []viewTarget{at(1, 11, 2.5, 1.3, 1), at(2, 12, 5, 5, 1), at(3, 13, -3, 4.1, 0.375), at(4, 15, -6, 1, 1)}},
+		{13, []viewTarget{at(1, 11, 3, 3.3, 1), at(2, 12, 5.5, 4, 1), at(4, 15, -5.5, 1.5, 1)}},
+	}}
+	syncAt := func(tick uint64) (map[uint64]flight.Row, []viewTarget, bool) {
+		for _, s := range fixture.Syncs {
+			if s.Tick == tick {
+				rows := map[uint64]flight.Row{}
+				for _, x := range s.Targets {
+					rows[x.Serial] = flight.Row{Tick: tick, Center: box2d.Vec2{X: x.X, Y: x.Y}, Until: x.Until}
+				}
+				return rows, s.Targets, true
+			}
+		}
+		return nil, nil, false
+	}
+	// Before the first two syncs, through each tick's middle and end, at a death, and past the newest.
+	for _, view := range []float64{9.75, 10, 10.3, 11, 11.2, 11.375, 11.5, 12, 12.7, 13, 13.25} {
+		drawn := viewDrawn{View: view, Drawn: []viewSpot{}}
+		a, b := flight.RowTicks(view)
+		older, _, hasOlder := syncAt(a)
+		newer, targets, _ := syncAt(b)
+		if !hasOlder {
+			targets = nil
+		}
+		for _, x := range targets {
+			o, ok := older[x.Serial]
+			if row, ok := flight.AtView(o, ok, newer[x.Serial], view); ok {
+				drawn.Drawn = append(drawn.Drawn, viewSpot{Serial: x.Serial, X: row.Center.X, Y: row.Center.Y})
+			}
+		}
+		fixture.Views = append(fixture.Views, drawn)
+	}
+	got, err := json.MarshalIndent(fixture, "", "\t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	path := filepath.Join("testdata", "view.json")
+	if *update {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if want, err := os.ReadFile(path); err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("%s no longer matches how a view draws (%v). If intended, run "+
+			"`go test ./shards/game -run TestViewFixture -update`, then make the client's draw match", path, err)
+	}
 }
