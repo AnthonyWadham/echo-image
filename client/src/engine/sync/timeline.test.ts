@@ -138,13 +138,13 @@ describe('Timelines', () => {
     expect(later.renderTick(0.016, 0.05)).toBeCloseTo(95)
   })
 
-  test('waits at the newest tick while no state comes, never stepping back, then jumps ahead', () => {
+  test('waits a tick before the newest while no state comes, never stepping back, then jumps ahead', () => {
     const timelines = new Timelines(0.1)
     const tl = timelines.create<string>()
     for (let tick = 90n; tick <= 100n; tick++) timelines.add(tl, tick, `s${tick}`)
     const drawn = [timelines.renderTick(0, 0.05)!]
     for (let i = 0; i < 60; i++) drawn.push(timelines.renderTick(1 / 60, 0.05)!) // a second with no state
-    expect(drawn.at(-1)).toBe(100)
+    expect(drawn.at(-1)).toBe(99)
     expect(drawn.every((tick, i) => i === 0 || tick >= drawn[i - 1]!)).toBe(true)
     for (let tick = 101n; tick <= 120n; tick++) timelines.add(tl, tick, `s${tick}`)
     expect(timelines.renderTick(1 / 60, 0.05)).toBeCloseTo(118) // a second behind its target
@@ -191,7 +191,7 @@ describe('stepRenderTime', () => {
     expect(stepRenderTime(1, 0.9, 2, 10)).toBe(1)
   })
 
-  test('never passes newest', () => {
+  test('never passes latest', () => {
     expect(stepRenderTime(1, 1.1, 1.05, 0.2)).toBe(1.05)
     expect(stepRenderTime(1, 2, 1.5, 0.016)).toBe(1.5)
   })

@@ -129,9 +129,9 @@ test('an Echo is hit where your screen drew it, unless it died before your frame
   const you = first?.Sync.You
   const [cast] = first?.Frames ?? []
   if (!first || !you || !cast) throw new Error('the run has no cast')
-  // An enemy Echo on your aim, touching your shot as it leaves, in the two syncs before a tick you cast in,
-  // drawn alive. It lived all of the newer tick, or died halfway through it: then the server removed it
-  // before your frame's tick.
+  // An enemy Echo on your aim, touching your shot as it leaves, in the three syncs the views of a tick you
+  // cast in are drawn from, drawn alive. It lived all of the middle tick, or died halfway through it: then
+  // the server removed it at that tick's end, before your frame's tick, and the newest sync lacks it.
   const echo = {
     ...{ EntityID: 99, Serial: 99n, Kind: 4n /* interact.Echo */, Owner: 98, Team: 1 - you.Team },
     ...{ X: you.X + 0.5, Y: you.Y, Radius: 0.5, Tags: 0n },
@@ -142,12 +142,8 @@ test('an Echo is hit where your screen drew it, unless it died before your frame
     [0.5, false],
   ] as const) {
     predictor.forget()
-    for (const [tick, lived] of [
-      [older, 1],
-      [older + 1n, until],
-    ] as const) {
-      predictor.seeTargets({ Tick: tick, Targets: [{ ...echo, Until: lived }] })
-    }
+    const synced = [[{ ...echo, Until: 1 }], [{ ...echo, Until: until }], until < 1 ? [] : [{ ...echo, Until: 1 }]]
+    synced.forEach((targets, i) => predictor.seeTargets({ Tick: older + BigInt(i), Targets: targets }))
     predictor.reset(first.Sync)
     const frame = { ...cast, MoveX: 0, MoveY: 0, AimX: 1, AimY: 0, Buttons: 1 }
     const { ended } = predictor.step({ ...frame, ViewTick: Number(older) + 0.25 })

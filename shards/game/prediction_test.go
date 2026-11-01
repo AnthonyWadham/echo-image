@@ -89,10 +89,11 @@ func TestPredictedEchoMatchesServer(t *testing.T) {
 	}
 }
 
-// Your screen draws your Echo where your predictor has it, now, as it does your Body, so a shot that
-// stops on it meets it there, on the server and in your predictor alike (test content: a bolt that stops
-// on its caster's Echo). Her Echo walks toward her along her shot's path, and her view had it 0.125 s
-// further back. Her bolt's hit is offset from where it is now.
+// Your screen draws your Echo where your predictor has it, as it does your Body: across a frame, from
+// where it was a tick ago to where it is now. So a shot that stops on it meets it there, on the server
+// and in your predictor alike (test content: a bolt that stops on its caster's Echo). Her Echo walks
+// toward her along her shot's path, and her view had it 0.125 s further back. Her bolt ends touching it
+// where it was when they met.
 func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 	patch := map[string]string{
 		"echo/tuning.json": `{"champions": {"starter": {"delay_seconds": 1}}}`,
@@ -101,6 +102,7 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 	}
 	w := cardinal.NewTestWorld(t, withContent(t, patch))
 	alice, _ := claim(t, w)
+	_, bolt := primary(t)
 	moveFor(w, alice, 1, 0, physics.ServerTickRateHz) // her Echo walks this a second later
 	flyFor(w, ticks(0.25))
 	rules, err := predict.Load(patched(t, patch))
@@ -110,12 +112,14 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 	p := predict.New(rules)
 	body := yourBody(t, bodiesFor(t, w, "alice")).EntityID
 	var ended []predict.Ended
+	var was projectile.TargetState // her Echo a tick before
 	for i := 0; len(ended) == 0; i++ {
 		if i == ticks(0.5) {
 			t.Fatal("her bolt never met her Echo")
 		}
 		before := bodiesFor(t, w, "alice")
 		see(t, p, sentTo[projectile.TargetSync](t, w, "alice"))
+		was, _ = ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), body)
 		p.Reset(predictFrom(t, before))
 		f := playercomp.InputFrame{AimX: -1}
 		if i == 0 {
@@ -128,9 +132,12 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 		requireEnded(t, fmt.Sprintf("step %d", i), ended, w.Emitted[projectilecomp.ShotEnded](), body)
 	}
 	e, _ := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), body)
-	if end := ended[0].End; end.Hit.Target != e.EntityID || math.Abs(end.At.X-end.Hit.Offset.X-e.X) > 1e-9 ||
-		math.Abs(end.At.Y-end.Hit.Offset.Y-e.Y) > 1e-9 {
-		t.Fatalf("her bolt ended %+v, want on her Echo where it is now, %+v", ended[0], e)
+	end := ended[0].End
+	met := box2d.Vec2{X: was.X + (e.X-was.X)*end.Until, Y: was.Y + (e.Y-was.Y)*end.Until}
+	if end.Hit.Target != e.EntityID || math.Abs(end.At.X-end.Hit.Offset.X-met.X) > 1e-9 ||
+		math.Abs(end.At.Y-end.Hit.Offset.Y-met.Y) > 1e-9 || !(end.Until > 0) ||
+		math.Abs(box2d.Length(end.Hit.Offset)-(bolt.Radius+e.Radius)) > 2*box2d.LinearSlop {
+		t.Fatalf("her bolt ended %+v, want touching her Echo where it was when they met, %v", ended[0], met)
 	}
 }
 
@@ -866,10 +873,10 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, al
 	return run
 }
 
-// The predictor places a target only from the target syncs of both ticks around the view the server
-// judges a frame's shots at, and only while the newest sync shows it alive. Otherwise her shot passes
-// where her screen drew it. A hit ends her shot touching it there, its last tick at its speed (test
-// content: a bolt that flies 0.75 units a tick at any rate).
+// The predictor sees a target only from the target syncs of every tick the views of a frame's tick are
+// drawn from (flight.Across), and only while the newest sync shows it alive. Otherwise her shot passes
+// where her screen drew it. A hit ends her shot touching it where her screen drew it when they met, its
+// last tick at its speed (test content: a bolt that flies 0.75 units a tick at any rate).
 func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	_, bolt := primary(t)
 	bolt.Speed = 0.75 * physics.ServerTickRateHz
@@ -882,8 +889,8 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	step := bolt.Speed * physics.SecondsPerTick
 	rewind := rules.Shots.RewindTicks()
 	now := rewind + 4 // her state's tick: for her first frame the server keeps rows from tick 4
-	// The enemy stands on her shot's path, or farther on it, or a tick later 2 units up off it, or dies
-	// halfway through that tick there. A newer one can take its ID, never its serial.
+	// The enemy stands on her shot's path, or farther on it, or 2 units up off it, or dies halfway
+	// through a tick there. A newer one can take its ID, never its serial.
 	enemy := predict.Sight{ID: 7, Serial: 70, Row: flight.Row{Kind: interact.Body, Side: interact.Side{Owner: 7, Team: 1},
 		Center: box2d.Vec2{X: 1}, Radius: 0.5, Until: 1}}
 	far, up, dying, newer := enemy, enemy, enemy, enemy
@@ -895,79 +902,100 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	newer.Serial = 71
 	diedUp := up
 	diedUp.Until = 0.5
-	sync := func(p *predict.Predictor, tick uint64, s predict.Sight) { p.See(tick, []predict.Sight{s}) }
-	at := func(x, y float64) *box2d.Vec2 { return &box2d.Vec2{X: x, Y: y} }
+	// syncs is a sync of each tick from, showing each sight, or nothing for none.
+	syncs := func(from uint64, sights ...*predict.Sight) map[uint64]*predict.Sight {
+		m := map[uint64]*predict.Sight{}
+		for i, s := range sights {
+			m[from+uint64(i)] = s
+		}
+		return m
+	}
+	kept := map[uint64]*predict.Sight{}
+	for tick := range rewind + 1 {
+		kept[4+tick] = &enemy
+	}
+	keptUp := map[uint64]*predict.Sight{}
+	for tick := range rewind + 1 {
+		keptUp[4+tick] = map[bool]*predict.Sight{true: &farUp, false: &far}[tick < 2]
+	}
 	for _, c := range []struct {
 		name  string
-		see   func(p *predict.Predictor)
+		syncs map[uint64]*predict.Sight
 		view  float64
-		drawn *box2d.Vec2 // where her screen drew the enemy, if her shot hits it
+		hits  bool
 	}{
-		{"seen", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, enemy) }, 10.5, at(1, 0)},
-		{"seen a tick's flight away", func(p *predict.Predictor) { sync(p, 10, far); sync(p, 11, far) }, 10.5, at(2, 0)},
-		{"no sync of the older tick", func(p *predict.Predictor) { sync(p, 11, enemy); sync(p, 12, enemy) }, 10.5, nil},
-		{"gone from the newest", func(p *predict.Predictor) {
-			sync(p, 10, enemy)
-			sync(p, 11, enemy)
-			p.See(12, nil)
-		}, 10.5, nil},
-		{"drawn a quarter of the way up", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, up) }, 10.25,
-			at(1, 0.5)},
-		{"drawn most of the way up", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, up) }, 10.9, nil},
+		{"seen", syncs(10, &enemy, &enemy, &enemy), 10.5, true},
+		{"seen a tick's flight away", syncs(10, &far, &far, &far, &far), 10.5, true},
+		{"no sync of the oldest tick", syncs(11, &enemy, &enemy), 10.5, false},
+		{"no sync of the newest tick", syncs(10, &enemy, &enemy), 10.5, false},
+		{"gone from the newest", syncs(10, &enemy, &enemy, &enemy, nil), 10.5, false},
+		{"drawn coming down onto the path", syncs(10, &up, &enemy, &enemy), 10.25, true},
+		{"drawn leaving the path", syncs(10, &enemy, &up, &up, &up), 10.25, false},
 		// The server removes it at the end of tick 11, before her frames.
-		{"dead before her frames, though drawn alive", func(p *predict.Predictor) { sync(p, 10, enemy); sync(p, 11, dying) },
-			10.25, nil},
-		// Judged at the oldest view the server keeps, 5, drawn from syncs 4 and 5: the predictor keeps both.
-		{"drawn before the rows the server keeps", func(p *predict.Predictor) {
-			for tick := range rewind + 1 {
-				sync(p, 4+tick, enemy)
-			}
-		}, 1.5, at(1, 0)},
+		{"dead before her frames, though drawn alive", syncs(10, &enemy, &dying, nil), 10.25, false},
+		// Judged at the oldest view the server keeps, 5, drawn from syncs 5 and 6: the predictor keeps both.
+		{"drawn before the rows the server keeps", kept, 1.5, true},
 		// Each step of a replay is held at its own tick: her second is judged at 6, where the enemy stood on
 		// her path; at 5 it was 3 units up.
-		{"drawn before the rows the server keeps, a step later", func(p *predict.Predictor) {
-			for tick := range rewind + 1 {
-				sync(p, 4+tick, map[bool]predict.Sight{true: farUp, false: far}[tick < 2])
-			}
-		}, 1.5, at(2, 0)},
-		{"drawn after them", func(p *predict.Predictor) {
-			sync(p, now-2, far)
-			sync(p, now-1, enemy)
-			sync(p, now, enemy)
-		}, float64(now) + 0.5, at(1, 0)},
+		{"drawn before the rows the server keeps, a step later", keptUp, 1.5, true},
+		// Held at the newest view whose tick's views have their rows, now - 1.
+		{"drawn after them", syncs(now-2, &far, &enemy, &enemy), float64(now) + 0.5, true},
 		// As the server does, it draws the newer one where its first row is, not from the one it took the ID of.
-		{"new with a dead one's ID", func(p *predict.Predictor) { sync(p, 10, diedUp); sync(p, 11, newer) }, 10.25,
-			at(1, 0)},
+		{"new with a dead one's ID", syncs(10, &diedUp, &newer, &newer), 10.25, true},
 	} {
 		p := predict.New(rules)
-		c.see(p)
+		for tick, s := range c.syncs {
+			var sights []predict.Sight
+			if s != nil {
+				sights = append(sights, *s)
+			}
+			p.See(tick, sights)
+		}
 		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		var ended []predict.Ended
-		for i, buttons := range []uint32{1, 0} { // she casts, then holds
-			_, stepEnded := p.Step(predict.Frame{Seq: uint32(i + 1), AimX: 1, Buttons: buttons, ViewTick: c.view})
+		var view float64                         // judged at, in the step it ended
+		for i, buttons := range []uint32{1, 0} { // she casts, then holds, her view a tick on
+			_, stepEnded := p.Step(predict.Frame{Seq: uint32(i + 1), AimX: 1, Buttons: buttons, ViewTick: c.view + float64(i)})
+			if len(stepEnded) > 0 {
+				view = rules.Shots.View(c.view+float64(i), now+uint64(i)+1)
+			}
 			ended = append(ended, stepEnded...)
 		}
-		hits := c.drawn != nil
-		if hit := len(ended) == 1 && ended[0].End.Hit.Target == enemy.ID; hit != hits || len(ended) > 1 {
-			t.Errorf("%s: ended %+v, want a hit on %d: %v", c.name, ended, enemy.ID, hits)
+		if hit := len(ended) == 1 && ended[0].End.Hit.Target == enemy.ID; hit != c.hits || len(ended) > 1 {
+			t.Errorf("%s: ended %+v, want a hit on %d: %v", c.name, ended, enemy.ID, c.hits)
 			continue
 		}
-		if !hits {
+		if !c.hits {
 			continue
 		}
+		// Where her screen drew it when they met: at its tick's view, Until of the way on.
+		e := ended[0]
+		met := view + e.End.Until
+		older, newer := flight.RowTicks(met)
+		var o, n flight.Row
+		if s := c.syncs[older]; s != nil && s.Serial == e.End.Hit.Serial {
+			o = s.Row
+		}
+		if s := c.syncs[newer]; s != nil {
+			n = s.Row
+		}
+		drawn, _ := flight.AtView(o, o != flight.Row{}, n, met)
+		at, center := e.End.At, box2d.Sub(e.End.At, e.End.Hit.Offset)
 		// Box2D stops a cast a slop short of touching.
-		e, to := ended[0], ended[0].End.At
-		if math.Abs(math.Hypot(to.X-c.drawn.X, to.Y-c.drawn.Y)-(bolt.Radius+enemy.Radius)) > 2*box2d.LinearSlop ||
-			math.Abs(math.Hypot(to.X-e.Pos.X, to.Y-e.Pos.Y)-e.End.Until*step) > 1e-9 {
-			t.Errorf("%s: ended %+v, want her shot touching the enemy at %v, at its speed", c.name, e, *c.drawn)
+		if box2d.Distance(center, drawn.Center) > 1e-9 ||
+			math.Abs(box2d.Length(e.End.Hit.Offset)-(bolt.Radius+enemy.Radius)) > 2*box2d.LinearSlop ||
+			math.Abs(box2d.Distance(at, e.Pos)-e.End.Until*step) > 1e-9 {
+			t.Errorf("%s: ended %+v, want her shot touching the enemy where she drew it then, %v, at its speed", c.name,
+				e, drawn.Center)
 		}
 	}
-	// A frame stepped before its view's syncs came flew her shot past every target, so her client
+	// A frame stepped before its views' syncs came flew her shot past every target, so her client
 	// replays it, though the server agrees with the frame before.
 	for view, agrees := range map[float64]bool{10.5: true, 9.5: false} {
 		p := predict.New(rules)
-		sync(p, 10, far)
-		sync(p, 11, far)
+		for tick := range uint64(3) {
+			p.See(10+tick, []predict.Sight{far})
+		}
 		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 10.5})
 		first := p.State()

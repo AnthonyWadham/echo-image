@@ -12,11 +12,10 @@ the claim model (problem 3).
 - **The fix: the server judges your shot where your screen drew its targets (server rewind).**
   - Every input frame carries its **view**: the render tick on screen.
   - The server keeps 0.4 s of each Body's and Echo's rows: where it was, and its tags.
-  - Each tick, the server flies each of your shots with `flight.FlyAtView`: the map now, and each
-    Body and Echo where your view drew it, from its rows.
-  - Your predictor (the server's Go code, built to wasm) flies the same shot through a Box2D world
-    with each Body and Echo where your screen drew it. Same rows, same rule, same cast: the same end,
-    to the bit.
+  - Each tick, the server flies each of your shots with `flight.Fly`: the map now, and each Body and
+    Echo as your views drew it across the tick, from its rows (`flight.Across`).
+  - Your predictor (the server's Go code, built to wasm) flies the same shot with the same code, from
+    the same rows: the same end, to the bit.
 - **The client sends no hits.** The server finds every hit itself, every tick.
 - Echo shots stay live. Damage, HP, effects and deaths stay on the server.
 
@@ -98,41 +97,41 @@ the claim model (problem 3).
   runs your sim.
 - **Why:** the predictor gets the server's own rows, with no field rebuilt from body_sync and echo_sync,
   and one stream to wait for. A new kind of target needs no predictor, glue or shot code: `Fly`,
-  `FlyAtView`, `seenAt` and `place` use the kinds the rows name. Only the own-Echo rule names a kind,
+  `Across`, `seenAt` and the predictor's `sights` use the kinds the rows name. Only the own-Echo rule names a kind,
   since your predictor places your Echo itself.
 - **Cost:** each target's spot is sent twice a tick, in its own sync for drawing and here.
 
 ### 6. The server flies predicted shots at their client's view
 
 - **What:** a shot an input frame cast is `Projectile.Predicted`. Each tick `FlightSystem` flies it
-  with `flight.FlyAtView` at its caster's view. Any other shot (an Echo's) flies live with
-  `flight.Fly`.
+  with `flight.Fly` at its caster's view. Any other shot (an Echo's) flies at this tick's views, as
+  every screen draws it.
 - **How:**
   - The view is the frame applied this tick. On a tick with no new frame, it is the last one moved on
     by the ticks since (`InputQueue.View`), as the client keeps drawing.
   - A view never goes back. A frame's view below the largest one applied, or NaN, is taken at that one
     (`InputQueue.ViewFloor`, from 0, kept across sessions). Your render clock never steps back, so an
     honest view never trips it, and the predictor has no copy of it.
-  - `flight.Tuning.View` holds it to the views the rows kept are drawn from: no older than 8 ticks, no
-    newer than the newest row (the tick − 1). An older view (a high ping) is judged at the oldest: you
-    must lead your shots, but you still hit. NaN and the infinities can't leave the window.
+  - `flight.Tuning.View` holds it to the views whose tick's views the rows kept are drawn from: no
+    older than 8 ticks, no newer than the tick − 2, whose views run to the newest row. An older view (a
+    high ping) is judged at the oldest: you must lead your shots, but you still hit. NaN and the
+    infinities can't leave the window.
   - The map is cast now. It is never rewound.
   - One query of `flight.Reach` finds the Bodies and Echoes that could be on it at the view: a Box2D
     tree (`box2d.DynamicTree`) built each tick, one box per target around its kept rows and where it is
     now. There is no speed bound: a dash, a blink or a landing stays inside its box (2026-11-01). Each
-    is pair-cast at its row at the view. The caster's own
-    Body and Echo are where they are now, as its predictor has them and its screen draws them. The Echo
-    keeps its rows' tags, which both sides have.
+    is pair-cast in its frame as it moves across the views v to v + 1 (`flight.Across`): a frame's
+    shots fly a tick while its screen's view moves a tick (F2, 2026-11-01). The caster's own Body and
+    Echo move from where they were a tick ago to where they are now, as its predictor has them and its
+    screen draws them. The Echo keeps its rows' tags, which both sides have.
   - The first thing met ends the shot, in `Fly`'s order: the nearer, then the earlier rule, then the
     map, then the lower ID. A payload becomes a `DamageIntent`. History is never rewritten.
-- **The same bits as the predictor, so no margin.** A world cast meets each circle in that circle's
-  own frame: it moves the shot by −center, then pair-casts. The server's pair cast does exactly that.
-  In world space, 99% of grazing hit fractions differed in their last bits; in the target's frame all
-  matched. `TestFlyAtViewMatchesFlyBitForBit` and `TestPredictionMatchesServer` guard it.
+- **The same bits as the predictor, so no margin.** Both run `flight.Fly` with `flight.Across` from
+  the same rows. `TestPredictionMatchesServer` guards it.
 - **Why:** the server's own query decides every hit, on every tick's path, so no hit hangs on a
   message arriving, and blockers are always checked.
-- **Cost:** per predicted shot per tick, one map cast, one tree query, and one pair cast per Body or
-  Echo found: about a live shot's cost. Building the tree is O(T·W) a tick for T targets keeping W rows,
+- **Cost:** per shot per tick, one map cast, one tree query, and up to two pair casts per Body or
+  Echo found. Building the tree is O(T·W) a tick for T targets keeping W rows,
   as `HistorySystem` already pays.
 
 ### 7. The predictor flies your shots the same way
@@ -204,11 +203,12 @@ the claim model (problem 3).
 ## Tests
 
 - **Flight:** `View` holds views to the rows kept, NaN and infinities included, and every view in
-  (a, a + 1] is drawn from rows a and a + 1 (`RowTicks`). `FlyAtView` equals `Fly` through a world
-  placed at the view, to the bit, over named cases (moved off or onto the path, blinked 40 units off it,
-  the nearer first, allies passed, a wall first, a Body on its Echo, a last tick) and a sweep of grazes
-  and misses. A target is met where the view had it, at its size there, however far it went since
-  (`TestFlyAtViewMeetsTargetsWhereverTheyWent`).
+  (a, a + 1] is drawn from rows a and a + 1 (`RowTicks`). `Across` shows a tick of views as they draw
+  it. `Fly` meets each target as the tick shows it, over named cases (moved off or onto the path,
+  blinked 40 units off it, the nearer first, allies passed, a wall first, a Body on its Echo, a last
+  tick, crossing the path, leaving it, a dash across it) and a sweep and fuzz of moving targets, each met
+  when the two first touch. A target is met where the tick showed it, at its size there, however far it
+  went since (`TestFlyMeetsTargetsWhereverTheyWent`).
 - **Server:** a hit where the view had the target after it walked off, which his own sync ends on him
   (`OnTarget`, the offset from where the view had him); partway between two rows; an enemy Body in
   front at the view blocks; a Body on its Echo shields it; a view too old, too new or not a number is
@@ -240,7 +240,7 @@ the claim model (problem 3).
 ## Appendix: where things live
 
 - Shot flight and rules: `shards/game/internal/projectile/flight/flight.go` (`Fly`),
-  `shards/game/internal/projectile/flight/view.go` (`Row`, `AtView`, `View`, `FlyAtView`),
+  `shards/game/internal/projectile/flight/view.go` (`Row`, `AtView`, `Across`, `View`, `Fly`),
   `shards/game/internal/projectile/flight/tuning.go`.
 - Shot systems: `shards/game/internal/projectile/flight_system.go`,
   `shards/game/internal/projectile/launch_system.go`,

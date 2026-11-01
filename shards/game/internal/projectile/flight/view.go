@@ -38,26 +38,82 @@ func AtView(older Row, hasOlder bool, newer Row, view float64) (Row, bool) {
 	if t > newer.Until {
 		return Row{}, false
 	}
-	if !hasOlder {
-		return newer, true
-	}
-	k := t / newer.Until
-	newer.Center = box2d.Vec2{
-		X: older.Center.X + float64((newer.Center.X-older.Center.X)*k),
-		Y: older.Center.Y + float64((newer.Center.Y-older.Center.Y)*k),
-	}
+	newer.Center = along(older, hasOlder, newer, t)
 	return newer, true
 }
 
-// Seen is a target where a client's view had it: its entity and serial, and its row there.
+// along is where a target drawn from its rows older to newer is t of the way through newer's tick, t at
+// most newer.Until: partway from older's center at its own pace, or at newer's with no older row.
+func along(older Row, hasOlder bool, newer Row, t float64) box2d.Vec2 {
+	if !hasOlder {
+		return newer.Center
+	}
+	return lerp(older.Center, newer.Center, t/newer.Until)
+}
+
+// lerp is k of the way from a to b.
+func lerp(a, b box2d.Vec2, k float64) box2d.Vec2 {
+	return box2d.Vec2{X: a.X + float64((b.X-a.X)*k), Y: a.Y + float64((b.Y-a.Y)*k)}
+}
+
+// Span is part of a shot's tick, Start to End (0 to 1), in which a target shows as Row, moving from
+// Row.Center to To at its own pace. One with End at most Start is empty.
+type Span struct {
+	Row
+	Start, End float64
+	To         box2d.Vec2
+}
+
+// Seen is a target as a shot's tick meets it: its entity and serial, and the spans of the tick it shows
+// in, one per pair of rows the tick is drawn from.
 type Seen struct {
 	ID     uint32
 	Serial uint64
-	Row
+	Spans  [2]Span
 }
 
-// Sights returns target id (its entity) where a client's view had it, or false when it wasn't there then.
-type Sights func(id uint32) (Seen, bool)
+// Shown reports whether s shows in any part of the tick.
+func (s Seen) Shown() bool {
+	return s.Spans[0].End > s.Spans[0].Start || s.Spans[1].End > s.Spans[1].Start
+}
+
+// Move puts s on the line from from to to over the tick, in the spans it shows in: as a client draws
+// its own Body and Echo, which it predicts.
+func (s *Seen) Move(from, to box2d.Vec2) {
+	for i := range s.Spans {
+		sp := &s.Spans[i]
+		sp.Center, sp.To = lerp(from, to, sp.Start), lerp(from, to, sp.End)
+	}
+}
+
+// Across is a target as views v to v + 1 show it, from row, its row at each tick: those views are what
+// a shot's tick judged at view v is drawn across, since a frame's shots fly a tick while the view moves
+// a tick. It has a span for each pair of rows those views are drawn from that shows it, from where
+// AtView places it as the span starts to where as it ends.
+func Across(v float64, row func(tick uint64) (Row, bool)) [2]Span {
+	var spans [2]Span
+	first := uint64(math.Floor(v)) + 1 // the newer row of the first pair
+	for i := range spans {
+		b := first + uint64(i)
+		newer, ok := row(b)
+		if !ok {
+			continue
+		}
+		older, hasOlder := row(b - 1)
+		d := float64(b-1) - v // when in the shot's tick b's views begin
+		start, end := max(d, 0), min(d+newer.Until, 1)
+		if !(end > start) {
+			continue
+		}
+		spans[i] = Span{Row: newer, Start: start, End: end, To: along(older, hasOlder, newer, end-d)}
+		spans[i].Center = along(older, hasOlder, newer, start-d)
+	}
+	return spans
+}
+
+// Sights returns the target reach knows by key as a shot's tick meets it, or false when it shows
+// nowhere then.
+type Sights func(key uint64) (Seen, bool)
 
 // Reach is where each target can be at any view: one Box2D tree box per target, around every spot a
 // view can place it at. A shot judged at a view meets only the targets whose box its path overlaps.
@@ -70,71 +126,87 @@ func NewReach() *Reach {
 	return &Reach{tree: box2d.NewDynamicTree()}
 }
 
-// Add adds target id, which a view can place where it is now or between any of its kept rows.
-func (r *Reach) Add(id uint32, now Row, kept ...Row) {
+// Add adds the target sights knows by key, which a view can place where it is now or between any of its
+// kept rows.
+func (r *Reach) Add(key uint64, now Row, kept ...Row) {
 	lo, hi, radius := now.Center, now.Center, now.Radius
 	for _, row := range kept {
 		lo, hi, radius = box2d.Min(lo, row.Center), box2d.Max(hi, row.Center), max(radius, row.Radius)
 	}
 	pad := box2d.Vec2{X: radius, Y: radius}
 	box := box2d.AABB{LowerBound: box2d.Sub(lo, pad), UpperBound: box2d.Add(hi, pad)}
-	r.tree.CreateProxy(box, uint64(now.Kind), uint64(id))
+	r.tree.CreateProxy(box, uint64(now.Kind), key)
 }
 
-// View is the view a shot a client predicts is judged at on tick: the one its client drew, held to the
-// views the rows kept by then are drawn from, RewindTicks before tick up to tick - 1, the newest row (and
-// 1 at least, as rows start at tick 0). An older view is judged at the oldest, so a high ping must lead
-// its shots but still hits. A newer one, or one that isn't a number, is judged at the newest.
+// View is the view a shot a client predicts is judged at on tick: the one its client drew, held to those
+// whose tick's views (Across) are drawn from the rows kept by then, RewindTicks before tick up to tick - 2,
+// whose views run to the newest row (and 1 at least, as rows start at tick 0). An older view is judged
+// at the oldest, so a high ping must lead its shots but still hits. A newer one, or one that isn't a
+// number, is judged at the newest.
 func (t Tuning) View(view float64, tick uint64) float64 {
-	newest := max(float64(tick)-1, 1)
+	newest := max(float64(tick)-2, 1)
 	if !(view <= newest) {
 		return newest
 	}
 	return max(view, float64(tick)-float64(t.RewindTicks()), 1)
 }
 
-// FlyAtView is Fly for a shot a client predicts. The map is world's now, and each target is where the
-// client's view drew it. One query of reach finds the targets the path can meet, however fast they
-// moved since, and sights places each. A pair cast in each one's own frame gets the bits the client's
-// world cast gets. Ties go as in Fly.
-func (t Tuning) FlyAtView(world *box2d.World, def Shot, f Flight, side interact.Side, reach *Reach, sights Sights,
+// Fly flies f, a shot of type def from side, one tick of dt seconds. It meets the map in world as it is,
+// and each target as sights shows it across the tick: one query of reach finds the targets its path can
+// meet, however they moved, and a pair cast in each one's moving frame finds when they touch. With no
+// reach, it meets no target. It returns f after the tick, or over=true and how it ended in it: at its
+// range, or at the first thing on its path that its rules don't pass. A shot launched this tick flies
+// this tick, so its path starts at the shooter.
+func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, reach *Reach, sights Sights,
 	dt float64,
 ) (next Flight, end End, over bool) {
 	to, flown, seconds, last := f.step(dt)
-	first, found := t.firstHit(world, def, f.Pos, to, f.Radius, side, nil) // the map
-	pad := box2d.Vec2{X: f.Radius, Y: f.Radius}
-	path := box2d.AABB{LowerBound: box2d.Sub(box2d.Min(f.Pos, to), pad), UpperBound: box2d.Add(box2d.Max(f.Pos, to), pad)}
-	reach.tree.Query(path, uint64(targetKinds), func(_ int, id uint64, _ any) bool {
-		if s, ok := sights(uint32(id)); ok {
-			if h, ok := t.hitOn(def, f.Pos, to, f.Radius, side, s); ok && (!found || h.before(first)) {
-				first, found = h, true
+	first, found := t.firstHit(world, def, f.Pos, to, f.Radius) // the map
+	if reach != nil && f.Radius > 0 && f.Pos != to {
+		part := seconds / dt
+		pad := box2d.Vec2{X: f.Radius, Y: f.Radius}
+		path := box2d.AABB{LowerBound: box2d.Sub(box2d.Min(f.Pos, to), pad), UpperBound: box2d.Add(box2d.Max(f.Pos, to), pad)}
+		reach.tree.Query(path, uint64(targetKinds), func(_ int, key uint64, _ any) bool {
+			if s, ok := sights(key); ok {
+				if h, ok := t.hitOn(def, f, to, part, side, s); ok && (!found || h.before(first)) {
+					first, found = h, true
+				}
 			}
-		}
-		return true
-	}, nil)
+			return true
+		}, nil)
+	}
 	return f.advance(to, flown, seconds, dt, first, found, last)
 }
 
-// hitOn is where the path from start to end meets s, from one Box2D pair cast in s's own frame. That is
-// how a world cast meets each circle, so it gives Fly's bits. False when it misses s or the rules pass
-// it.
-func (t Tuning) hitOn(def Shot, start, end box2d.Vec2, radius float64, side interact.Side, s Seen) (hit, bool) {
-	if radius <= 0 || start == end {
-		return hit{}, false
+// hitOn is where f, flying to to in part of the tick, first touches s, from a Box2D pair cast in s's
+// frame as it moves in each span: the shot's move less s's. False when it misses s or the rules pass it.
+func (t Tuning) hitOn(def Shot, f Flight, to box2d.Vec2, part float64, side interact.Side, s Seen) (hit, bool) {
+	var first hit
+	found := false
+	for _, sp := range s.Spans {
+		a, b := sp.Start/part, sp.End/part // of the shot's path
+		if !(b > a) || a >= 1 {
+			continue
+		}
+		m, i := t.meet(def, sp.Kind, side.Relation(sp.Side), sp.Tags)
+		if m.Do == Pass {
+			continue
+		}
+		from := lerp(f.Pos, to, a)
+		move := box2d.Sub(lerp(f.Pos, to, b), from)
+		out := box2d.ShapeCastCircle(&box2d.Circle{Radius: sp.Radius}, &box2d.ShapeCastInput{
+			Proxy:       box2d.MakeProxy([]box2d.Vec2{box2d.Sub(from, sp.Center)}, 1, f.Radius),
+			Translation: box2d.Sub(move, box2d.Sub(sp.To, sp.Center)),
+			MaxFraction: min((1-a)/(b-a), 1), // to the path's end
+		})
+		if !out.Hit {
+			continue
+		}
+		h := hit{fraction: a + float64(out.Fraction*(b-a)), rule: i, kind: sp.Kind, target: s.ID, serial: s.Serial,
+			center: lerp(sp.Center, sp.To, out.Fraction), meet: m}
+		if !found || h.before(first) {
+			first, found = h, true
+		}
 	}
-	m, i := t.meet(def, s.Kind, side.Relation(s.Side), s.Tags)
-	if m.Do == Pass {
-		return hit{}, false
-	}
-	frame := box2d.Transform{P: s.Center, Q: box2d.RotIdentity}
-	out := box2d.ShapeCastCircle(&box2d.Circle{Radius: s.Radius}, &box2d.ShapeCastInput{
-		Proxy:       box2d.MakeProxy([]box2d.Vec2{box2d.InvTransformPoint(frame, start)}, 1, radius),
-		Translation: box2d.InvRotateVector(frame.Q, box2d.Vec2{X: end.X - start.X, Y: end.Y - start.Y}),
-		MaxFraction: 1,
-	})
-	if !out.Hit {
-		return hit{}, false
-	}
-	return hit{fraction: out.Fraction, rule: i, kind: s.Kind, target: s.ID, serial: s.Serial, center: s.Center, meet: m},
-		true
+	return first, found
 }

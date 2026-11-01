@@ -192,10 +192,10 @@ func TestBodyOnItsEchoShieldsIt(t *testing.T) {
 // A shot meets bob where alice drew him: he walked off its path after her view, and it still stops on
 // him.
 func TestShotHitsWhereTheViewHadIt(t *testing.T) {
-	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.4 s back
 	alice, bob := claim(t, w)
-	moveFor(w, bob, 0, -1, ticks(0.5))            // off his Echo
-	alice.back = 0.375 * physics.ServerTickRateHz // her view at step k is from before he leaves, 0.35 s before it
+	moveFor(w, bob, 0, -1, ticks(0.5))          // off his Echo
+	alice.back = 0.4 * physics.ServerTickRateHz // her views at step k are of the tick before he leaves, 0.35 s before it
 	from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 	alice.fire(to.X-from.X, to.Y-from.Y)
 	w.Tick()
@@ -266,38 +266,39 @@ func TestViewNeverGoesBack(t *testing.T) {
 	}
 }
 
-// A shot meets bob where alice's screen drew him, partway between two of his rows: he dashes up across
-// her shot's path, a unit a tick at any rate (test content). Drawn 0.3 of the way from the row on the
-// path, he is hit there; drawn 0.7 of the way, the shot passes under him and flies on. A step before, she
-// drew him a unit lower, 0.7 or 0.3 below the path, where the shot can't reach him yet.
+// A shot meets bob as alice's screen drew him across each of its ticks, sliding between his rows: he
+// dashes up across her shot's path, a unit a tick at any rate (test content). Drawn crossing it as her
+// shot's center passes him, he is hit; drawn 4 units up then, the shot passes under him and flies on.
 func TestShotMeetsTargetBetweenRows(t *testing.T) {
 	for _, c := range []struct {
-		part float64
+		up   int // where her screen drew him as her shot's center passed him, above the path
 		hits bool
-	}{{0.3, true}, {0.7, false}} {
-		w := cardinal.NewTestWorld(t, withContent(t, deepRewind, map[string]string{"ability/tuning.json": fmt.Sprintf(
+	}{{0, true}, {4, false}} {
+		w := cardinal.NewTestWorld(t, withContent(t, map[string]string{"ability/tuning.json": fmt.Sprintf(
 			`{"abilities": {"dash": {"params": {"distance": %v, "seconds": 0.3}}}}`, 0.3*physics.ServerTickRateHz)}))
-		alice, bob := claim(t, w)          // her view is up to 0.4 s back
+		alice, bob := claim(t, w)
 		moveFor(w, bob, -1, 0, ticks(0.4)) // off his Echo, toward her
 		moveFor(w, bob, 0, -1, ticks(0.2)) // a unit below her shot's path
 		from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
-		// Drawn 0.3 up, his circle first touches the path in step k; the dash cast at step 5 moves him
-		// from step 6 on, so her view at step k is between his rows at steps 6 and 7.
+		// Her shot's center passes him in step k, x of the way through it. The dash cast at step d moves
+		// him onto the path in step d + 1 and a unit up each step after, so her view at step k, 2 + x ticks
+		// back, draws him c.up above it x of the way through the tick.
 		_, shot := primary(t)
-		reach := to.Radius + shot.Radius
-		k := int((to.X - from.X - math.Sqrt(reach*reach-0.3*0.3)) / (shot.Speed * physics.SecondsPerTick))
-		alice.back = float64(k-6) - c.part
+		steps := (to.X - from.X) / (shot.Speed * physics.SecondsPerTick)
+		k, x := int(steps), steps-math.Floor(steps)
+		d := k - 3 - c.up
+		alice.back = 2 + x
 		alice.fire(1, 0)
 		w.Tick()
 		dashSlot, _ := dash(t)
 		for i := 1; i <= k; i++ {
-			if i == 5 {
+			if i == d {
 				bob.cast(dashSlot, 0, 1)
 			}
 			w.Tick()
 		}
 		if gone := len(shots(t, w, "bob")) == 0; gone != c.hits {
-			t.Errorf("drawn %v of the way: the shot stopped on bob: %v, want %v", c.part, gone, c.hits)
+			t.Errorf("drawn %d up as it passed: the shot stopped on bob: %v, want %v", c.up, gone, c.hits)
 		}
 	}
 }

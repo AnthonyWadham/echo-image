@@ -217,49 +217,49 @@
   },
   {
    "id": "12-G5",
-   "breaks": "server own Echo at view",
+   "breaks": "server moves the own Echo as its rows, not as predicted",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "\tif s.Kind == interact.Echo && s.Side.Owner == uint32(predictor) {",
-     "new": "\tif s.Kind == interact.Echo && s.Side.Owner == uint32(predictor) && false {"
+     "old": "if predicted && (e.ID() == caster || now.Kind == interact.Echo && now.Side.Owner == uint32(caster)) {",
+     "new": "if predicted && e.ID() == caster {"
     }
    ]
   },
   {
    "id": "12-G6",
-   "breaks": "predictor own Echo at view",
+   "breaks": "predictor moves your Echo as its rows",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\t\tif hasEcho && row.Kind == interact.Echo && row.Side.Owner == s.Body {",
-     "new": "\t\tif false && hasEcho {"
+     "old": "\t\t\tif hasEcho && n.Kind == interact.Echo && n.Side.Owner == s.Body {",
+     "new": "\t\t\tif false && hasEcho {"
     }
    ]
   },
   {
    "id": "12-G7",
-   "breaks": "predictor keeps dying bodies",
+   "breaks": "predictor keeps targets that died in the newest sync",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\t\tif s, ok := at[serial]; !ok || s.Until < 1 {",
-     "new": "\t\tif _, ok := at[serial]; !ok {"
+     "old": "\t\tif n.Until < 1 {\n\t\t\tcontinue\n\t\t}\n",
+     "new": ""
     }
    ]
   },
   {
    "id": "12-G8",
-   "breaks": "predictor needs only newer sync",
+   "breaks": "predictor doesn't need the oldest sync of its views",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\tif !hasOlderSync || !hasNewerSync {",
-     "new": "\tif !hasNewerSync {\n\t\t_ = hasOlderSync"
+     "old": "for t := uint64(math.Floor(view)); t <= uint64(math.Ceil(view))+1; t++ {",
+     "new": "for t := uint64(math.Floor(view)) + 1; t <= uint64(math.Ceil(view))+1; t++ {"
     }
    ]
   },
@@ -289,13 +289,13 @@
   },
   {
    "id": "12-G11",
-   "breaks": "echoes not cast for",
+   "breaks": "shots meet no Echoes",
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/flight.go",
-     "old": "\t\tmask |= targetKinds\n",
-     "new": "\t\tmask |= interact.Body\n"
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "reach.tree.Query(path, uint64(targetKinds),",
+     "new": "reach.tree.Query(path, uint64(interact.Body),"
     }
    ]
   },
@@ -592,8 +592,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight/view.go",
-     "old": "\tpad := box2d.Vec2{X: f.Radius, Y: f.Radius}\n\tpath :=",
-     "new": "\tpad := box2d.Vec2{}\n\tpath :="
+     "old": "\t\tpad := box2d.Vec2{X: f.Radius, Y: f.Radius}\n\t\tpath :=",
+     "new": "\t\tpad := box2d.Vec2{}\n\t\tpath :="
     }
    ]
   },
@@ -628,8 +628,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept...)",
-     "new": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept[:0]...)"
+     "old": "\t\treach.Add(uint64(e.ID()), rowOf(e, tick), kept...)",
+     "new": "\t\treach.Add(uint64(e.ID()), rowOf(e, tick), kept[:0]...)"
     }
    ]
   },
@@ -640,8 +640,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept...)",
-     "new": "\t\tnow := rowOf(e, tick)\n\t\tif len(kept) > 0 {\n\t\t\tnow = kept[len(kept)-1]\n\t\t}\n\t\treach.Add(uint32(e.ID()), now, kept...)"
+     "old": "\t\treach.Add(uint64(e.ID()), rowOf(e, tick), kept...)",
+     "new": "\t\tnow := rowOf(e, tick)\n\t\tif len(kept) > 0 {\n\t\t\tnow = kept[len(kept)-1]\n\t\t}\n\t\treach.Add(uint64(e.ID()), now, kept...)"
     }
    ]
   },
@@ -671,13 +671,13 @@
   },
   {
    "id": "6-G3",
-   "breaks": "View newest tick-2",
+   "breaks": "View newest tick-1, whose views need the live row",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight/view.go",
-     "old": "newest := max(float64(tick)-1, 1)",
-     "new": "newest := max(float64(tick)-2, 1)"
+     "old": "newest := max(float64(tick)-2, 1)",
+     "new": "newest := max(float64(tick)-1, 1)"
     }
    ]
   },
@@ -718,40 +718,6 @@
    ]
   },
   {
-   "id": "6-G7",
-   "breaks": "seenAt floor rows",
-   "check": "go",
-   "edits": [
-    {
-     "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "a, b := flight.RowTicks(view)",
-     "new": "a, b := flight.RowTicks(math.Nextafter(view, math.Inf(1)))"
-    },
-    {
-     "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "import (\n\t\"slices\"",
-     "new": "import (\n\t\"math\"\n\t\"slices\""
-    }
-   ]
-  },
-  {
-   "id": "6-G8",
-   "breaks": "place floor rows",
-   "check": "go",
-   "edits": [
-    {
-     "file": "shards/game/internal/predict/predict.go",
-     "old": "a, b := flight.RowTicks(view)",
-     "new": "a, b := flight.RowTicks(math.Nextafter(view, math.Inf(1)))"
-    },
-    {
-     "file": "shards/game/internal/predict/predict.go",
-     "old": "\t\"io/fs\"\n",
-     "new": "\t\"io/fs\"\n\t\"math\"\n"
-    }
-   ]
-  },
-  {
    "id": "6-T1",
    "breaks": "sample floor",
    "check": "ts",
@@ -782,8 +748,8 @@
    "edits": [
     {
      "file": "client/src/engine/sync/timeline.ts",
-     "old": "return Math.min(Math.max(eased, renderTime), newest)",
-     "new": "return Math.min(eased, newest)"
+     "old": "return Math.min(Math.max(eased, renderTime), latest)",
+     "new": "return Math.min(eased, latest)"
     }
    ]
   },
@@ -794,7 +760,7 @@
    "edits": [
     {
      "file": "client/src/engine/sync/timeline.ts",
-     "old": "return Math.min(Math.max(eased, renderTime), newest)",
+     "old": "return Math.min(Math.max(eased, renderTime), latest)",
      "new": "return Math.max(eased, renderTime)"
     }
    ]
@@ -825,12 +791,12 @@
   },
   {
    "id": "6-T7",
-   "breaks": "jump past newest",
+   "breaks": "jump past latest",
    "check": "ts",
    "edits": [
     {
      "file": "client/src/engine/sync/timeline.ts",
-     "old": "return Math.min(target, newest)",
+     "old": "return Math.min(target, latest)",
      "new": "return target"
     }
    ]
@@ -1159,13 +1125,13 @@
   },
   {
    "id": "8-G10",
-   "breaks": "live serial lost",
+   "breaks": "server hits name no serial",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight_system.go",
-     "old": "\t\t\tSerial: e.Get[ref.Spawn]().Serial,\n",
-     "new": ""
+     "old": "s := flight.Seen{ID: uint32(e.ID()), Serial: e.Get[ref.Spawn]().Serial}",
+     "new": "s := flight.Seen{ID: uint32(e.ID())}"
     }
    ]
   },
@@ -1188,8 +1154,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\t\to, hasOlder := older[serial]\n",
-     "new": "\t\to, hasOlder := Sight{}, false\n\t\tfor _, x := range older {\n\t\t\tif x.ID == n.ID {\n\t\t\t\to, hasOlder = x, true\n\t\t\t}\n\t\t}\n"
+     "old": "\t\t\t\tsight, ok := p.seen[tick][serial]\n\t\t\t\treturn sight.Row, ok\n",
+     "new": "\t\t\t\tfor _, x := range p.seen[tick] {\n\t\t\t\t\tif x.ID == n.ID {\n\t\t\t\t\t\treturn x.Row, true\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\treturn flight.Row{}, false\n"
     }
    ]
   },
@@ -1212,8 +1178,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "if n.ID == s.Body {",
-     "new": "if false && n.ID == s.Body {"
+     "old": "\t\tcase n.ID == s.Body:",
+     "new": "\t\tcase false && n.ID == s.Body:"
     }
    ],
    "survives": "own passes every shot by default and no test rule stops one on its caster, so where the predictor puts your own Body can't be seen"
@@ -2104,8 +2070,8 @@
    "edits": [
     {
      "file": "client/src/engine/sync/timeline.ts",
-     "old": "at - this.interpolationSeconds, at, dt)",
-     "new": "at - 0.1, at, dt)"
+     "old": "at - this.interpolationSeconds, at - tickSeconds, dt)",
+     "new": "at - 0.1, at - tickSeconds, dt)"
     }
    ]
   },
@@ -2658,6 +2624,138 @@
      "file": "client/src/game/player/local_player.ts",
      "old": "this.team = s.You.Team",
      "new": "this.team = 0"
+    }
+   ]
+  },
+  {
+   "id": "F2-A1",
+   "breaks": "targets don't move across a tick (one pose per span)",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "To: along(older, hasOlder, newer, end-d)}",
+     "new": "To: along(older, hasOlder, newer, start-d)}"
+    }
+   ]
+  },
+  {
+   "id": "F2-A2",
+   "breaks": "a target that died shows all its tick",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "start, end := max(d, 0), min(d+newer.Until, 1)",
+     "new": "start, end := max(d, 0), min(d+1, 1)"
+    }
+   ]
+  },
+  {
+   "id": "F2-A3",
+   "breaks": "a frame's tick spans only its first pair of rows",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "\tfor i := range spans {\n\t\tb := first + uint64(i)",
+     "new": "\tfor i := range spans[:1] {\n\t\tb := first + uint64(i)"
+    }
+   ]
+  },
+  {
+   "id": "F2-H1",
+   "breaks": "the cast ignores the target's move",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "Translation: box2d.Sub(move, box2d.Sub(sp.To, sp.Center)),",
+     "new": "Translation: move,"
+    }
+   ]
+  },
+  {
+   "id": "F2-H2",
+   "breaks": "a hit is offset from where the span began",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "center: lerp(sp.Center, sp.To, out.Fraction), meet: m}",
+     "new": "center: sp.Center, meet: m}"
+    }
+   ]
+  },
+  {
+   "id": "F2-H3",
+   "breaks": "a last tick meets targets past its range",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "MaxFraction: min((1-a)/(b-a), 1), // to the path's end",
+     "new": "MaxFraction: 1,"
+    }
+   ]
+  },
+  {
+   "id": "F2-S1",
+   "breaks": "shots no frame cast meet targets a tick late",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "view = max(float64(tick)-1, 0) // this tick's views",
+     "new": "view = max(float64(tick)-2, 0)"
+    }
+   ]
+  },
+  {
+   "id": "F2-S2",
+   "breaks": "server keeps the predictor's own Body and Echo still",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\t\ts.Move(prev.Center, now.Center)",
+     "new": "\t\ts.Move(now.Center, now.Center)"
+    }
+   ]
+  },
+  {
+   "id": "F2-P1",
+   "breaks": "predictor keeps your Echo still",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\t\t\tv.Move(echoPrev, echo)",
+     "new": "\t\t\t\tv.Move(echo, echo)"
+    }
+   ]
+  },
+  {
+   "id": "F2-P2",
+   "breaks": "predictor doesn't need the newest sync of its views",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "for t := uint64(math.Floor(view)); t <= uint64(math.Ceil(view))+1; t++ {",
+     "new": "for t := uint64(math.Floor(view)); t <= uint64(math.Ceil(view)); t++ {"
+    }
+   ]
+  },
+  {
+   "id": "F2-C1",
+   "breaks": "the render clock reaches the newest tick",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "at - this.interpolationSeconds, at - tickSeconds, dt)",
+     "new": "at - this.interpolationSeconds, at, dt)"
     }
    ]
   }

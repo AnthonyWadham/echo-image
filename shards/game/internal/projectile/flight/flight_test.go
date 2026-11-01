@@ -19,7 +19,6 @@ func TestFlyEndsWhereAndWhenTheSweepSays(t *testing.T) {
 	}
 	def := Shot{Speed: 15, Range: 20, Radius: 0.15}
 	const dt = 0.05 // a tick flies 0.75
-	targets := func(box2d.ShapeID) (Target, bool) { return Target{ID: 7, Side: interact.Side{Owner: 7, Team: 1}}, true }
 	for _, c := range []struct {
 		name      string
 		echo      float64 // the Echo's center on the path, 0 for none
@@ -32,18 +31,16 @@ func TestFlyEndsWhereAndWhenTheSweepSays(t *testing.T) {
 		{"its range", 0, 0.3, 0.3, 0.3 / 0.75, 0},
 	} {
 		worldDef := box2d.DefaultWorldDef()
-		world := box2d.NewWorld(&worldDef)
+		echo := Row{Kind: interact.Echo, Side: interact.Side{Owner: 7, Team: 1}, Center: box2d.Vec2{X: c.echo}, Radius: 0.5}
+		reach := NewReach()
 		if c.echo != 0 {
-			bodyDef := box2d.DefaultBodyDef()
-			bodyDef.Type = box2d.KinematicBody
-			body := world.CreateBody(&bodyDef)
-			shape := box2d.DefaultShapeDef()
-			shape.Filter = box2d.Filter{CategoryBits: uint64(interact.Echo), MaskBits: uint64(interact.Shot)}
-			world.CreateCircleShape(body, &shape, &box2d.Circle{Radius: 0.5})
-			world.SetBodyTransform(body, box2d.Vec2{X: c.echo}, box2d.RotIdentity)
+			reach.Add(7, echo)
+		}
+		sights := func(key uint64) (Seen, bool) {
+			return Seen{ID: uint32(key), Spans: [2]Span{{Row: echo, End: 1, To: echo.Center}}}, true
 		}
 		f := Flight{Velocity: box2d.Vec2{X: def.Speed}, Radius: def.Radius, Remaining: c.remaining}
-		_, end, over := tuning.Fly(world, def, f, interact.Side{Owner: 1}, targets, dt)
+		_, end, over := tuning.Fly(box2d.NewWorld(&worldDef), def, f, interact.Side{Owner: 1}, reach, sights, dt)
 		// Box2D stops a cast a slop short of touching.
 		if !over || end.Hit.Target != c.hit || math.Abs(end.At.X-c.at) > 2*box2d.LinearSlop || end.At.Y != 0 ||
 			math.Abs(end.Until-c.until) > 2*box2d.LinearSlop/0.75 {

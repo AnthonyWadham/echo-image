@@ -12,14 +12,13 @@ export function toTick(tick: bigint): number {
 
 /**
  * The render clock dt later. It runs at real time, eased toward target by time, not by frame, and jumps
- * ahead to target when more than MaxDrift behind. It never steps back, and never passes newest: the
- * newest tick's time every timeline has, so each view it draws has both its states.
+ * ahead to target when more than MaxDrift behind. It never steps back, and never passes latest.
  */
-export function stepRenderTime(renderTime: number, target: number, newest: number, dt: number): number {
-  if (Number.isNaN(renderTime) || target - renderTime > MaxDrift) return Math.min(target, newest)
+export function stepRenderTime(renderTime: number, target: number, latest: number, dt: number): number {
+  if (Number.isNaN(renderTime) || target - renderTime > MaxDrift) return Math.min(target, latest)
   const next = renderTime + dt
   const eased = next + (target - next) * (1 - Math.exp(-dt / EaseSeconds))
-  return Math.min(Math.max(eased, renderTime), newest)
+  return Math.min(Math.max(eased, renderTime), latest)
 }
 
 /** The two states a view is drawn from, and how far it is through the newer one's tick (0 < t <= 1). */
@@ -147,12 +146,16 @@ export class Timelines {
     return Math.min(...this.#all.map((t) => t.newestTick))
   }
 
-  /** The tick to draw, dt after the last: interpolationSeconds behind newestTick, and never past it. */
+  /**
+   * The tick to draw, dt after the last: interpolationSeconds behind newestTick, and never past the tick
+   * before it. A frame's shots fly a tick across the views from the one it draws, which the newest's
+   * states end, so every timeline has each of those views' states.
+   */
   renderTick(dt: number, tickSeconds: number): number | undefined {
     const newest = this.newestTick
     if (newest === undefined || !(tickSeconds > 0)) return undefined
     const at = newest * tickSeconds
-    this.#renderTime = stepRenderTime(this.#renderTime, at - this.interpolationSeconds, at, dt)
+    this.#renderTime = stepRenderTime(this.#renderTime, at - this.interpolationSeconds, at - tickSeconds, dt)
     return this.#renderTime / tickSeconds
   }
 }
