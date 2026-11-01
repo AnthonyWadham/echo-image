@@ -141,7 +141,7 @@ func TestBodySyncSaysWhichSimItRuns(t *testing.T) {
 	w := cardinal.NewTestWorld(t, register)
 	w.Command("alice", input(1, frame(1, 0, 0)))
 	w.Tick()
-	if got, want := bodiesFor(t, w, "alice").SimVersion, echoimage.SimVersion(physics.ServerTickRateHz); got != want {
+	if got, want := bodiesFor(t, w, "alice").SimVersion, echoimage.SimVersion(); got != want {
 		t.Fatalf("body_sync says sim %q, want %q", got, want)
 	}
 }

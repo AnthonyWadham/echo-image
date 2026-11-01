@@ -130,7 +130,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	world.RegisterSystem(&projectile.HistorySystem{Tuning: c.shots})
 
 	// Client sync (Update): each feature sends each player this tick's final state it may see.
-	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)})
+	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})
 	world.RegisterSystem(&echo.SyncSystem{})
 	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities})
 	world.RegisterSystem(&projectile.SyncSystem{})

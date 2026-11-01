@@ -890,8 +890,8 @@
    "edits": [
     {
      "file": "sim.go",
-     "old": "fmt.Sprintf(\"%s+%dhz+%s\", runtime.Version(), rate,",
-     "new": "fmt.Sprintf(\"%s+%dhz+%s\", \"go\", rate,"
+     "old": "\tv := runtime.Version()\n",
+     "new": "\tv := \"go\"\n"
     },
     {
      "file": "sim.go",
@@ -907,8 +907,8 @@
    "edits": [
     {
      "file": "sim.go",
-     "old": "//go:embed go.mod go.sum pkg shards",
-     "new": "//go:embed go.mod pkg shards/game/internal"
+     "old": "//go:embed go.mod go.sum\n",
+     "new": "//go:embed go.mod\n"
     }
    ]
   },
@@ -943,7 +943,7 @@
    "edits": [
     {
      "file": "shards/game/main.go",
-     "old": "SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)}",
+     "old": "SimVersion: echoimage.SimVersion()}",
      "new": "SimVersion: \"dev\"}"
     },
     {
@@ -1513,30 +1513,6 @@
      "file": "shards/game/prediction_test.go",
      "old": "Frames: append([]playercomp.InputFrame{}, frames...)",
      "new": "Frames: frames"
-    }
-   ]
-  },
-  {
-   "id": "X6-G1",
-   "breaks": "version drops the rate",
-   "check": "sim60",
-   "edits": [
-    {
-     "file": "sim.go",
-     "old": "runtime.Version(), rate, hex",
-     "new": "runtime.Version(), 20, hex"
-    }
-   ]
-  },
-  {
-   "id": "X6-G2",
-   "breaks": "wasm stamped at 20 Hz",
-   "check": "ts60",
-   "edits": [
-    {
-     "file": "shards/game/predictor/version/main.go",
-     "old": "SimVersion(timestep.Rate)",
-     "new": "SimVersion(20 + 0*timestep.Rate)"
     }
    ]
   },
@@ -2365,6 +2341,54 @@
      "file": "shards/game/internal/physics/mover/mover.go",
      "old": "if box2d.LengthSquared(step) < minStep*minStep && (len(planes) > 0 || fraction >= 1) {",
      "new": "if box2d.LengthSquared(step) < minStep*minStep {"
+    }
+   ]
+  },
+  {
+   "id": "F23-E1",
+   "breaks": "the shard embeds its tests' data",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "//go:embed go.mod go.sum\n//go:embed shards/game/main.go shards/game/catalog.go shards/game/content shards/game/internal\n//go:embed shards/game/predictor\n",
+     "new": "//go:embed go.mod go.sum pkg shards\n"
+    }
+   ]
+  },
+  {
+   "id": "F23-E2",
+   "breaks": "the predictor's code isn't hashed",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "//go:embed shards/game/predictor\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F23-T1",
+   "breaks": "the build tags aren't in the version",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "return versionOf(source, buildTags())",
+     "new": "return versionOf(source, \"\")"
+    }
+   ]
+  },
+  {
+   "id": "F23-T2",
+   "breaks": "the version drops its tags",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "\tif tags != \"\" {\n\t\tv += \"+\" + tags",
+     "new": "\tif false {\n\t\tv += \"+\" + tags"
     }
    ]
   }

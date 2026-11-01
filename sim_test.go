@@ -13,8 +13,8 @@ import (
 	"testing/fstest"
 )
 
-// The version changes with the code, content and modules a sim is built from and its tick rate, and with
-// nothing else.
+// The version changes with the code, content and modules a sim is built from and its build tags, and
+// with nothing else.
 func TestSimVersionIsTheSourceWithoutTests(t *testing.T) {
 	src := fstest.MapFS{
 		"go.mod":                           {Data: []byte("module x\n")},
@@ -34,16 +34,16 @@ func TestSimVersionIsTheSourceWithoutTests(t *testing.T) {
 	moved["shards/game/internal/y/x.go"] = moved["shards/game/internal/x/x.go"]
 	delete(moved, "shards/game/internal/x/x.go")
 
-	base := versionOf(src, 20)
-	if !regexp.MustCompile(`^` + regexp.QuoteMeta(runtime.Version()) + `\+20hz\+[0-9a-f]{16}$`).MatchString(base) {
-		t.Fatalf("version %q, want the Go release, +20hz+, and 16 hex digits", base)
+	base := versionOf(src, "")
+	if !regexp.MustCompile(`^` + regexp.QuoteMeta(runtime.Version()) + `\+[0-9a-f]{16}$`).MatchString(base) {
+		t.Fatalf("version %q, want the Go release, +, and 16 hex digits", base)
 	}
 	for name, fsys := range map[string]fstest.MapFS{
 		"the same files":   maps.Clone(src),
 		"a test changed":   with("shards/game/internal/x/x_test.go", "package x // more\n"),
 		"testdata changed": with("shards/game/testdata/run.json", "[1]"),
 	} {
-		if got := versionOf(fsys, 20); got != base {
+		if got := versionOf(fsys, ""); got != base {
 			t.Errorf("%s: version %s, want %s", name, got, base)
 		}
 	}
@@ -54,16 +54,17 @@ func TestSimVersionIsTheSourceWithoutTests(t *testing.T) {
 		"a file added":     with("shards/game/internal/x/y.go", "package x\n"),
 		"a file moved":     moved,
 	} {
-		if got := versionOf(fsys, 20); got == base {
+		if got := versionOf(fsys, ""); got == base {
 			t.Errorf("%s: version unchanged", name)
 		}
 	}
-	if versionOf(src, 60) == base {
-		t.Error("another tick rate: version unchanged")
+	if got, want := versionOf(src, "rate60"), runtime.Version()+"+rate60+"+base[len(runtime.Version())+1:]; got != want {
+		t.Errorf("built with rate60: version %s, want %s", got, want)
 	}
 }
 
-// SimVersion hashes every file the shard and the predictor are built from, and the predictor doesn't
+// SimVersion hashes every file the shard and the predictor are built from, and nothing builds from code
+// outside them (a local replace). The shard doesn't embed its tests' data, and the predictor doesn't
 // embed the source itself: players never download the server's code.
 func TestSimVersionCoversWhatTheSimIsBuiltFrom(t *testing.T) {
 	root, err := os.Getwd()
@@ -74,6 +75,17 @@ func TestSimVersionCoversWhatTheSimIsBuiltFrom(t *testing.T) {
 		if _, err := fs.Stat(source, file); err != nil {
 			t.Errorf("SimVersion doesn't hash %s", file)
 		}
+	}
+	if _, err := fs.Stat(source, "shards/game/testdata"); err == nil {
+		t.Error("the shard binary embeds its tests' data")
+	}
+	local, err := exec.Command("go", "list", "-m", "-f", `{{with .Replace}}{{if not .Version}}{{.Path}}{{end}}{{end}}`,
+		"all").Output()
+	if err != nil {
+		t.Fatalf("go list -m: %v", err)
+	}
+	if dirs := strings.Fields(string(local)); len(dirs) > 0 {
+		t.Errorf("replaced by local directories %v, which SimVersion doesn't hash", dirs)
 	}
 	for _, build := range []struct {
 		pkg string

@@ -52,7 +52,9 @@ one is the *what*.
 - **world-engine is pinned** in `go.mod` to `v0.22.0-beta`, the commit of PR #1109 (codegen
   reverted). To move it: `go get github.com/argus-labs/world-engine@<commit or tag>`. No
   `vendor/`: the shard's Docker build downloads modules itself.
-- **Toolchain:** Go 1.27.1 (`GOTOOLCHAIN=auto` to auto-fetch if the local go is older).
+- **Toolchain:** go.mod's go line (1.27.1) is the Go the shard's Docker build runs (the world CLI's
+  golang image), and `SimVersion` hashes the release. `predictor.mjs` builds with exactly that Go
+  (`GOTOOLCHAIN`), whatever is installed. Bump it with the CLI's image.
 - `world.toml` declares the shards.
 - **No codegen.** Commands, events, components and system events are encoded as MessagePack by
   reflection; a type only needs `Name()` and a registration.
@@ -642,13 +644,15 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   - **The predictor embeds `content.FS`** and loads it with `predict.Load`, through the shard's own
     `content.Load`.
   - **A client predicts only for a shard of its own build.** `echoimage.SimVersion` is the Go release,
-    the tick rate and a hash of `go.mod`, `go.sum`, `pkg/` and `shards/`, without tests or testdata. The
-    shard hashes the copy it embeds (its Docker build has no `.git`) and sends it as body_sync's
-    `SimVersion`.
+    the build tags (from the binary's build info; `rate60` picks 60 Hz) and a hash of what the shard and
+    the predictor build from: `go.mod`, `go.sum`, and `shards/game`'s code, content and predictor,
+    without tests. The shard hashes the copy it embeds (its Docker build has no `.git`) and sends it as
+    body_sync's `SimVersion`.
     `predictor.mjs` stamps the same into the wasm (`-X main.simVersion`), which never embeds the
     source, so players don't download it. When they differ, `LocalPlayer` doesn't play and the HUD
     says to reload (in dev, restart `bun run dev` first). `TestSimVersionCoversWhatTheSimIsBuiltFrom`
-    checks every file the shard and the predictor build from is hashed.
+    checks every file the shard and the predictor build from is hashed, testdata isn't embedded, and no
+    `replace` points at a local directory.
   - **Exact, unless the network surprises it.** `TestPredictionMatchesServer` checks the predictor lands
     on the server's bits, each shot's end and your Echo included, after a step and after a replay. Its
     golden is the run's text digest, `testdata/prediction-20hz.txt` (`-60hz` at 60 Hz, a line a step):
@@ -794,5 +798,5 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   fan-out). Compare against general best practice, not just what rampage did.
 - **Research findings** (not source of truth; this file and the code win) live in `docs/research/`.
   Map system: [`docs/research/map-system-findings.md`](docs/research/map-system-findings.md).
-- World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`; this project builds
-  against that checkout, through the `replace` in `go.mod` (see Build & run).
+- World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`, for reading. The build
+  uses the pinned module (see Build & run): a local `replace` would leave its code out of `SimVersion`.

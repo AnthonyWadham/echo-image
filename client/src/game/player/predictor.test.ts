@@ -56,10 +56,10 @@ test("plays the run's content: its render delay too", () => {
 })
 
 test("runs this tree's sim: the version a shard built from it sends", () => {
-  expect(predictor.version).toMatch(/^go[\d.]+\+\d+hz\+[0-9a-f]{16}$/)
+  expect(predictor.version).toMatch(/^go[\d.]+(\+[\w,]+)?\+[0-9a-f]{16}$/)
   expect(predictor.version).toBe(inject('simVersion'))
-  // Stamped with the rate it runs: the recorded server's.
-  expect(predictor.version).toContain(`+${Math.round(1 / run[0]!.Sync.TickSeconds)}hz+`)
+  // Stamped with the tags it's built with, which pick the recorded server's rate.
+  expect(predictor.version.includes('+rate60+')).toBe(Math.round(1 / run[0]!.Sync.TickSeconds) === 60)
 })
 
 test('the wasm build lands on the server bits each tick, ended shots included, and so does a replay', () => {
