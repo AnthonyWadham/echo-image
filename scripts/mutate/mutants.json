@@ -140,7 +140,8 @@
      "old": "\tif in.Target == a.body {",
      "new": "\tif true {"
     }
-   ]
+   ],
+   "survives": "no hook puts an effect on another entity yet, so the predictor's own-Body effect filter can't be seen"
   },
   {
    "id": "11-G7",
@@ -1214,7 +1215,8 @@
      "old": "if n.ID == s.Body {",
      "new": "if false && n.ID == s.Body {"
     }
-   ]
+   ],
+   "survives": "own passes every shot by default and no test rule stops one on its caster, so where the predictor puts your own Body can't be seen"
   },
   {
    "id": "8-G15",

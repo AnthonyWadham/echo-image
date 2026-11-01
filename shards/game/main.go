@@ -12,6 +12,7 @@ import (
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/effect"
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/physics/timestep"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/ref"
@@ -21,7 +22,7 @@ import (
 func main() {
 	world, err := cardinal.NewWorld(cardinal.WorldOptions{
 		TickRate:     physics.ServerTickRateHz,
-		SnapshotRate: 10,
+		SnapshotRate: uint32(timestep.Ticks(0.5)), // ticks between snapshots: half a second at any rate
 	})
 	if err != nil {
 		panic(err.Error())

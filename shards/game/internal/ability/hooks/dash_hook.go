@@ -1,6 +1,9 @@
 package hooks
 
-import "errors"
+import (
+	"echo_image/shards/game/internal/physics/timestep"
+	"errors"
+)
 
 type dashParams struct {
 	Distance float64 `json:"distance"` // world units along the aim
@@ -9,7 +12,7 @@ type dashParams struct {
 }
 
 func (p dashParams) Validate(tickRate int) error {
-	if p.Distance <= 0 || ticks(p.Seconds, tickRate) < 1 || p.Effect == "" {
+	if p.Distance <= 0 || timestep.TicksAt(p.Seconds, tickRate) < 1 || p.Effect == "" {
 		return errors.New("dash needs distance > 0, seconds of at least one tick and an effect")
 	}
 	return nil

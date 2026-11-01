@@ -1,14 +1,14 @@
 // Package hooks holds what abilities do: one hook per name, each with its own params. Every ability
 // row names its hook. A hook reads its cast and params and fills requests in Out, and the ability
 // feature turns them into the intents of the features that own the state, so a hook never writes
-// state. It imports only the standard library, so a client predictor can run it.
+// state. It imports only the standard library and timestep, so a client predictor can run it.
 package hooks
 
 import (
 	"bytes"
+	"echo_image/shards/game/internal/physics/timestep"
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // Vec2 is a point or a direction.
@@ -23,9 +23,7 @@ type Cast struct {
 }
 
 // Ticks converts seconds to whole ticks at c's rate.
-func (c Cast) Ticks(seconds float64) uint64 { return ticks(seconds, c.TickRate) }
-
-func ticks(seconds float64, rate int) uint64 { return uint64(math.Round(seconds * float64(rate))) }
+func (c Cast) Ticks(seconds float64) uint64 { return uint64(timestep.TicksAt(seconds, c.TickRate)) }
 
 // Out collects a hook's requests. A request type is added with its first user.
 type Out struct {

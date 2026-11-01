@@ -3,7 +3,6 @@ package flight
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics/timestep"
@@ -59,7 +58,7 @@ func (Tuning) JSONFile() string { return "projectile/tuning.json" }
 
 // RewindTicks converts RewindSeconds to ticks.
 func (t Tuning) RewindTicks() uint64 {
-	return uint64(math.Round(t.RewindSeconds * float64(timestep.Rate)))
+	return uint64(timestep.Ticks(t.RewindSeconds))
 }
 
 // KeptRows is how many ticks of rows a target keeps: every view View allows is drawn from them.

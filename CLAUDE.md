@@ -71,7 +71,7 @@ shards/game/
                                   and the landing rule: pure functions over *box2d.World, no Cardinal
                                   import
       timestep/ package timestep the tick rate the server, the physics step and the predictor share
-                                  (Rate, Seconds) — imports nothing
+                                  (Rate, Seconds, Ticks) — imports only math
     ref/      package ref         Spawn{Serial} and Next: tells an entity from a newer one with its ID — a
                                   component-only leaf (imports only cardinal)
     team/     package team        Team and Owner allegiance components + SameTeam, SideOf — a
@@ -103,7 +103,7 @@ shards/game/
       cast/       package cast        the cast gate (Gate), Cooldowns, Tuning (kits, abilities, their
                                       bound hooks) — no Cardinal import
       hooks/      package hooks       what abilities do: one hook per name (launch_hook.go,
-                                      dash_hook.go), Bind, Out — standard library only
+                                      dash_hook.go), Bind, Out — standard library and timestep only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
                                   flight_system.go (flies each shot, a predicted one at its client's
                                   view, acts on what it meets), history_system.go (each target's
@@ -153,8 +153,9 @@ also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, t
 combat's and projectile's leaves import ability's leaf for `Cause`, and projectile's imports
 `projectile/flight` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
-The shared sim code imports no Cardinal: `physics/timestep` imports nothing, `physics/mover` only box2d;
-`interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`); and
+The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
+`interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`, and
+`physics/timestep` for hooks); and
 `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
 predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
 `player/motion` for `InputFrame.Move`. `content` is a leaf too (imported only by
@@ -246,8 +247,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `1.25`. Movement already complies: `Velocity2D` is world-units-per-*second* and
   `player.MovementSystem` moves a Body by `velocity * dt`, so units/second is constant across tick
   rates — a faster tick rate must never move anything faster.
-- **Durations & delays are configured in seconds and converted to ticks** (`ticks = round(seconds *
-  TickRate)`) — never stored as a raw tick count. The Echo delay, cooldowns, and any ring-buffer
+- **Durations & delays are configured in seconds and converted to ticks** by `timestep.Ticks`
+  (`round(seconds * Rate)`), the one place that converts — never stored as a raw tick count, the
+  snapshot interval (`SnapshotRate`, 0.5 s) included. The Echo delay, cooldowns, and any ring-buffer
   sizing all derive from seconds so they hold their wall-clock meaning when the rate changes.
 - **Discrete vs continuous.** A discrete event (a projectile hit, a spawn) applies a fixed amount and is
   already rate-independent. A continuous effect (DoT, regen, movement) must scale by `dt`.

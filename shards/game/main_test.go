@@ -13,6 +13,7 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/physics/timestep"
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
@@ -208,7 +209,7 @@ func (c *client) fire(aimX, aimY float64) uint32 { return c.cast(0, aimX, aimY) 
 const drawLag = 0.125 * physics.ServerTickRateHz
 
 // ticks is seconds in whole ticks at this build's rate, so a test states its times in seconds.
-func ticks(seconds float64) int { return int(math.Round(seconds * physics.ServerTickRateHz)) }
+func ticks(seconds float64) int { return timestep.Ticks(seconds) }
 
 // kit returns the ability IDs of the champion dev Bodies play, slot 0 first.
 func kit(t *testing.T) []string {

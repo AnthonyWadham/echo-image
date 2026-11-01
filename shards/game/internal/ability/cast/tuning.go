@@ -3,7 +3,6 @@ package cast
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/physics/timestep"
@@ -33,7 +32,7 @@ func (Tuning) JSONFile() string { return "ability/tuning.json" }
 
 // CooldownTicks converts CooldownSeconds to ticks.
 func (d Def) CooldownTicks() uint64 {
-	return uint64(math.Round(d.CooldownSeconds * float64(timestep.Rate)))
+	return uint64(timestep.Ticks(d.CooldownSeconds))
 }
 
 // Bind binds each ability's hook to its params. A missing or bad hook name or a bad param is an

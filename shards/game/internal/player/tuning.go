@@ -2,9 +2,9 @@ package player
 
 import (
 	"fmt"
-	"math"
 
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // MovementTuning is data-driven movement config, loaded once at boot from content/player/tuning.json.
@@ -32,18 +32,18 @@ func (MovementTuning) JSONFile() string { return "player/tuning.json" }
 
 // BufferFrames converts InputBufferSeconds to frames (one frame per tick).
 func (t MovementTuning) BufferFrames() int {
-	return int(math.Round(t.InputBufferSeconds * float64(physics.ServerTickRateHz)))
+	return timestep.Ticks(t.InputBufferSeconds)
 }
 
 // EchoPathTicks converts EchoPathSeconds to ticks: how much of your Echo's coming path YouState
 // carries.
 func (t MovementTuning) EchoPathTicks() int {
-	return int(math.Round(t.EchoPathSeconds * float64(physics.ServerTickRateHz)))
+	return timestep.Ticks(t.EchoPathSeconds)
 }
 
 // TimeoutTicks converts InputTimeoutSeconds to ticks.
 func (t MovementTuning) TimeoutTicks() uint64 {
-	return uint64(math.Round(t.InputTimeoutSeconds * float64(physics.ServerTickRateHz)))
+	return uint64(timestep.Ticks(t.InputTimeoutSeconds))
 }
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.

@@ -2,9 +2,9 @@ package echo
 
 import (
 	"fmt"
-	"math"
 
 	"echo_image/shards/game/internal/physics"
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // EchoTuning is data-driven Echo config, loaded once at boot from content/echo/tuning.json. Read it via
@@ -31,7 +31,7 @@ func (EchoTuning) JSONFile() string { return "echo/tuning.json" }
 
 // DelayTicks converts the champion's delay to whole ticks at the current server rate.
 func (d EchoDef) DelayTicks() int {
-	return int(math.Round(d.DelaySeconds * float64(physics.ServerTickRateHz)))
+	return timestep.Ticks(d.DelaySeconds)
 }
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
