@@ -32,9 +32,6 @@ type Intent struct {
 	Source     uint32
 }
 
-// Name is the data-catalog key used by data.Get[effect.EffectTuning]().
-func (Tuning) Name() string { return "effect_tuning" }
-
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "effect/tuning.json" }
 

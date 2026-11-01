@@ -2,7 +2,6 @@ package ability
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/netsync"
@@ -20,7 +19,7 @@ type syncRow struct {
 // SyncSystem (Update, after casts) sends each player their team's kits, with SendTo. O(B·S) to
 // collect, then one send per player.
 type SyncSystem struct {
-	Data *data.Plugin
+	Tuning AbilityTuning
 }
 
 func (s *SyncSystem) Run(w *cardinal.World) {
@@ -28,7 +27,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	if len(viewers) == 0 {
 		return
 	}
-	kits := data.Get[AbilityTuning](s.Data).Kits
+	kits := s.Tuning.Kits
 	var abilities netsync.Items[AbilityState]
 	for e := range w.Contains[syncRow]().Iter() {
 		state := e.Get[component.Abilities]()

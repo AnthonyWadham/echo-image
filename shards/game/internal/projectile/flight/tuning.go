@@ -50,9 +50,6 @@ const meetable = interact.Map | targetKinds
 // which keep rows (Row), so a predicted shot meets them at its view.
 const targetKinds = interact.Body | interact.Echo
 
-// Name is the data-catalog key used by data.Get[projectile.ProjectileTuning]().
-func (Tuning) Name() string { return "projectile_tuning" }
-
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "projectile/tuning.json" }
 

@@ -2,7 +2,6 @@ package player
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -36,11 +35,11 @@ type bodyRow struct {
 // This is dev scaffolding — real spawning will be command-driven (matchmaking / client join). Replace
 // this system when that lands.
 type DevSpawnSystem struct {
-	Data *data.Plugin
+	Tuning MovementTuning
 }
 
 func (s *DevSpawnSystem) Run(w *cardinal.World) {
-	tuning := data.Get[MovementTuning](s.Data)
+	tuning := s.Tuning
 	spawnBody(w, tuning, tuning.DevChampion, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0})
 	spawnBody(w, tuning, tuning.DevChampion, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0})
 }

@@ -1,8 +1,9 @@
 package main
 
 import (
+	"io/fs"
+
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	echoimage "echo_image"
 	"echo_image/shards/game/content"
@@ -32,22 +33,16 @@ func main() {
 }
 
 // register installs the plugins, game types and systems.
-func register(world *cardinal.World) { registerWith(world, nil) }
+func register(world *cardinal.World) { registerWith(world, content.FS) }
 
-// registerWith is register with content from src, or from the data plugin's own pick when src is nil,
-// so a test can change content.
-func registerWith(world *cardinal.World, src data.Source) {
-	// Data plugin: loads content/<feature>/*.json into a typed catalog at init; systems read it
-	// via data.Get[T](dataPlugin). Register every kind BEFORE RegisterPlugin so it's in the catalog
-	// before the tick loop starts.
-	dataPlugin := data.NewPlugin(data.Config{EmbeddedFS: content.FS, Source: src})
-	data.Register[player.MovementTuning](dataPlugin)
-	data.Register[echo.EchoTuning](dataPlugin)
-	data.Register[ability.AbilityTuning](dataPlugin)
-	data.Register[projectile.ProjectileTuning](dataPlugin)
-	data.Register[effect.EffectTuning](dataPlugin)
-	data.Register[area.AreaTuning](dataPlugin)
-	world.RegisterPlugin(dataPlugin)
+// registerWith is register with the content in fsys, so a test can change content.
+func registerWith(world *cardinal.World, fsys fs.FS) {
+	// Content: each file loaded strictly and checked once, here, so bad content fails the boot. Each
+	// system that reads a file holds it.
+	c, err := loadCatalog(fsys)
+	if err != nil {
+		panic(err)
+	}
 
 	// Every component, command, event and system event a system uses must be registered before
 	// StartGame; an unregistered one panics on first use.
@@ -71,10 +66,10 @@ func registerWith(world *cardinal.World, src data.Source) {
 	// moves the Body the same tick its ack is sent. Input, cast, move is the order a client predictor
 	// steps; effects a cast starts apply from the next tick. All run BEFORE the physics plugin, so its
 	// step sees each Body where it moved to this tick.
-	world.RegisterSystem(&player.InputSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&player.InputSystem{Tuning: c.movement}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))
-	world.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))
-	world.RegisterSystem(&player.MovementSystem{Data: dataPlugin, Physics: physicsPlugin},
+	world.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&player.MovementSystem{Tuning: c.movement, Physics: physicsPlugin},
 		cardinal.WithHook(cardinal.PreUpdate))
 
 	// Echo replay (PreUpdate, after Movement): record the Body's pose and drive the Echo to the pose
@@ -87,27 +82,27 @@ func registerWith(world *cardinal.World, src data.Source) {
 
 	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
 	// spawning when matchmaking/clients land.
-	world.RegisterSystem(&player.DevSpawnSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.Init))
+	world.RegisterSystem(&player.DevSpawnSystem{Tuning: c.movement}, cardinal.WithHook(cardinal.Init))
 
 	// Echo spawn (Update): give a newly-claimed Body its one Echo carrying its Health. BodyClaimed from
 	// PreUpdate is still visible (system events clear at tick end). Claim-triggered, not Init — see
 	// echo.SpawnSystem.
-	world.RegisterSystem(&echo.SpawnSystem{Data: dataPlugin})
+	world.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})
 
 	// Ability hooks (Update): each cast runs its ability's hook, which asks the features that own the
 	// state for changes with intents (a shot to launch, a dash's forced move). Before every receiver of
 	// those intents.
-	world.RegisterSystem(&ability.CastHookSystem{Data: dataPlugin})
+	world.RegisterSystem(&ability.CastHookSystem{Tuning: c.abilities})
 
 	// Projectiles (Update): launch a shot for each LaunchIntent, then move every shot and resolve what
 	// it meets by its rules. A shot launched this tick moves this tick, so its path starts at the
 	// shooter.
-	world.RegisterSystem(&projectile.LaunchSystem{Data: dataPlugin})
-	world.RegisterSystem(&projectile.FlightSystem{Data: dataPlugin, Physics: physicsPlugin})
+	world.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})
+	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Physics: physicsPlugin})
 
 	// Areas (Update): each area acts on the things overlapping its holder, by its rules. An Echo's
 	// anti-camp is one.
-	world.RegisterSystem(&area.AreaSystem{Data: dataPlugin, Physics: physicsPlugin})
+	world.RegisterSystem(&area.AreaSystem{Tuning: c.areas, Physics: physicsPlugin})
 
 	// Combat (Update). Order matters: every DamageIntent and HealIntent emitter (FlightSystem,
 	// AreaSystem) runs before DamageResolveSystem drains them the same tick — system events are
@@ -116,16 +111,16 @@ func registerWith(world *cardinal.World, src data.Source) {
 
 	// Effects (Update, after every EffectIntent emitter and every system that reads status): the one
 	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
-	world.RegisterSystem(&effect.ResolveSystem{Data: dataPlugin})
+	world.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})
 
 	// Target history (Update, after everything that moves, kills or tags a Body or Echo, before the
 	// syncs): each saves what this tick's syncs show of it, so a predicted shot meets it at its client's view.
-	world.RegisterSystem(&projectile.HistorySystem{Data: dataPlugin})
+	world.RegisterSystem(&projectile.HistorySystem{Tuning: c.shots})
 
 	// Client sync (Update): each feature sends each player this tick's final state it may see.
-	world.RegisterSystem(&player.SyncSystem{Data: dataPlugin, SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)})
+	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)})
 	world.RegisterSystem(&echo.SyncSystem{})
-	world.RegisterSystem(&ability.SyncSystem{Data: dataPlugin})
+	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities})
 	world.RegisterSystem(&projectile.SyncSystem{})
 	world.RegisterSystem(&projectile.TargetSyncSystem{})
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/projectile/component"
@@ -28,11 +27,11 @@ type projectileRow struct {
 // LaunchIntent, in sorted order, since emit order can change after a restore and the order sets the
 // shots' entity IDs. O(L log L) for L launches.
 type LaunchSystem struct {
-	Data *data.Plugin
+	Tuning ProjectileTuning
 }
 
 func (s *LaunchSystem) Run(w *cardinal.World) {
-	shots := data.Get[ProjectileTuning](s.Data).Shots
+	shots := s.Tuning.Shots
 	for _, in := range slices.SortedFunc(w.SystemEvents[component.LaunchIntent](), compareLaunch) {
 		def, ok := shots[in.Shot]
 		if !ok {

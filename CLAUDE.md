@@ -61,7 +61,9 @@ one is the *what*.
 ```
 shards/game/
   main.go                       registration wiring ONLY
-  content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json
+  catalog.go                    every content file, loaded at boot, and the IDs across files checked
+  content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json,
+                                  and Load, the one strict loader
   internal/
     interact/ package interact    the rule vocabulary: Kind (the Box2D category bits), Tags, Relation,
                                   Side, Filter, First — standard library only
@@ -96,7 +98,7 @@ shards/game/
     ability/  package ability     casting: equip_system.go (cooldowns on claim) → cast_system.go (the
                                   gate; the one writer of cooldowns) → cast_hook_system.go (runs each
                                   cast's hook, turns its requests into intents), sync_system.go,
-                                  tuning.go (AbilityTuning: cast.Tuning plus its data-plugin load),
+                                  tuning.go (AbilityTuning: cast.Tuning plus its kit-size check),
                                   doc.go
       component/  package component   Abilities (cooldowns by ability ID), AbilityCast + Cause —
                                       ability's leaf
@@ -145,7 +147,7 @@ interact, team, ref, netsync, combat/component, effect/component, player/compone
 projectile/component, projectile/flight}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
 {physics, interact, team, ref, netsync, echo/component, area/component, combat/component,
-player/component, effect/component, projectile/component}`, `effect → {data, effect/component,
+player/component, effect/component, projectile/component}`, `effect → {effect/component,
 effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
@@ -158,9 +160,9 @@ The shared sim code imports no Cardinal: `physics/timestep` imports only math, `
 `physics/timestep` for hooks); and
 `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
 predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
-`player/motion` for `InputFrame.Move`. `content` is a leaf too (imported only by
-`main.go` and the predictor); feature packages never import it — they name their JSON file by path string in
-`JSONFile()`.
+`player/motion` for `InputFrame.Move`. `content` is a leaf too, standard library only (imported by
+package main, `predict` and the predictor for `FS` and `Load`); feature packages never import it — they
+name their JSON file by path string in `JSONFile()`.
 
 ### Conventions when adding systems
 
@@ -476,36 +478,36 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `projectile.TargetSyncSystem`), so each sends the tick's final state. Only `combat.DeathSystem` comes
   after them: it removes what died this tick, once each sync has sent it.
 
-### Game data / definitions (data plugin)
-- **Use the engine's `pkg/plugin/data` plugin** for all data-driven config — it gives a typed
-  catalog, `data.Get[T](plugin)` lookup, load-time `Validate()`, and snapshot content-hash reconcile so
-  an in-flight game resumes on the exact config it was running. **Never hand-roll a JSON loader.**
-- **A definition is a Go type implementing `Name()` + `JSONFile()`** (the `data.Definition`
-  contract); the JSON file unmarshals straight into it. Optional interfaces: `Validate()`
-  (load-time invariants — a returned error **panics the boot**, fail loud), `Resolve()` (second-
-  stage load of designer-bundled assets like tilemaps; `AbilityTuning` binds its hooks there).
-- **Names fail at load; IDs across files fail in `TestContentIDsLineUp`.** An enum or bit name
-  (kinds, tags, relations, responses, hook names, hook params) decodes strictly, so a typo fails the
-  boot. `Validate` sees one file, so an ID another file defines (a shot type, an effect kind, an area
-  kind, a champion) is checked by that test; hooks list theirs in `Refs`.
+### Game data / definitions (`content.Load`)
+- **One loader, `content.Load[T](fsys)`,** which the shard and the client predictor share. It decodes
+  T's file strictly (an unknown key fails, so a typo never loads as 0), then runs T's `Bind` and
+  `Validate`. Any error fails the boot. **Never hand-roll another JSON loader.** (world-engine's data
+  plugin, which this replaced, is gone upstream, #1133.)
+- **A definition is a Go type implementing `JSONFile()`** (`content.File`). Optional: `Bind()`
+  (binds what decoding can't, e.g. `cast.Tuning` binds each ability's hook) and `Validate()` (one
+  file's invariants).
+- **The shard loads every file once at boot** (`loadCatalog` in `shards/game/catalog.go`), then checks
+  the IDs one file names in another: each ability's shots and effect kinds (hooks list theirs in
+  `Refs`), and each champion's kit, Echo and Echo area. A champion with no Echo could never be
+  eliminated. `TestBadContentFailsTheBoot` pins both kinds of failure.
+- **Each system that reads config holds its file** in a typed `Tuning` field, set in `main.go` from
+  the catalog. Content never changes after boot, so a system reads it directly, never a copy per
+  entity.
 - **Tests change content with `withContent`** (`main_test.go`): it deep-merges JSON patches into the
-  shipped files and boots the real `register` through a data `Source`. Use it for test-only shot
-  types and champions; never add test content to the shipped files.
+  shipped files and boots the real `register` from that `fs.FS`; `patched` gives a predictor the same.
+  Use it for test-only shot types and champions; never add test content to the shipped files.
 - **The definition TYPE lives in the feature package that owns it** (e.g. `projectile.ProjectileTuning`),
   **never a central `types/` grab-bag.** Shared sim code keeps the type in its own package
-  (`flight.Tuning`), and the feature names it with an alias, or embeds it to add a data-plugin method
-  (`AbilityTuning{cast.Tuning}` adds `Resolve`). Rampage centralizes all definitions in `pkg/datadef/types`
-  and 40 feature files import it — that's the layered bucket we reject. Definitions reference each
-  other **by string ID resolved through the catalog**, so feature-owned types create no import
-  cycles.
+  (`flight.Tuning`), and the feature names it with an alias, or embeds it to add a check
+  (`AbilityTuning{cast.Tuning}` adds the kit-size check). Rampage centralizes all definitions in
+  `pkg/datadef/types` and 40 feature files import it — that's the layered bucket we reject.
+  Definitions reference each other **by string ID**, checked at boot, so feature-owned types create no
+  import cycles.
 - **JSON content lives under `content/<feature>/<file>.json`**, one `embed.FS` (`content.FS`) —
-  the plugin takes a single FS and `go:embed` can't reach across directories. `JSONFile()` returns
-  the path within that FS (e.g. `"combat/tuning.json"`).
-- **Wiring:** in `main.go`, `data.NewPlugin(data.Config{EmbeddedFS: content.FS})`, then
-  `data.Register[T](p)` for **every** kind, then `world.RegisterPlugin(p)` — all before
-  `StartGame`. A system that reads config has a `Data *data.Plugin` field, set in `main.go`.
-- **Read config once at system entry** (`tuning := data.Get[T](s.Data)` at the top of `Run`), not
-  per-entity inside hot loops.
+  `go:embed` can't reach across directories. `JSONFile()` returns the path within that FS (e.g.
+  `"combat/tuning.json"`).
+- **Content is code.** It is embedded and hashed into `SimVersion`, so a shard resumes a snapshot on
+  the content its build carries; changing content is a new build.
 - **Prefer typed per-feature config structs** over a single stringly-typed global settings bag
   (rampage's `game_settings.json` uses `Parameter string / Value json.RawMessage` — untyped, avoid).
 
@@ -603,7 +605,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     your frame drew for it is dropped (by key, when nothing replays). Views the predictor has no syncs
     for (frames over `rewind_seconds` ahead of your newest sync: a high ping or a deep queue) pass
     Bodies and Echoes, while the server may still hit there.
-  - **The predictor embeds `content.FS`** and loads it with `predict.Load`, as the data plugin does.
+  - **The predictor embeds `content.FS`** and loads it with `predict.Load`, through the shard's own
+    `content.Load`.
   - **A client predicts only for a shard of its own build.** `echoimage.SimVersion` is the Go release,
     the tick rate and a hash of `go.mod`, `go.sum`, `pkg/` and `shards/`, without tests or testdata. The
     shard hashes the copy it embeds (its Docker build has no `.git`) and sends it as body_sync's

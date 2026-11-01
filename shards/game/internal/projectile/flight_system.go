@@ -5,7 +5,6 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
@@ -34,7 +33,7 @@ import (
 // the cost is O(P·(log N + K·R)) for P shots, N shapes, K found and R rules, plus O(T·W) a tick for the
 // tree of T targets keeping W rows.
 type FlightSystem struct {
-	Data    *data.Plugin
+	Tuning  ProjectileTuning
 	Physics *physics2d.Plugin
 }
 
@@ -46,7 +45,7 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 	if len(shots) == 0 {
 		return
 	}
-	tuning := data.Get[ProjectileTuning](s.Data)
+	tuning := s.Tuning
 	world := s.Physics.Engine()
 	targets, reach := targetsOf(w, world), reachOf(w)
 	// Resolved after the search finished, since a resolved shot is destroyed.

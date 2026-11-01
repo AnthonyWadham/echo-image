@@ -2,7 +2,6 @@ package ability
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/ability/cast"
@@ -25,11 +24,11 @@ type hookCasterRow struct {
 // cast's hook (cast.Run) and emits what it asks for as intents, with the cast's Cause and the caster's
 // side; the features that own the state act on them. O(C) for C casts.
 type CastHookSystem struct {
-	Data *data.Plugin
+	Tuning AbilityTuning
 }
 
 func (s *CastHookSystem) Run(w *cardinal.World) {
-	tuning := data.Get[AbilityTuning](s.Data)
+	tuning := s.Tuning
 	casters := w.Contains[hookCasterRow]()
 	for c := range w.SystemEvents[component.AbilityCast]() {
 		caster, err := casters.GetByID(c.Caster)

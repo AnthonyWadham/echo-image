@@ -5,7 +5,6 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
@@ -30,11 +29,11 @@ type historyRow struct {
 // rows, at the view their client drew, and TargetSyncSystem sends them to the predictors. It keeps those
 // of every view rewind_seconds back (KeptRows). O(T·R) for T targets keeping R rows.
 type HistorySystem struct {
-	Data *data.Plugin
+	Tuning ProjectileTuning
 }
 
 func (s *HistorySystem) Run(w *cardinal.World) {
-	keep := int(data.Get[ProjectileTuning](s.Data).KeptRows())
+	keep := int(s.Tuning.KeptRows())
 	tick := w.TickHeight()
 	died := map[cardinal.EntityID]float64{}
 	for d := range w.SystemEvents[combatcomp.Died]() {

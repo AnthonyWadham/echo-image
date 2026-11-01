@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/ability/hooks"
@@ -25,11 +24,11 @@ type casterRow struct {
 // cast's cooldown and emits AbilityCast, and does nothing else. It is the only writer of cooldowns.
 // O(B·S) for B Bodies with S slots.
 type CastSystem struct {
-	Data *data.Plugin
+	Tuning AbilityTuning
 }
 
 func (s *CastSystem) Run(w *cardinal.World) {
-	tuning := data.Get[AbilityTuning](s.Data)
+	tuning := s.Tuning
 	tick := w.TickHeight()
 	for body := range w.Contains[casterRow]().Iter() {
 		f, ok := body.Get[playercomp.InputQueue]().Applied(tick)

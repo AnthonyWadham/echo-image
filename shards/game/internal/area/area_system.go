@@ -3,7 +3,6 @@ package area
 import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/shards/game/internal/area/component"
@@ -30,12 +29,12 @@ type areaRow struct {
 // tests who is inside every tick and never trusts contact events. O(A·(log N + k)) for A areas with k
 // things inside.
 type AreaSystem struct {
-	Data    *data.Plugin
+	Tuning  AreaTuning
 	Physics *physics2d.Plugin
 }
 
 func (s *AreaSystem) Run(w *cardinal.World) {
-	tuning := data.Get[AreaTuning](s.Data)
+	tuning := s.Tuning
 	tick := w.TickHeight()
 	world := s.Physics.Engine()
 	var unknown []cardinal.Entity

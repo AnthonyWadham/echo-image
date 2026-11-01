@@ -2,7 +2,6 @@ package echo
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	areacomp "echo_image/shards/game/internal/area/component"
@@ -64,7 +63,7 @@ type echoRow struct {
 // TODO(matchmaking): when Bodies join mid-match this generalizes cleanly — spawn stays edge-triggered on
 // the join/claim, and a dead Echo still stays dead.
 type SpawnSystem struct {
-	Data *data.Plugin
+	Tuning EchoTuning
 }
 
 func (s *SpawnSystem) Run(w *cardinal.World) {
@@ -76,7 +75,7 @@ func (s *SpawnSystem) Run(w *cardinal.World) {
 		}
 		// Read tuning only when a Body is actually claimed (rare) — this Update system runs every tick,
 		// but the common no-claim tick does no work. Eagerly loaded at RegisterPlugin, so always valid.
-		tuning := data.Get[EchoTuning](s.Data)
+		tuning := s.Tuning
 		spawnEcho(w, tuning, body)
 	}
 }

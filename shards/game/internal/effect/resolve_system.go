@@ -4,7 +4,6 @@ import (
 	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/effect/status"
@@ -21,11 +20,11 @@ type holderRow struct {
 // effect/status's, which the client predictor runs too. O(I log I + H·L) for I intents and H holders
 // of L entries.
 type ResolveSystem struct {
-	Data *data.Plugin
+	Tuning EffectTuning
 }
 
 func (s *ResolveSystem) Run(w *cardinal.World) {
-	tuning := data.Get[EffectTuning](s.Data)
+	tuning := s.Tuning
 	next := w.TickHeight() + 1
 	holders := w.Contains[holderRow]()
 	var intents []status.Intent

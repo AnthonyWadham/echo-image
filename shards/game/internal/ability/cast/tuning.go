@@ -24,9 +24,6 @@ type Def struct {
 	Params          json.RawMessage `json:"params"`           // the hook's numbers and IDs
 }
 
-// Name is the data-catalog key used by data.Get[ability.AbilityTuning]().
-func (Tuning) Name() string { return "ability_tuning" }
-
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "ability/tuning.json" }
 
@@ -51,6 +48,9 @@ func (t *Tuning) Bind() error {
 	}
 	return nil
 }
+
+// Refs is the content IDs in other files that ability id's hook names, once bound.
+func (t Tuning) Refs(id string) hooks.Refs { return t.bound[id].Refs }
 
 // Validate checks every cooldown, and that every kit names known abilities.
 func (t Tuning) Validate() error {

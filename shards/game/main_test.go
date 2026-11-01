@@ -1,15 +1,11 @@
 package main
 
 import (
-	"context"
-	"crypto/sha256"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/hooks"
-	"echo_image/shards/game/internal/area"
 	"echo_image/shards/game/internal/echo"
-	"echo_image/shards/game/internal/effect"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
@@ -18,18 +14,17 @@ import (
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/projectile/flight"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"io/fs"
 	"math"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 )
 
@@ -41,15 +36,11 @@ func frame(seq uint32, x, y float64) playercomp.InputFrame {
 	return playercomp.InputFrame{Seq: seq, MoveX: x, MoveY: y}
 }
 
-// tuningOf reads the shipped tuning for T, so tests follow the real numbers.
-func tuningOf[T interface{ JSONFile() string }](t *testing.T) T {
+// tuningOf reads the shipped tuning for T as the shard loads it, so tests follow the real numbers.
+func tuningOf[T content.File](t *testing.T) T {
 	t.Helper()
-	var v T
-	raw, err := content.FS.ReadFile(v.JSONFile())
+	v, err := content.Load[T](content.FS)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw, &v); err != nil {
 		t.Fatal(err)
 	}
 	return v
@@ -99,18 +90,10 @@ func merge(dst, src map[string]any) {
 	}
 }
 
-// overlay serves the shipped content, with some files replaced.
+// overlay serves the shipped content, with some files replaced: an fs.FS for the shard and a
+// predictor.
 type overlay map[string][]byte
 
-func (o overlay) Fetch(ctx context.Context, file, hash string) ([]byte, string, error) {
-	if raw, ok := o[file]; ok {
-		sum := sha256.Sum256(raw)
-		return raw, hex.EncodeToString(sum[:]), nil
-	}
-	return data.EmbedSource{FS: content.FS}.Fetch(ctx, file, hash)
-}
-
-// Open serves the same content as an fs.FS, for a predictor.
 func (o overlay) Open(name string) (fs.File, error) {
 	if raw, ok := o[name]; ok {
 		return fstest.MapFS{name: {Data: raw}}.Open(name)
@@ -293,50 +276,32 @@ func flyFor(w *cardinal.TestWorld, n int) {
 	}
 }
 
-// Features key their numbers by champion, ability, shot or effect ID, and the data plugin checks one
-// file at a time. A hook that names a missing shot or effect kind does nothing, and a champion with no
-// kit casts nothing.
-func TestContentIDsLineUp(t *testing.T) {
-	abilities := tuningOf[ability.AbilityTuning](t)
-	shots, kinds := tuningOf[projectile.ProjectileTuning](t).Shots, tuningOf[effect.EffectTuning](t).Kinds
-	for id, def := range abilities.Abilities {
-		hook, err := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz)
-		if err != nil {
-			t.Errorf("ability %q: %v", id, err)
-			continue
-		}
-		for _, shot := range hook.Refs.Shots {
-			if _, ok := shots[shot]; !ok {
-				t.Errorf("ability %q launches unknown shot %q", id, shot)
+// Content fails the boot when a key is unknown (a typo would load as 0) or an ID one file names is
+// missing from another, so every boot, test or shard, checks the content it runs.
+func TestBadContentFailsTheBoot(t *testing.T) {
+	for _, c := range []struct{ name, file, patch, want string }{
+		{"typo key", "ability/tuning.json", `{"abilities": {"bolt": {"cooldown_secnds": 2}}}`, "cooldown_secnds"},
+		{"typo nested key", "area/tuning.json", `{"kinds": {"anticamp": {"rules": [{"damage_per_secnd": 9}]}}}`,
+			"damage_per_secnd"},
+		{"champion without an Echo", "player/tuning.json",
+			`{"champions": {"rook": {"move_speed": 5, "radius": 0.5}}}`, `champion "rook" has no Echo`},
+		{"Echo of no champion", "echo/tuning.json", `{"champions": {"rook": {"delay_seconds": 2}}}`,
+			`Echo "rook" belongs to no champion`},
+		{"unknown Echo area", "echo/tuning.json", `{"champions": {"starter": {"area": "aera"}}}`,
+			`unknown area kind "aera"`},
+		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
+			`unknown shot "blot"`},
+		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := loadCatalog(patched(t, map[string]string{c.file: c.patch}))
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("loaded with error %v, want one naming %s", err, c.want)
 			}
-		}
-		for _, kind := range hook.Refs.Effects {
-			if _, ok := kinds[kind]; !ok {
-				t.Errorf("ability %q applies unknown effect kind %q", id, kind)
-			}
-		}
+		})
 	}
-	champions := tuningOf[player.MovementTuning](t).Champions
-	echoes, areas := tuningOf[echo.EchoTuning](t).Champions, tuningOf[area.AreaTuning](t).Kinds
-	for id := range champions {
-		if _, ok := abilities.Kits[id]; !ok {
-			t.Errorf("champion %q has no kit", id)
-		}
-		if def, ok := echoes[id]; !ok {
-			t.Errorf("champion %q has no Echo", id)
-		} else if _, ok := areas[def.Area]; def.Area != "" && !ok {
-			t.Errorf("champion %q's Echo has unknown area kind %q", id, def.Area)
-		}
-	}
-	for id := range echoes {
-		if _, ok := champions[id]; !ok {
-			t.Errorf("Echo %q belongs to no champion", id)
-		}
-	}
-	for id := range abilities.Kits {
-		if _, ok := champions[id]; !ok {
-			t.Errorf("kit %q belongs to no champion", id)
-		}
+	if _, err := loadCatalog(content.FS); err != nil {
+		t.Fatalf("the shipped content fails: %v", err)
 	}
 }
 

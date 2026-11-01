@@ -7,8 +7,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 )
 
-// AreaTuning is data-driven area config, loaded once at boot from content/area/tuning.json. Read it via
-// data.Get[AreaTuning]().
+// AreaTuning is data-driven area config, loaded once at boot from content/area/tuning.json.
 type AreaTuning struct {
 	Kinds map[string]KindDef `json:"kinds"` // by area kind ID
 }
@@ -35,9 +34,6 @@ const (
 
 // meetable is the kinds an area can meet: the things AreaSystem tests for overlap.
 const meetable = interact.Body | interact.Echo
-
-// Name is the data-catalog key used by data.Get[AreaTuning]().
-func (AreaTuning) Name() string { return "area_tuning" }
 
 // JSONFile is the path within the content embed.FS.
 func (AreaTuning) JSONFile() string { return "area/tuning.json" }

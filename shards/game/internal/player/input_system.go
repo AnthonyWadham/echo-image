@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 
 	"echo_image/shards/game/internal/player/component"
 )
@@ -23,11 +22,11 @@ type inputRow struct {
 // applied frame through InputQueue.Applied. It is the only writer of InputQueue, and emits BodyClaimed
 // the first tick each Body is claimed.
 type InputSystem struct {
-	Data *data.Plugin
+	Tuning MovementTuning
 }
 
 func (s *InputSystem) Run(w *cardinal.World) {
-	limit := data.Get[MovementTuning](s.Data).BufferFrames()
+	limit := s.Tuning.BufferFrames()
 	bodies := w.Contains[inputRow]()
 	receive(w, bodies, limit)
 	advance(w, bodies)

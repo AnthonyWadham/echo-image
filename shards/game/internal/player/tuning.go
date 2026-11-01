@@ -7,9 +7,8 @@ import (
 	"echo_image/shards/game/internal/physics/timestep"
 )
 
-// MovementTuning is data-driven movement config, loaded once at boot from content/player/tuning.json.
-// Read it via data.Get[MovementTuning]() at system entry — never hardcode the speed. It's a Singleton
-// (one JSON object).
+// MovementTuning is data-driven movement config, loaded once at boot from content/player/tuning.json
+// and handed to each system that reads it — never hardcode the speed.
 type MovementTuning struct {
 	InputBufferSeconds  float64                `json:"input_buffer_seconds"`  // abuse cap on queued input; older drops
 	InputTimeoutSeconds float64                `json:"input_timeout_seconds"` // a Body with no input this long stops
@@ -23,9 +22,6 @@ type ChampionDef struct {
 	MoveSpeed float64 `json:"move_speed"` // world units per second at full input
 	Radius    float64 `json:"radius"`     // the Body's collider circle
 }
-
-// Name is the data-catalog key used by data.Get[MovementTuning]().
-func (MovementTuning) Name() string { return "movement_tuning" }
 
 // JSONFile is the path within the content embed.FS.
 func (MovementTuning) JSONFile() string { return "player/tuning.json" }

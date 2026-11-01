@@ -2,7 +2,6 @@ package player
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	abilitycomp "echo_image/shards/game/internal/ability/component"
@@ -44,7 +43,7 @@ type echoRow struct {
 // prediction data, with SendTo. O(B + P + E) to collect for B Bodies, P shots and E Echoes, then one
 // send per player.
 type SyncSystem struct {
-	Data       *data.Plugin
+	Tuning     MovementTuning
 	SimVersion string // echoimage.SimVersion: the sim this shard runs
 }
 
@@ -86,7 +85,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	for e := range w.Contains[echoRow]().Iter() {
 		paths[e.Get[team.Owner]().Body] = e.Get[echocomp.PathHistory]()
 	}
-	tuning := data.Get[MovementTuning](s.Data)
+	tuning := s.Tuning
 	ahead := tuning.EchoPathTicks()
 	lists := bodies.Lists(viewers)
 	for _, v := range viewers {

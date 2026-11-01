@@ -7,10 +7,9 @@ import (
 	"echo_image/shards/game/internal/physics/timestep"
 )
 
-// EchoTuning is data-driven Echo config, loaded once at boot from content/echo/tuning.json. Read it via
-// data.Get[EchoTuning](). Each champion's Echo has its own delay and area. Durations are in SECONDS and
-// converted to ticks at runtime so the mechanic is tick-rate independent (see CLAUDE.md → Tick-rate
-// independence). Singleton.
+// EchoTuning is data-driven Echo config, loaded once at boot from content/echo/tuning.json. Each
+// champion's Echo has its own delay and area. Durations are in SECONDS and converted to ticks at
+// runtime so the mechanic is tick-rate independent (see CLAUDE.md → Tick-rate independence).
 type EchoTuning struct {
 	MaxHP     float64            `json:"max_hp"`     // Echo starting / max health
 	HitRadius float64            `json:"hit_radius"` // Echo collider radius — its hurtbox, in world units
@@ -22,9 +21,6 @@ type EchoDef struct {
 	DelaySeconds float64 `json:"delay_seconds"` // how far the Echo trails the Body
 	Area         string  `json:"area"`          // its area kind, a key of area.AreaTuning.Kinds, or "" for none
 }
-
-// Name is the data-catalog key used by data.Get[EchoTuning]().
-func (EchoTuning) Name() string { return "echo_tuning" }
 
 // JSONFile is the path within the content embed.FS.
 func (EchoTuning) JSONFile() string { return "echo/tuning.json" }

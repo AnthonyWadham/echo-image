@@ -8,14 +8,13 @@
 package predict
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
+	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/effect/status"
@@ -25,38 +24,22 @@ import (
 	"echo_image/shards/game/internal/projectile/flight"
 )
 
-// Content is the content the predictor runs: the server's own files, loaded the way the data plugin
-// loads them.
+// Content is the content the predictor runs: the server's own files, loaded as the shard loads them.
 type Content struct {
 	Abilities cast.Tuning
 	Shots     flight.Tuning
 	Effects   status.Tuning
 }
 
-// Load reads Content from fsys, the content embed.FS: each file decoded, the hooks bound, then each
-// checked.
+// Load reads Content from fsys, the content embed.FS, with content.Load, as the shard does: each file
+// decoded strictly, the hooks bound, then each checked.
 func Load(fsys fs.FS) (Content, error) {
 	var c Content
-	err := errors.Join(decode(fsys, c.Abilities.JSONFile(), &c.Abilities),
-		decode(fsys, c.Shots.JSONFile(), &c.Shots), decode(fsys, c.Effects.JSONFile(), &c.Effects))
-	if err == nil {
-		err = c.Abilities.Bind()
-	}
-	if err == nil {
-		err = errors.Join(c.Abilities.Validate(), c.Shots.Validate(), c.Effects.Validate())
-	}
-	return c, err
-}
-
-func decode(fsys fs.FS, file string, v any) error {
-	raw, err := fs.ReadFile(fsys, file)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(raw, v); err != nil {
-		return fmt.Errorf("%s: %w", file, err)
-	}
-	return nil
+	var errs [3]error
+	c.Abilities, errs[0] = content.Load[cast.Tuning](fsys)
+	c.Shots, errs[1] = content.Load[flight.Tuning](fsys)
+	c.Effects, errs[2] = content.Load[status.Tuning](fsys)
+	return c, errors.Join(errs[:]...)
 }
 
 // State is the server's state of your Body and what it started, after Tick, as body_sync sends it.

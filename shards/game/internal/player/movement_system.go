@@ -3,7 +3,6 @@ package player
 import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/data"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -29,13 +28,13 @@ type movableRow struct {
 // slides along them, while other Bodies don't block it. Effects feed it and never move a Body. It is
 // the only writer of a Body's Transform2D and Velocity2D. O(B).
 type MovementSystem struct {
-	Data    *data.Plugin
+	Tuning  MovementTuning
 	Physics *physics2d.Plugin
 }
 
 func (s *MovementSystem) Run(w *cardinal.World) {
 	engine := s.Physics.Engine()
-	timeout := data.Get[MovementTuning](s.Data).TimeoutTicks()
+	timeout := s.Tuning.TimeoutTicks()
 	tick := w.TickHeight()
 	for body := range w.Contains[movableRow]().Iter() {
 		pose := body.Get[physics2d.Transform2D]()
