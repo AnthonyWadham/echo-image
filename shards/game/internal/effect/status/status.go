@@ -19,8 +19,9 @@ const (
 	MoveSpeed      // Value in basis points: hastes add, only the strongest slow counts
 )
 
-// Stacking is what adding a kind does when an active entry of it is already there. A refresh keeps
-// whichever ends later, so a short effect never cuts a long one short, in any order.
+// Stacking is what adding a kind does when an active entry with its refresh key is already there:
+// its kind, and its source for PerSource. A refresh keeps what is strongest at every tick, so a short
+// effect never cuts a long one short, and a weak one never erases a strong one, in any order.
 type Stacking uint8
 
 const (
@@ -40,6 +41,7 @@ type Entry struct {
 	Source     uint32  // the entity that applied it
 	Start, End uint64  // active for Start <= tick < End
 	Serial     uint32  // unique in its list, since entity IDs are reused
+	Stacking   Stacking
 }
 
 // Active reports whether e applies at tick.
@@ -47,6 +49,19 @@ func (e Entry) Active(tick uint64) bool { return e.Start <= tick && tick < e.End
 
 // Over reports whether e applies at no tick from tick on.
 func (e Entry) Over(tick uint64) bool { return e.End <= tick }
+
+// strength is how much e's number does: a stun or a pass has none, so only its end counts.
+func (e Entry) strength() int64 { return max(int64(e.Value), -int64(e.Value)) }
+
+// refreshes reports whether e and o share a refresh key.
+func (e Entry) refreshes(o Entry) bool {
+	return e.Stacking != Instanced && e.Kind == o.Kind && (e.Stacking == Merge || e.Source == o.Source)
+}
+
+// covers reports whether active entry e makes o add nothing: as strong, and lasting as long.
+func (e Entry) covers(o Entry, tick uint64) bool {
+	return e.refreshes(o) && e.Active(tick) && e.strength() >= o.strength() && e.End >= o.End
+}
 
 // Status is the fold of the entries active at one tick.
 type Status struct {
@@ -58,11 +73,14 @@ type Status struct {
 	Forced     bool
 }
 
-// Fold combines the entries active at tick, in list order.
+// Fold combines the entries active at tick, in list order: per refresh key, only the strongest (the
+// first of equals).
 func Fold(entries iter.Seq[Entry], tick uint64) Status {
 	var s Status
+	i := 0
 	for e := range entries {
-		if !e.Active(tick) {
+		i++
+		if !e.Active(tick) || outranked(entries, e, i, tick) {
 			continue
 		}
 		s.Tags |= e.Tags
@@ -79,6 +97,23 @@ func Fold(entries iter.Seq[Entry], tick uint64) Status {
 		}
 	}
 	return s
+}
+
+// outranked reports whether an active entry with e's refresh key, other than the at-th, is stronger
+// than e, or as strong and earlier in the list.
+func outranked(entries iter.Seq[Entry], e Entry, at int, tick uint64) bool {
+	if e.Stacking == Instanced {
+		return false
+	}
+	j := 0
+	for o := range entries {
+		j++
+		if j != at && o.Active(tick) && e.refreshes(o) &&
+			(o.strength() > e.strength() || o.strength() == e.strength() && j < at) {
+			return true
+		}
+	}
+	return false
 }
 
 // Speed is base after hastes and the strongest slow, exactly base with neither. Stunned is zero.
@@ -99,17 +134,24 @@ func Add(list []Entry, next *uint32, e Entry, rule Stacking, tick, ticks uint64)
 		}
 		list = Remove(list, func(o Entry) bool { return o.Tags&interact.EndsOnCC != 0 })
 	}
-	e.Start, e.End = tick, tick+ticks
-	if rule != Instanced {
-		for i, o := range list {
-			if o.Kind == e.Kind && (rule == Merge || o.Source == e.Source) && o.Active(tick) {
-				if e.End > o.End {
-					e.Serial = o.Serial
-					list[i] = e
-				}
-				return list, true
-			}
+	e.Start, e.End, e.Stacking = tick, tick+ticks, rule
+	if slices.ContainsFunc(list, func(o Entry) bool { return o.covers(e, tick) }) {
+		return list, true
+	}
+	// e takes the place, and the serial, of the first entry it covers, and the rest it covers go. An
+	// entry stronger but shorter, or weaker but longer, stays beside it: Fold counts the strongest.
+	kept, placed := list[:0], false
+	for _, o := range list {
+		switch {
+		case !e.covers(o, tick):
+			kept = append(kept, o)
+		case !placed:
+			e.Serial, placed = o.Serial, true
+			kept = append(kept, e)
 		}
+	}
+	if placed {
+		return kept, true
 	}
 	*next++
 	e.Serial = *next

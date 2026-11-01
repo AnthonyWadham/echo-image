@@ -690,8 +690,11 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Timed effects (stun, slow, pass, forced move) belong to `effect`.** A feature asks with
   `EffectIntent{Target, Kind, Ticks, Value, VelX, VelY, Source}`; what each kind does (tags, passes,
   stat, stacking) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
-  know. An intent of an unknown kind is dropped with an error log. A refresh keeps whichever entry ends later, so a short stun never cuts a long one
-  short. Bodies and Echoes carry `Effects` from their constructors. Read a status with
+  know. An intent of an unknown kind is dropped with an error log. A refresh keeps what is strongest at
+  every tick: a new entry is dropped only if one with its refresh key (its kind, plus its source for
+  `per_source`) is as strong and lasts as long, and it replaces those it beats on both. Otherwise both
+  stay and the fold counts the strongest of each key. So a short stun never cuts a long one short, and
+  a weak, long slow never erases a strong one. Bodies and Echoes carry `Effects` from their constructors. Read a status with
   `Effects.Status(tick)`; the rules, and what each kind does (`status.Tuning`), live in `effect/status`
   so a predictor can run them.
 - **Foundation for champions, effects and movement abilities:** `docs/research/character-foundation.md`

@@ -49,6 +49,7 @@ export interface EffectEntry {
   Start: bigint // uint64 tick; active for Start <= tick < End
   End: bigint // uint64 tick
   Serial: number // uint32
+  Stacking: number // status.Stacking: what its refresh key is
 }
 
 /** player.ShotState: one of your shots in flight. Ability, Seq and Launch are its key. */

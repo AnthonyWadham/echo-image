@@ -153,17 +153,18 @@ func state(v js.Value) predict.State {
 	for i := range effects.Length() {
 		e := effects.Index(i)
 		s.Effects = append(s.Effects, status.Entry{
-			Kind:   e.Get("Kind").String(),
-			Tags:   interact.Tags(uint64Of(e.Get("Tags"))),
-			Pass:   interact.Kind(uint64Of(e.Get("Pass"))),
-			Stat:   status.Stat(e.Get("Stat").Int()),
-			Value:  int32(e.Get("Value").Int()),
-			VelX:   e.Get("VelX").Float(),
-			VelY:   e.Get("VelY").Float(),
-			Source: uint32(e.Get("Source").Int()),
-			Start:  uint64Of(e.Get("Start")),
-			End:    uint64Of(e.Get("End")),
-			Serial: uint32(e.Get("Serial").Int()),
+			Kind:     e.Get("Kind").String(),
+			Tags:     interact.Tags(uint64Of(e.Get("Tags"))),
+			Pass:     interact.Kind(uint64Of(e.Get("Pass"))),
+			Stat:     status.Stat(e.Get("Stat").Int()),
+			Value:    int32(e.Get("Value").Int()),
+			VelX:     e.Get("VelX").Float(),
+			VelY:     e.Get("VelY").Float(),
+			Source:   uint32(e.Get("Source").Int()),
+			Start:    uint64Of(e.Get("Start")),
+			End:      uint64Of(e.Get("End")),
+			Serial:   uint32(e.Get("Serial").Int()),
+			Stacking: status.Stacking(e.Get("Stacking").Int()),
 		})
 	}
 	shots := v.Get("Shots")

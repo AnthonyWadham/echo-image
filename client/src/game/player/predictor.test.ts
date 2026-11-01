@@ -78,6 +78,19 @@ test('the wasm build lands on the server bits each tick, ended shots included, a
   }
 })
 
+test("effects keep their stacking through the wasm glue: two sources' per-source hastes add", () => {
+  const s = run[0]!
+  const you = s.Sync.Bodies.find((b) => b.EntityID === s.Sync.You.Body)!
+  const haste = (Source: number) => ({
+    ...{ Kind: 'haste', Tags: 0n, Pass: 0n, Stat: 1, Value: 5000, VelX: 0, VelY: 0, Source },
+    ...{ Start: 0n, End: s.Sync.Tick + 100n, Serial: Source, Stacking: 1 /* status.PerSource */ },
+  })
+  predictor.forget()
+  predictor.reset({ ...s.Sync, You: { ...s.Sync.You, Effects: [haste(7), haste(8)], EffectsNext: 8 } }, you)
+  const { at } = predictor.step({ ...s.Frames[0]!, MoveX: 1, MoveY: 0, Buttons: 0 })
+  expect(at.x - you.X).toBeCloseTo(s.Sync.You.MoveSpeed * 2 * s.Sync.TickSeconds, 9)
+})
+
 test('a shot ends the same after a step as after a reset: from where its last tick found it', () => {
   const last = run.findIndex((s) => s.Ended.length > 0) // her first bolt, out of its range
   const before = run[last - 1]

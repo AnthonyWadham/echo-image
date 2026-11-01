@@ -35,11 +35,54 @@ func TestRefreshKeepsSerial(t *testing.T) {
 	l, _ = Add(l, &next, Entry{Kind: "stun", Source: 7}, Merge, 10, 1)
 	l, _ = Add(l, &next, Entry{Kind: "stun", Source: 8}, Merge, 10, 5) // merge refreshes across sources
 	want := []Entry{
-		{Kind: "slow", Source: 7, Start: 10, End: 15, Serial: 1},
+		{Kind: "slow", Source: 7, Start: 10, End: 15, Serial: 1, Stacking: PerSource},
 		{Kind: "stun", Source: 8, Start: 10, End: 15, Serial: 2},
 	}
 	if !slices.Equal(l, want) {
 		t.Fatalf("got %+v, want %+v", l, want)
+	}
+}
+
+// A refresh keeps what is strongest at every tick: a weaker, longer effect never erases a stronger one,
+// and a stronger, shorter one isn't dropped. Each counts while it's the strongest of its refresh key.
+func TestRefreshKeepsTheStrongest(t *testing.T) {
+	slow := func(bps int32, source uint32) Entry {
+		return Entry{Kind: "slow", Tags: interact.CC, Stat: MoveSpeed, Value: bps, Source: source}
+	}
+	haste := func(bps int32, source uint32) Entry {
+		return Entry{Kind: "haste", Stat: MoveSpeed, Value: bps, Source: source}
+	}
+	type add struct {
+		e     Entry
+		rule  Stacking
+		ticks uint64
+	}
+	for _, c := range []struct {
+		name  string
+		adds  []add
+		speed map[uint64]float64 // at tick: speed from base 5
+	}{
+		{"strong then weak and longer", []add{{slow(-6000, 7), PerSource, 20}, {slow(-2000, 7), PerSource, 40}},
+			map[uint64]float64{11: 2, 29: 2, 30: 4, 49: 4, 50: 5}},
+		{"weak then strong and shorter", []add{{slow(-2000, 7), PerSource, 40}, {slow(-6000, 7), PerSource, 5}},
+			map[uint64]float64{11: 2, 14: 2, 15: 4, 49: 4}},
+		{"merged hastes from two sources", []add{{haste(5000, 7), Merge, 20}, {haste(1000, 8), Merge, 40}},
+			map[uint64]float64{11: 7.5, 30: 5.5, 50: 5}},
+		{"stronger and longer replaces", []add{{haste(1000, 7), Merge, 20}, {haste(5000, 8), Merge, 40}},
+			map[uint64]float64{11: 7.5, 49: 7.5}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var next uint32
+			var l []Entry
+			for _, a := range c.adds {
+				l, _ = Add(l, &next, a.e, a.rule, 10, a.ticks)
+			}
+			for tick, want := range c.speed {
+				if got := Fold(slices.Values(l), tick).Speed(5); math.Abs(got-want) > 1e-9 {
+					t.Errorf("speed at tick %d = %v, want %v (entries %+v)", tick, got, want, l)
+				}
+			}
+		})
 	}
 }
 

@@ -43,6 +43,7 @@ const bodySync: BodySync = {
         Start: 9007199254740993n,
         End: 18446744073709551615n,
         Serial: 1,
+        Stacking: 1,
       },
       {
         Kind: 'dash',
@@ -56,6 +57,7 @@ const bodySync: BodySync = {
         Start: 7n,
         End: 13n,
         Serial: 2,
+        Stacking: 0,
       },
     ],
     EffectsNext: 4294967295,

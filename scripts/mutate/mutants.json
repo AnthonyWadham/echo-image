@@ -1815,6 +1815,42 @@
      "new": "\t\tcase m.Payload && m.Relations == 0 && false:\n"
     }
    ]
+  },
+  {
+   "id": "F16-S1",
+   "breaks": "a refresh ignores strength: the later end wins",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/status.go",
+     "old": "return e.refreshes(o) && e.Active(tick) && e.strength() >= o.strength() && e.End >= o.End",
+     "new": "return e.refreshes(o) && e.Active(tick) && e.End >= o.End"
+    }
+   ]
+  },
+  {
+   "id": "F16-S2",
+   "breaks": "the fold counts every entry of a refresh key",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/status.go",
+     "old": "\tif e.Stacking == Instanced {\n\t\treturn false\n\t}\n\tj := 0",
+     "new": "\tif e.Stacking == Instanced || true {\n\t\treturn false\n\t}\n\tj := 0"
+    }
+   ]
+  },
+  {
+   "id": "F16-S3",
+   "breaks": "the predictor drops each entry's stacking",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\t\tStacking: status.Stacking(e.Get(\"Stacking\").Int()),\n",
+     "new": ""
+    }
+   ]
   }
  ]
 }

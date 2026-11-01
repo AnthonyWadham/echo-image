@@ -52,7 +52,7 @@ func TestWireFixtures(t *testing.T) {
 				),
 				Effects: cardinal.SliceOf(
 					status.Entry{Kind: "slow", Tags: interact.CC, Stat: status.MoveSpeed, Value: -4000, Source: 2,
-						Start: 9007199254740993, End: 18446744073709551615, Serial: 1},
+						Start: 9007199254740993, End: 18446744073709551615, Serial: 1, Stacking: status.PerSource},
 					status.Entry{Kind: "dash", Tags: interact.EndsOnCC, Pass: interact.Wall, VelX: -12.5, VelY: 16.25,
 						Source: 1, Start: 7, End: 13, Serial: 2},
 				),
