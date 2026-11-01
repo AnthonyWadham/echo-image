@@ -24,6 +24,7 @@ const bodySync: BodySync = {
     InputAck: 42,
     InputQueued: 3,
     InputCap: 10,
+    InputTarget: 4,
     MoveSpeed: 5,
     SnapSeconds: 0.6,
     FadeSeconds: 0.125,

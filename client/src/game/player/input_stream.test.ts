@@ -7,12 +7,13 @@ const input = { MoveX: 1, MoveY: 0, AimX: 2, AimY: -1, Buttons: 1, ViewTick: 0 }
 const next = () => input
 const seqs = (frames: readonly InputFrame[]) => frames.map((f) => f.Seq)
 const seqsTo = (newest: number, n: number) => Array.from({ length: n }, (_, i) => newest - n + 1 + i)
-const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap = 10) => ({
+const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap = 10, InputTarget = 1) => ({
   Body: 1,
   InputSession,
   InputAck,
   InputQueued,
   InputCap,
+  InputTarget,
   MoveSpeed: 5,
   SnapSeconds: 0.6,
   FadeSeconds: 0.1,
@@ -123,20 +124,24 @@ describe('InputStream', () => {
   test.each([
     [20, 1],
     [60, 3],
-  ])('at %i Hz, paces frames to keep %i (0.05 s) queued: faster while dry, slower while full', (hz, target) => {
+  ])('at %i Hz, paces frames to keep the server\'s target (%i) queued: faster while dry, slower while full', (hz, target) => {
     const tick = 1 / hz
-    const sent = (queued: number) => {
+    const sent = (queued: number, aim = target) => {
       const s = new InputStream(7)
-      for (let i = 0; i < 2 * hz; i++) s.ack(you(7, 0, queued), tick) // for 2 s
+      for (let i = 0; i < 2 * hz; i++) s.ack(you(7, 0, queued, 30, aim), tick) // for 2 s
       let frames = 0
       for (let i = 0; i < 100; i++) frames += s.step(tick, tick, next).length
       return { rate: s.rate, frames }
     }
     const at = sent(target)
     expect(at).toEqual({ rate: 1, frames: 100 })
-    const dry = sent(0)
-    expect(dry.rate).toBeCloseTo(1.05)
-    expect(Math.abs(dry.frames - 105)).toBeLessThanOrEqual(1)
+    expect(sent(4 * target, 4 * target).rate).toBe(1) // at a target the server raised
+    expect(sent(target, 4 * target).rate).toBeCloseTo(1.075)
+    const dry = sent(0) // sped up by the whole 10%, at any rate
+    expect(dry.rate).toBeCloseTo(1.1)
+    expect(Math.abs(dry.frames - 110)).toBeLessThanOrEqual(1)
+    const half = sent(target / 2)
+    expect(half.rate).toBeCloseTo(1.05)
     const full = sent(9 * target) // far above: slowed by at most 10%
     expect(full.rate).toBeCloseTo(0.9)
     expect(Math.abs(full.frames - 90)).toBeLessThanOrEqual(1)

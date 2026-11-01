@@ -261,6 +261,41 @@ func TestBodiesPassThroughEachOther(t *testing.T) {
 	}
 }
 
+// Her client keeps a target of frames queued, which YouState sends: a tick at first. Each time her
+// queue runs dry while she plays, a coast, it rises a step, up to the buffer. It falls a step for each
+// calm period after the last.
+func TestQueueTargetRisesWithCoastsAndFallsWhenCalm(t *testing.T) {
+	w, alice, _ := duel(t)
+	tuning := tuningOf[player.MovementTuning](t)
+	step, calm, limit := tuning.QueueStepFrames(), int(tuning.QueueCalmTicks()), tuning.BufferFrames()
+	target := func() int { return int(bodiesFor(t, w, "alice").You.InputTarget) }
+	alice.move(1, 0)
+	w.Tick()
+	if got := target(); got != 1 {
+		t.Fatalf("target %d frames at first, want 1", got)
+	}
+	w.Tick() // no frame: her queue runs dry
+	w.Tick() // still the same coast
+	if got := target(); got != 1+step {
+		t.Fatalf("target %d frames after a coast, want %d", got, 1+step)
+	}
+	for range limit {
+		alice.move(1, 0)
+		w.Tick()
+		w.Tick()
+	}
+	if got := target(); got != limit {
+		t.Fatalf("target %d frames after many coasts, want the buffer, %d", got, limit)
+	}
+	for i := 1; i <= calm; i++ {
+		alice.move(1, 0)
+		w.Tick()
+		if got, want := target(), limit-step*(i/calm); got != want {
+			t.Fatalf("target %d frames %d ticks after the last coast, want %d", got, i, want)
+		}
+	}
+}
+
 // A Body's speed and size, and how its client draws a correction, are its champion's.
 func TestBodyHasItsChampionsNumbers(t *testing.T) {
 	w, _, _ := duel(t)

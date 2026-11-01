@@ -2,6 +2,8 @@
   "input_buffer_seconds": 0.5,
   "input_timeout_seconds": 0.5,
   "echo_path_seconds": 0.5,
+  "queue_step_seconds": 0.05,
+  "queue_calm_seconds": 5,
   "champions": {
     "starter": {"move_speed": 5.0, "radius": 0.5, "snap_seconds": 0.6, "fade_seconds": 0.1}
   },

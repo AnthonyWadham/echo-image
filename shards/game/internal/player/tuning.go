@@ -10,12 +10,16 @@ import (
 // MovementTuning is data-driven movement config, loaded once at boot from content/player/tuning.json
 // and handed to each system that reads it — never hardcode the speed.
 type MovementTuning struct {
-	InputBufferSeconds  float64                `json:"input_buffer_seconds"`  // abuse cap on queued input; older drops
-	InputTimeoutSeconds float64                `json:"input_timeout_seconds"` // a Body with no input this long stops
-	EchoPathSeconds     float64                `json:"echo_path_seconds"`     // how much Echo path YouState sends
-	Champions           map[string]ChampionDef `json:"champions"`             // by champion ID
-	DevChampion         string                 `json:"dev_champion"`          // the champion DevSpawnSystem's Bodies play
-	DevSpawns           []DevSpawn             `json:"dev_spawns"`            // the Bodies DevSpawnSystem makes
+	InputBufferSeconds  float64 `json:"input_buffer_seconds"`  // abuse cap on queued input; older drops
+	InputTimeoutSeconds float64 `json:"input_timeout_seconds"` // a Body with no input this long stops
+	EchoPathSeconds     float64 `json:"echo_path_seconds"`     // how much Echo path YouState sends
+	// A client keeps a target of frames queued: a tick at first, and QueueStepSeconds more each time its
+	// queue runs dry, less that much for each QueueCalmSeconds it doesn't, up to input_buffer_seconds.
+	QueueStepSeconds float64                `json:"queue_step_seconds"`
+	QueueCalmSeconds float64                `json:"queue_calm_seconds"`
+	Champions        map[string]ChampionDef `json:"champions"`    // by champion ID
+	DevChampion      string                 `json:"dev_champion"` // the champion DevSpawnSystem's Bodies play
+	DevSpawns        []DevSpawn             `json:"dev_spawns"`   // the Bodies DevSpawnSystem makes
 }
 
 // DevSpawn is a Body DevSpawnSystem makes at world init.
@@ -50,6 +54,12 @@ func (t MovementTuning) EchoPathTicks() int {
 	return timestep.Ticks(t.EchoPathSeconds)
 }
 
+// QueueStepFrames converts QueueStepSeconds to frames.
+func (t MovementTuning) QueueStepFrames() int { return timestep.Ticks(t.QueueStepSeconds) }
+
+// QueueCalmTicks converts QueueCalmSeconds to ticks.
+func (t MovementTuning) QueueCalmTicks() uint64 { return uint64(timestep.Ticks(t.QueueCalmSeconds)) }
+
 // TimeoutTicks converts InputTimeoutSeconds to ticks.
 func (t MovementTuning) TimeoutTicks() uint64 {
 	return uint64(timestep.Ticks(t.InputTimeoutSeconds))
@@ -57,9 +67,11 @@ func (t MovementTuning) TimeoutTicks() uint64 {
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t MovementTuning) Validate() error {
-	if t.BufferFrames() < 1 || t.TimeoutTicks() < 1 || t.EchoPathTicks() < 0 {
-		return fmt.Errorf("movement_tuning: input_buffer_seconds and input_timeout_seconds must be >= 1 tick at %d Hz, "+
-			"and echo_path_seconds >= 0, got %+v", physics.ServerTickRateHz, t)
+	if t.BufferFrames() < 1 || t.TimeoutTicks() < 1 || t.EchoPathTicks() < 0 || t.QueueStepFrames() < 1 ||
+		t.QueueCalmTicks() < 1 {
+		return fmt.Errorf("movement_tuning: input_buffer_seconds, input_timeout_seconds, queue_step_seconds and "+
+			"queue_calm_seconds must be >= 1 tick at %d Hz, and echo_path_seconds >= 0, got %+v",
+			physics.ServerTickRateHz, t)
 	}
 	for id, c := range t.Champions {
 		if c.MoveSpeed < 0 || c.Radius <= 0 || c.SnapSeconds < 0 || c.FadeSeconds < 0 {

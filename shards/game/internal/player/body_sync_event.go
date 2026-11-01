@@ -32,6 +32,7 @@ type YouState struct {
 	InputAck     uint32                        // Seq of the last applied frame, included in your Body's position
 	InputQueued  uint32                        // frames waiting for later ticks: the client paces its frames by it
 	InputCap     uint32                        // the most frames the queue holds: a bigger Input is dropped
+	InputTarget  uint32                        // frames to keep queued: it rises each time your queue runs dry
 	MoveSpeed    float64                       // units per second at full input
 	SnapSeconds  float64                       // a correction longer than this much of MoveSpeed jumps
 	FadeSeconds  float64                       // a shorter one shrinks to 1/e in this long

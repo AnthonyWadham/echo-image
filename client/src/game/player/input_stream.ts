@@ -5,10 +5,8 @@ import type { Input, InputFrame } from './input_command'
 const MaxStepSeconds = 0.15 // after a hitch, don't fire a burst of inputs
 const UnackedSeconds = 6.4 // of frames: past this the server isn't answering
 const ResendSeconds = 0.4 // of unacked frames repeated in each Input, covering late or lost ones
-const QueueTargetSeconds = 0.05 // waiting on the server after each tick: margin for jitter
 const QueueSeconds = 0.5 // how long the server's queue depth is averaged over
-const DilationPerSecond = 1 // how much faster or slower the frame clock runs per second queued off target
-const MaxDilation = 0.1
+const MaxDilation = 0.1 // how much faster or slower the frame clock runs with its queue empty, or twice the target
 
 // The frames in seconds, at tickSeconds a frame.
 const framesIn = (seconds: number, tickSeconds: number) => Math.round(seconds / tickSeconds)
@@ -24,8 +22,9 @@ export function newSession(): number {
 
 /**
  * This run's input: Seq numbers, the frames the server hasn't applied, and when to send. Its frame clock
- * is paced by the server's queue (Overwatch's time dilation): a little fast while the queue runs dry,
- * a little slow while it fills, so each frame lands about QueueTargetSeconds before the server applies it.
+ * is paced by the server's queue (Overwatch's time dilation): a little fast while the queue is short of
+ * the target the server sets (YouState.InputTarget), a little slow while it's over, so each frame waits
+ * about that long on the server. The server raises the target each time the queue runs dry.
  */
 export class InputStream {
   readonly session: number
@@ -33,7 +32,8 @@ export class InputStream {
   #unacked: InputFrame[] = []
   #sentMove: Vec2 = { x: 0, y: 0 }
   #stepTime = 0
-  #queued = QueueTargetSeconds // the server's queue depth in seconds, averaged
+  #target = 0 // seconds the server wants queued; 0 until it says
+  #queued: number | undefined // the server's queue depth in seconds, averaged; undefined until it says
   #cap = 1 // the most frames an Input may carry: the server's queue (YouState.InputCap)
 
   constructor(session: number) {
@@ -52,8 +52,9 @@ export class InputStream {
 
   /** How fast the frame clock runs: above 1 while the server's queue is short of the target. */
   get rate(): number {
-    const dilation = DilationPerSecond * (QueueTargetSeconds - this.#queued)
-    return 1 + Math.min(Math.max(dilation, -MaxDilation), MaxDilation)
+    if (this.#queued === undefined || !(this.#target > 0)) return 1
+    const off = (this.#target - this.#queued) / this.#target
+    return 1 + MaxDilation * Math.min(Math.max(off, -1), 1)
   }
 
   /** A move-only frame. Sent on connect, it claims a free Body. */
@@ -96,6 +97,8 @@ export class InputStream {
     this.#cap = you.InputCap
     if (you.InputSession !== this.session) return
     this.#unacked = this.#unacked.filter((f) => f.Seq > you.InputAck)
+    this.#target = you.InputTarget * tickSeconds
+    this.#queued ??= this.#target
     const weight = 1 - Math.exp(-tickSeconds / QueueSeconds)
     if (weight > 0) this.#queued += (you.InputQueued * tickSeconds - this.#queued) * weight
   }
@@ -104,7 +107,7 @@ export class InputStream {
   reset(): void {
     this.#unacked = []
     this.#stepTime = 0
-    this.#queued = QueueTargetSeconds
+    this.#queued = undefined
   }
 
   #frame(input: FrameInput): InputFrame {

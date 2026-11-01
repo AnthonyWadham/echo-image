@@ -101,6 +101,8 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	for _, v := range viewers {
 		y := you(v.Body, shots[v.Body.ID()])
 		y.InputCap = uint32(tuning.BufferFrames())
+		y.InputTarget = uint32(v.Body.Get[component.InputQueue]().TargetAt(w.TickHeight(), tuning.QueueStepFrames(),
+			tuning.QueueCalmTicks(), tuning.BufferFrames()))
 		def := tuning.Champions[y.Champion]
 		y.SnapSeconds, y.FadeSeconds = def.SnapSeconds, def.FadeSeconds
 		if h, ok := paths[v.Body.ID()]; ok {

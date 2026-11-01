@@ -80,6 +80,7 @@ const sync = (x: number): BodySync => ({
     InputAck: 0,
     InputQueued: 1,
     InputCap: 10,
+    InputTarget: 1,
     MoveSpeed: 5,
     SnapSeconds: 0.6, // 3 units
     FadeSeconds: fadeSeconds,

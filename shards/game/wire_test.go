@@ -44,7 +44,7 @@ func TestWireFixtures(t *testing.T) {
 			TickSeconds: 0.05,
 			SimVersion:  "go1.27.1+0123456789abcdef",
 			You: player.YouState{
-				Body: 1, InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, MoveSpeed: 5,
+				Body: 1, InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, InputTarget: 4, MoveSpeed: 5,
 				SnapSeconds: 0.6, FadeSeconds: 0.125, Champion: "starter",
 				Cooldowns: cardinal.SliceOf(
 					cast.Cooldown{Ability: "bolt", ReadyTick: 9007199254740993},

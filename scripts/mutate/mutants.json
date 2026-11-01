@@ -41,8 +41,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "LastTick: q.LastTick, ViewFloor: q.ViewFloor}",
-     "new": "LastTick: q.LastTick}"
+     "old": "q.Session, q.Pending, q.Last = in.Session, cardinal.Slice[component.InputFrame]{}, component.InputFrame{}",
+     "new": "q.Session, q.Pending, q.Last = in.Session, cardinal.Slice[component.InputFrame]{}, component.InputFrame{}\n\t\tq.ViewFloor = 0"
     }
    ]
   },
@@ -2149,6 +2149,78 @@
      "file": "client/src/game/player/predictor.ts",
      "old": "const refused = content && exports.useContent(content)",
      "new": "const refused = content && null"
+    }
+   ]
+  },
+  {
+   "id": "F7-C1",
+   "breaks": "a coast doesn't raise the target",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\t\tbody.Set(q.Coast(tick, t.QueueStepFrames(), t.QueueCalmTicks(), t.BufferFrames()))\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F7-R1",
+   "breaks": "each dry tick raises the target, not each coast",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "if q.Last.Seq != 0 && q.LastTick == tick-1 {",
+     "new": "if q.Last.Seq != 0 {"
+    }
+   ]
+  },
+  {
+   "id": "F7-D1",
+   "breaks": "the target never falls",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/component/input.go",
+     "old": "int(q.Target)-step*int((tick-q.Coasted)/calm)",
+     "new": "int(q.Target)"
+    }
+   ]
+  },
+  {
+   "id": "F7-L1",
+   "breaks": "the target passes the buffer",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/component/input.go",
+     "old": "q.Target, q.Coasted = uint32(min(q.TargetAt(tick, step, calm, limit)+step, limit)), tick",
+     "new": "q.Target, q.Coasted = uint32(q.TargetAt(tick, step, calm, limit)+step), tick"
+    }
+   ]
+  },
+  {
+   "id": "F7-T1",
+   "breaks": "the client paces to a fixed target, not the server's",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "this.#target = you.InputTarget * tickSeconds",
+     "new": "this.#target = 0.05"
+    }
+   ]
+  },
+  {
+   "id": "F7-G1",
+   "breaks": "the client's gain can't reach the clamp",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "const off = (this.#target - this.#queued) / this.#target",
+     "new": "const off = this.#target - this.#queued"
     }
    ]
   }

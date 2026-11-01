@@ -20,6 +20,7 @@ export interface YouState {
   InputAck: number // uint32
   InputQueued: number // uint32: frames waiting on the server for later ticks, which pace yours
   InputCap: number // uint32: the most frames the server queues: it drops an Input with more
+  InputTarget: number // uint32: frames to keep queued; it rises each time your queue runs dry
   MoveSpeed: number
   SnapSeconds: number // a correction longer than this much of MoveSpeed jumps
   FadeSeconds: number // a shorter one shrinks to 1/e in this long

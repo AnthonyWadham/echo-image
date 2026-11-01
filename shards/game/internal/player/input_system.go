@@ -29,7 +29,7 @@ func (s *InputSystem) Run(w *cardinal.World) {
 	limit := s.Tuning.BufferFrames()
 	bodies := w.Contains[inputRow]()
 	receive(w, bodies, limit)
-	advance(w, bodies)
+	advance(w, bodies, s.Tuning)
 }
 
 // receive queues every Input this tick on its sender's Body. O(B + C·L²) for C commands and a queue of L
@@ -66,7 +66,7 @@ func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
 // Input with more frames.
 func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 	if in.Session != q.Session {
-		q = component.InputQueue{Session: in.Session, LastTick: q.LastTick, ViewFloor: q.ViewFloor}
+		q.Session, q.Pending, q.Last = in.Session, cardinal.Slice[component.InputFrame]{}, component.InputFrame{}
 	}
 	pending := slices.Collect(q.Pending.Values())
 	for f := range in.Frames.Values() {
@@ -87,12 +87,16 @@ func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 	return q
 }
 
-// advance applies each Body's next queued frame, its view no older than the largest so far. O(B).
-func advance(w *cardinal.World, bodies cardinal.Search) {
+// advance applies each Body's next queued frame, its view no older than the largest so far. A queue
+// that runs dry while its client sends raises the client's target: a coast is a correction. O(B).
+func advance(w *cardinal.World, bodies cardinal.Search, t MovementTuning) {
 	tick := w.TickHeight()
 	for body := range bodies.Iter() {
 		q := body.Get[component.InputQueue]()
 		if q.Pending.Len() == 0 {
+			if q.Last.Seq != 0 && q.LastTick == tick-1 { // it just ran dry
+				body.Set(q.Coast(tick, t.QueueStepFrames(), t.QueueCalmTicks(), t.BufferFrames()))
+			}
 			continue
 		}
 		q.Last, q.LastTick = q.Pending.At(0), tick

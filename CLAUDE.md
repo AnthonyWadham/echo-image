@@ -669,11 +669,17 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   Echo replaying it, smooth when frames arrive late or bunched. A new `Session` (a restarted client)
   starts the stream over.
 - **The client paces its frames by the server's queue** (Overwatch's time dilation).
-  `YouState.InputQueued` is how many frames wait for later ticks. `InputStream` averages it, in
-  seconds, over 0.5 s and runs its frame clock 5% faster per 0.05 s below 0.05 s queued (a tick at
-  20 Hz), or slower above, by at most 10%: each frame lands about 0.05 s before it's applied, so the
-  queue neither starves (a coast) nor grows (latency). This also absorbs a server or client clock that runs a few percent off.
-  `input_buffer_seconds` (0.5 s) is only an abuse cap: past it the oldest frames drop.
+  `YouState.InputQueued` is how many frames wait for later ticks, and `YouState.InputTarget` how many
+  the server wants waiting. `InputStream` averages the queue, in seconds, over 0.5 s, and runs its
+  frame clock faster below the target and slower above, in proportion, by at most 10% (an empty queue
+  gets the whole 10% at any rate). So the queue neither starves (a coast) nor grows (latency). This
+  also absorbs a server or client clock that runs a few percent off.
+- **The server sets the target from coasts** (`InputQueue.Target`, `TargetAt`). It starts at a tick.
+  Each time a Body's queue runs dry while its client plays (the first dry tick after an applied frame),
+  it rises `queue_step_seconds`, up to `input_buffer_seconds`. It falls that much for each
+  `queue_calm_seconds` without one (`content/player/tuning.json`), worked out when read, so a calm Body
+  costs no write. A clean link keeps a tick of delay; a jittery one buys only the margin it needs.
+  `input_buffer_seconds` (0.5 s) is otherwise only an abuse cap: past it the oldest frames drop.
 - **An Input carries at most the queue's frames** (`YouState.InputCap`, `input_buffer_seconds` of
   ticks). `InputSystem` drops a bigger one whole, before it claims a Body (Source's "too many cmds"),
   so merging an Input costs O(cap²), never O(frames²). The client sends its newest 0.4 s of unacked
