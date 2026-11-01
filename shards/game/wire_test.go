@@ -86,7 +86,7 @@ func TestWireFixtures(t *testing.T) {
 		)}},
 		{"projectile_sync", projectile.ProjectileSync{Tick: 8, Projectiles: cardinal.SliceOf(
 			projectile.ProjectileState{EntityID: 9, Serial: 18446744073709551615, Type: "bolt", Caster: 4294967295,
-				Predicted: true, Team: 1, PrevX: -0.5, PrevY: -6.75, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1},
+				Team: 1, PrevX: -0.5, PrevY: -6.75, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1},
 			projectile.ProjectileState{EntityID: 10, Serial: 12, Type: "bolt", Caster: 3, Team: 0, PrevX: 2.25, PrevY: 0.5,
 				X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true, OnTarget: true, TargetSerial: 4, OffsetX: -0.625,
 				OffsetY: 0.125},

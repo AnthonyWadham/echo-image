@@ -15,14 +15,13 @@ func (ProjectileSync) Name() string { return "projectile_sync" }
 // ProjectileState is one shot. It flew this tick from PrevX, PrevY (its launch point on its first tick)
 // to X, Y, and Until is the part of the tick that took: 1 in flight, and for an Ended shot when it got
 // there. An Ended shot that met a Body or Echo (OnTarget) ends on the one with serial TargetSerial,
-// Offset from its center, where each screen draws it. A Predicted shot of your Body's is drawn from your
-// predictor instead.
+// Offset from its center, where each screen draws it. Your own predicted shots aren't sent to you: your
+// predictor draws them.
 type ProjectileState struct {
 	EntityID         uint32
 	Serial           uint64 // its ref.Spawn serial: a client keys it by this, as a newer shot may take its ID
 	Type             string // shot type ID, for its look
 	Caster           uint32 // the Body or Echo that cast it
-	Predicted        bool   // its caster's client predicts it
 	Team             uint8
 	PrevX, PrevY     float64
 	X, Y             float64

@@ -1116,8 +1116,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/sync_system.go",
-     "old": "Serial:    e.Get[ref.Spawn]().Serial,",
-     "new": "Serial:    e.Get[ref.Spawn]().Serial * 0,"
+     "old": "\t\t\tSerial:   serial,\n",
+     "new": "\t\t\tSerial:   serial * 0,\n"
     }
    ]
   },
@@ -2509,6 +2509,42 @@
      "file": "client/src/game/player/predictor.ts",
      "old": "sync.You.InputAck)",
      "new": "sync.You.InputAck + 1)"
+    }
+   ]
+  },
+  {
+   "id": "F18-S1",
+   "breaks": "a player gets its own predicted shots",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/sync_system.go",
+     "old": "if by, ok := predictor[s.Serial]; !ok || by != body {",
+     "new": "if true {"
+    }
+   ]
+  },
+  {
+   "id": "F18-S2",
+   "breaks": "a player loses others' predicted shots",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/sync_system.go",
+     "old": "if by, ok := predictor[s.Serial]; !ok || by != body {",
+     "new": "if _, ok := predictor[s.Serial]; !ok {"
+    }
+   ]
+  },
+  {
+   "id": "F18-S3",
+   "breaks": "an ended shot goes to its predictor",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/sync_system.go",
+     "old": "\t\tif ev.Predicted {\n\t\t\tpredictor[ev.Serial] = ev.Cause.Caster\n\t\t}\n",
+     "new": ""
     }
    ]
   }

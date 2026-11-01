@@ -40,7 +40,7 @@ func fireAtEcho(t *testing.T, w *cardinal.TestWorld, alice *client) int {
 	to := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 	alice.fire(to.X-from.X, to.Y-from.Y)
 	w.Tick()
-	if n := len(shots(t, w, "alice")); n != 1 {
+	if n := len(shots(t, w, "bob")); n != 1 {
 		t.Fatalf("%d shots after firing, want 1", n)
 	}
 	_, shot := primary(t)
@@ -90,7 +90,7 @@ func TestShotDamagesEnemyEcho(t *testing.T) {
 	if mine := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice"))); mine.HP != mine.MaxHP {
 		t.Fatalf("alice's own Echo took damage: HP %v", mine.HP)
 	}
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("%d shots left after the hit, want 0", n)
 	}
 }
@@ -165,7 +165,7 @@ func TestEnemyBodyBlocksShot(t *testing.T) {
 			bob.move(0, 1)
 		}
 		w.Tick()
-		ended = endedShots(t, w, "alice")
+		ended = endedShots(t, w, "bob")
 	}
 
 	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
@@ -182,7 +182,7 @@ func TestBodyOnItsEchoShieldsIt(t *testing.T) {
 	flyFor(w, fireAtEcho(t, w, alice))
 
 	body := yourBody(t, bodiesFor(t, w, "bob"))
-	got, ended := echoOf(t, w, "alice", body), endedShots(t, w, "alice")
+	got, ended := echoOf(t, w, "alice", body), endedShots(t, w, "bob")
 	if len(ended) != 1 || !touching(ended[0], body.X, body.Y, body.Radius) || got.HP != got.MaxHP {
 		t.Fatalf("shots ended %+v and bob's Echo HP is %v under his Body, want one touching it and HP %v",
 			ended, got.HP, got.MaxHP)
@@ -201,7 +201,7 @@ func TestShotHitsWhereTheViewHadIt(t *testing.T) {
 	w.Tick()
 	k := firstTouch(t, w, alice, math.Hypot(to.X-from.X, to.Y-from.Y), to.Radius) // where he stood
 	for i := 1; i <= k; i++ {
-		if n := len(shots(t, w, "alice")); n != 1 {
+		if n := len(shots(t, w, "bob")); n != 1 {
 			t.Fatalf("%d shots left after %d steps, want the shot until step %d", n, i, k)
 		}
 		if i > k-ticks(0.35) {
@@ -209,7 +209,7 @@ func TestShotHitsWhereTheViewHadIt(t *testing.T) {
 		}
 		w.Tick()
 	}
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("%d shots left, want the shot stopped where she saw bob", n)
 	}
 	if b := yourBody(t, bodiesFor(t, w, "bob")); b.Y-to.Y < 1.5 {
@@ -259,7 +259,7 @@ func TestViewNeverGoesBack(t *testing.T) {
 				}
 				w.Tick()
 			}
-			if n := len(shots(t, w, "alice")); n != 1 {
+			if n := len(shots(t, w, "bob")); n != 1 {
 				t.Fatalf("%d shots left, want hers flying on past where the older view drew bob", n)
 			}
 		})
@@ -296,7 +296,7 @@ func TestShotMeetsTargetBetweenRows(t *testing.T) {
 			}
 			w.Tick()
 		}
-		if gone := len(shots(t, w, "alice")) == 0; gone != c.hits {
+		if gone := len(shots(t, w, "bob")) == 0; gone != c.hits {
 			t.Errorf("drawn %v of the way: the shot stopped on bob: %v, want %v", c.part, gone, c.hits)
 		}
 	}
@@ -347,7 +347,7 @@ func TestWallBeforeEchoStopsShot(t *testing.T) {
 	_, shot := primary(t)
 	flyFor(w, int(math.Ceil((target.X-a.X-target.Radius-shot.Radius)/(shot.Speed*physics.SecondsPerTick)))) // to the Echo
 	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP || n != 0 {
+	if n := len(shots(t, w, "bob")); got.HP != got.MaxHP || n != 0 {
 		t.Fatalf("bob's Echo HP = %v behind a wall with %d shots left, want %v and the shot stopped",
 			got.HP, n, got.MaxHP)
 	}
@@ -363,11 +363,11 @@ func TestEchoShotHitsLive(t *testing.T) {
 	cause := abilitycomp.Cause{Caster: cardinal.EntityID(mine.EntityID), Ability: kit(t)[0]}
 	emit(fx, abilitycomp.AbilityCast{Cause: cause, AimX: target.X - mine.X, AimY: target.Y - mine.Y})
 	_, shot := primary(t)
-	ended := flyUntilEnded(t, w, "alice",
+	ended := flyUntilEnded(t, w, "bob",
 		int(math.Ceil(math.Hypot(target.X-mine.X, target.Y-mine.Y)/(shot.Speed*physics.SecondsPerTick)))+1)
 
 	got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
-	if n := len(shots(t, w, "alice")); got.HP != got.MaxHP-shot.Damage || n != 0 {
+	if n := len(shots(t, w, "bob")); got.HP != got.MaxHP-shot.Damage || n != 0 {
 		t.Fatalf("bob's Echo HP = %v with %d shots left, want %v and the shot gone", got.HP, n, got.MaxHP-shot.Damage)
 	}
 	if len(ended) != 1 || !touching(ended[0], target.X, target.Y, target.Radius) || !ended[0].OnTarget ||
@@ -392,7 +392,7 @@ func TestShotPassesThroughAllies(t *testing.T) {
 	_, shot := primary(t)
 	flyFor(w, int(math.Ceil(2.5/(shot.Speed*physics.SecondsPerTick)))) // past her
 
-	s := shots(t, w, "alice")
+	s := shots(t, w, "bob")
 	if len(s) != 1 || s[0].X <= from.X+2.5 {
 		t.Fatalf("shots = %+v, want one past carol (x > %.2f)", s, from.X+2.5)
 	}
@@ -417,14 +417,14 @@ func TestShotExpiresAtRange(t *testing.T) {
 	w.Tick() // first step
 	flyFor(w, steps-2)
 	flying := map[uint32]projectile.ProjectileState{}
-	for _, s := range shots(t, w, "alice") {
+	for _, s := range shots(t, w, "bob") {
 		flying[s.EntityID] = s
 	}
 	if len(flying) != n {
 		t.Fatalf("%d of %d shots left after %d of %d steps", len(flying), n, steps-1, steps)
 	}
-	ended := flyUntilEnded(t, w, "alice", 1)
-	if got := len(shots(t, w, "alice")); got != 0 || len(ended) != n {
+	ended := flyUntilEnded(t, w, "bob", 1)
+	if got := len(shots(t, w, "bob")); got != 0 || len(ended) != n {
 		t.Fatalf("%d shots still flying and %d ended after %d steps, want all %d ended", got, len(ended), steps, n)
 	}
 	for _, s := range ended {
@@ -452,11 +452,11 @@ func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
 	}
 	launch(1)
 	w.Tick()
-	first := shots(t, w, "alice")
-	ended := flyUntilEnded(t, w, "alice", int(math.Ceil(shot.Range/(shot.Speed*physics.SecondsPerTick))))
+	first := shots(t, w, "bob")
+	ended := flyUntilEnded(t, w, "bob", int(math.Ceil(shot.Range/(shot.Speed*physics.SecondsPerTick))))
 	launch(2)
 	w.Tick()
-	next := shots(t, w, "alice")
+	next := shots(t, w, "bob")
 	if len(first) != 1 || len(ended) != 1 || len(next) != 1 {
 		t.Fatalf("%d shots, then %d ended, then %d, want one each", len(first), len(ended), len(next))
 	}
@@ -487,7 +487,7 @@ func TestWallStopsShot(t *testing.T) {
 	addWall(w, physics2d.Vec2{X: wallX, Y: 0}, physics2d.Vec2{X: 0.5, Y: 5})
 	w.Tick() // physics picks the wall up
 
-	ended := flyUntilEnded(t, w, "alice", fireAtEcho(t, w, alice)+2)
+	ended := flyUntilEnded(t, w, "bob", fireAtEcho(t, w, alice)+2)
 	// Sent once more, touching the wall's face, half its width from its center: on the map, not a target.
 	if len(ended) != 1 || math.Abs(math.Abs(ended[0].X-wallX)-(0.5+ended[0].Radius)) > 2*box2d.LinearSlop ||
 		ended[0].OnTarget {
@@ -497,7 +497,7 @@ func TestWallStopsShot(t *testing.T) {
 	if got := echoOf(t, w, "alice", b); got.HP != got.MaxHP {
 		t.Fatalf("bob's Echo HP = %v behind a wall, want %v", got.HP, got.MaxHP)
 	}
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("%d shots left after the wall, want 0", n)
 	}
 }
@@ -630,7 +630,7 @@ func shootEcho(t *testing.T, w *cardinal.TestWorld, alice *client) float64 {
 	alice.fire(to.X-from.X, to.Y-from.Y)
 	w.Tick()
 	for range ticks(5) {
-		if len(shots(t, w, "alice")) == 0 {
+		if len(shots(t, w, "bob")) == 0 {
 			return echoOf(t, w, "alice", bob).HP
 		}
 		w.Tick()
@@ -695,7 +695,7 @@ func TestLaunchOrderIsFixed(t *testing.T) {
 		}
 		w.Tick()
 		byID := map[uint32]uint8{}
-		for _, s := range shots(t, w, "alice") {
+		for _, s := range shots(t, w, "bob") {
 			byID[s.EntityID] = s.Team
 		}
 		return byID

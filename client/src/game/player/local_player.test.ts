@@ -206,15 +206,6 @@ describe('LocalPlayer', () => {
     expect(input?.Frames.at(-1)).toEqual({ Seq: 2, MoveX: 0, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 98.25 })
   })
 
-  test('draws your predicted shots, not their syncs; before a body_sync none is yours, as 0 is a Body too', () => {
-    const player = newPlayer()
-    expect(player.drawsShot({ Caster: 0, Predicted: true })).toBe(false)
-    player.onBodySync(bodySync(100))
-    expect(player.drawsShot({ Caster: 1, Predicted: true })).toBe(true)
-    expect(player.drawsShot({ Caster: 1, Predicted: false })).toBe(false)
-    expect(player.drawsShot({ Caster: 2, Predicted: true })).toBe(false)
-  })
-
   test('draws your Echo where your predictor has it, until you leave the stream', () => {
     const player = newPlayer()
     player.setConnected(true, { x: 0, y: 0 })

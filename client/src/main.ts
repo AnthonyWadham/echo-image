@@ -70,9 +70,7 @@ async function play(playerId: string): Promise<void> {
       on(BodySyncEvent, (s) => player.onBodySync(s)),
       on(EchoSyncEvent, (s) => timelines.add(echoes, s.Tick, s.Echoes)),
       on(AbilitySyncEvent, (s) => timelines.add(abilities, s.Tick, cooldowns(s))),
-      on(ProjectileSyncEvent, (s) =>
-        timelines.add(shots, s.Tick, s.Projectiles.filter((p) => !player.drawsShot(p))),
-      ),
+      on(ProjectileSyncEvent, (s) => timelines.add(shots, s.Tick, s.Projectiles)),
       on(TargetSyncEvent, (s) => player.onTargetSync(s)),
     ])
     .then((error) => {

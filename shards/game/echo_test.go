@@ -176,10 +176,10 @@ func TestEchoDeathPutsItsPlayerOut(t *testing.T) {
 	alice.fire(1, 0)
 	bob.fire(a.X-b.X, a.Y-b.Y) // at her
 	w.Tick()
-	if got := shots(t, w, "alice"); len(got) != 1 || got[0].Caster != b.EntityID {
-		t.Fatalf("shots %+v, want only bob's: she is out", got)
+	if hers, his := shots(t, w, "bob"), shots(t, w, "alice"); len(hers) != 0 || len(his) != 1 || his[0].Caster != b.EntityID {
+		t.Fatalf("bob sees shots %+v and alice %+v, want none and bob's: she is out", hers, his)
 	}
-	ended := flyUntilEnded(t, w, "bob", ticks(5))
+	ended := flyUntilEnded(t, w, "alice", ticks(5))
 	if len(ended) != 1 || ended[0].OnTarget {
 		t.Fatalf("bob's shot ended %+v, want it past her Body", ended)
 	}

@@ -618,9 +618,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   corrections.
   - **Every input is predicted:** a shot leaves the frame you click, from where that frame moves your
     Body, a dash starts the tick after, and the HUD starts a cooldown at once.
-    `ProjectileState.Predicted` and `Caster` say whose predictor draws a shot: a client draws its own
-    predicted shots from the predictor (`LocalPlayer.drawsShot`) and the rest from `ProjectileSync`.
-    `LocalPlayer.you` is undefined before the first body_sync, since entity 0 is a Body too.
+    A client draws its own predicted shots from the predictor and the rest from `ProjectileSync`,
+    which leaves a player's own predicted shots out (Unreal's COND_SkipOwner): `You.Shots` carries
+    them for the predictor. `LocalPlayer.you` is undefined before the first body_sync, since entity 0
+    is a Body too.
   - **Your Echo is predicted too,** so the gap between it and your Body on screen is the real one. Its
     next spots are already in the server's `PathHistory` ring (Echo(T) is Body(T − delay)), so
     `You.EchoPath` sends your Echo this tick, then its spot on each next tick, up to

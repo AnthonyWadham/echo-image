@@ -119,12 +119,12 @@ const projectileSync: ProjectileSync = {
   Tick: 8n,
   Projectiles: [
     {
-      ...{ EntityID: 9, Serial: 18446744073709551615n, Type: 'bolt', Caster: 4294967295, Predicted: true, Team: 1 },
+      ...{ EntityID: 9, Serial: 18446744073709551615n, Type: 'bolt', Caster: 4294967295, Team: 1 },
       ...{ PrevX: -0.5, PrevY: -6.75, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1, Ended: false },
       ...{ OnTarget: false, TargetSerial: 0n, OffsetX: 0, OffsetY: 0 },
     },
     {
-      ...{ EntityID: 10, Serial: 12n, Type: 'bolt', Caster: 3, Predicted: false, Team: 0 },
+      ...{ EntityID: 10, Serial: 12n, Type: 'bolt', Caster: 3, Team: 0 },
       ...{ PrevX: 2.25, PrevY: 0.5, X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true },
       ...{ OnTarget: true, TargetSerial: 4n, OffsetX: -0.625, OffsetY: 0.125 },
     },

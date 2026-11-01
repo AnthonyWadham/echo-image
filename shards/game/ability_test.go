@@ -26,7 +26,7 @@ func readyTick(t *testing.T, w *cardinal.TestWorld, viewer string, body uint32) 
 
 // Everyone sees her shot leave her Body: its first tick flies from her spot, and each next from where
 // the last one got to.
-func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
+func TestFireStartsCooldownAndOthersSeeTheShot(t *testing.T) {
 	w := cardinal.NewTestWorld(t, register)
 	def, _ := primary(t)
 	cooldown := def.CooldownTicks()
@@ -44,10 +44,11 @@ func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
 	if !ok || ready != fired+cooldown {
 		t.Fatalf("alice's ReadyTick = %d (found %v), want %d", ready, ok, fired+cooldown)
 	}
-	if len(shots(t, w, "alice")) != 1 || len(shots(t, w, "bob")) != 1 {
-		t.Fatalf("alice sees %d shots and bob %d, want 1 each", len(shots(t, w, "alice")), len(shots(t, w, "bob")))
+	// Bob sees it. Her client draws it from her predictor, so hers leaves it out.
+	if len(shots(t, w, "alice")) != 0 || len(shots(t, w, "bob")) != 1 {
+		t.Fatalf("alice sees %d shots and bob %d, want none and 1", len(shots(t, w, "alice")), len(shots(t, w, "bob")))
 	}
-	// Her client draws it from her predictor instead, by Caster. It flies the whole tick.
+	// It flies the whole tick.
 	a, s := yourBody(t, bodiesFor(t, w, "alice")), shots(t, w, "bob")[0]
 	if s.Caster != body || s.Until != 1 || s.PrevX != a.X || s.PrevY != a.Y {
 		t.Fatalf("the shot's Caster = %d, Until %v and start (%v, %v), want alice's Body %d, 1 and her spot (%v, %v)",
@@ -60,6 +61,12 @@ func TestFireStartsCooldownAndEveryoneSeesTheShot(t *testing.T) {
 	if next := shots(t, w, "bob")[0]; next.PrevX != s.X || next.PrevY != s.Y {
 		t.Fatalf("the shot's second tick starts at (%v, %v), want where its first ended, (%v, %v)",
 			next.PrevX, next.PrevY, s.X, s.Y)
+	}
+	// Bob sees it end; hers leaves that out too.
+	_, bolt := primary(t)
+	if ended := flyUntilEnded(t, w, "bob", ticks(bolt.Range/bolt.Speed)+1); len(ended) != 1 ||
+		len(endedShots(t, w, "alice")) != 0 {
+		t.Fatalf("bob sees %d shots end and alice %d, want 1 and none", len(ended), len(endedShots(t, w, "alice")))
 	}
 }
 
@@ -103,7 +110,7 @@ func TestBadAimDoesNotFire(t *testing.T) {
 	w, alice, _ := duel(t)
 	alice.fire(math.NaN(), math.Inf(1))
 	w.Tick()
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("%d shots fired with a bad aim, want 0", n)
 	}
 	if ready, _ := readyTick(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")).EntityID); ready != 0 {
@@ -116,7 +123,7 @@ func TestButtonCastsOnlyItsSlot(t *testing.T) {
 	w, alice, _ := duel(t)
 	alice.send(playercomp.InputFrame{AimX: 0, AimY: 1, Buttons: 1 << 1})
 	w.Tick()
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("%d shots from button 1, want 0", n)
 	}
 	if ready, _ := readyTick(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")).EntityID); ready != 0 {
@@ -147,7 +154,7 @@ func TestStunnedBodyCannotCast(t *testing.T) {
 	w.Tick() // the stun applies from the next tick
 	alice.fire(0, 1)
 	w.Tick()
-	if n := len(shots(t, w, "alice")); n != 0 {
+	if n := len(shots(t, w, "bob")); n != 0 {
 		t.Fatalf("a stunned Body fired %d shots", n)
 	}
 	if ready, _ := readyTick(t, w, "alice", body.EntityID); ready != 0 {

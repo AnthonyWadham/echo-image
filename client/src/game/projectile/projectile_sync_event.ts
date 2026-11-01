@@ -14,14 +14,14 @@ export interface ProjectileSync {
  * projectile.ProjectileState. It flew this tick from PrevX, PrevY (its launch point on its first tick) to
  * X, Y, and Until is the part of the tick that took: 1 in flight, and for an Ended shot when it got
  * there. An Ended shot that met a Body or Echo (OnTarget) ends on the one with serial TargetSerial,
- * Offset from its center, where each screen draws it (endOn).
+ * Offset from its center, where each screen draws it (endOn). Your own predicted shots aren't sent to
+ * you: your predictor draws them.
  */
 export interface ProjectileState {
   EntityID: number // uint32: names it in this tick's syncs
   Serial: bigint // uint64: names it across ticks, as a newer shot can take its EntityID
   Type: string // shot type ID, for its look
   Caster: number // uint32 EntityID: the Body or Echo that cast it
-  Predicted: boolean // its caster's client predicts it: yours are drawn from your predictor instead
   Team: number // uint8
   PrevX: number
   PrevY: number

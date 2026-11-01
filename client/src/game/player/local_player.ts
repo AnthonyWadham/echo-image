@@ -85,11 +85,6 @@ export class LocalPlayer {
     return this.#playing ? this.prediction.shots(this.#alpha, end) : []
   }
 
-  /** Whether a synced shot is one of yours your predictor draws, so its sync isn't drawn too. */
-  drawsShot(s: { Caster: number; Predicted: boolean }): boolean {
-    return s.Predicted && s.Caster === this.you
-  }
-
   /** Your kit's cooldowns while playing, predicted, so a cast starts its cooldown at once. */
   get kit(): PredictedKit | undefined {
     return this.#playing ? this.prediction.kit : undefined
