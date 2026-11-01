@@ -25,6 +25,8 @@ const bodySync: BodySync = {
     InputQueued: 3,
     InputCap: 10,
     MoveSpeed: 5,
+    SnapSeconds: 0.6,
+    FadeSeconds: 0.125,
     Champion: 'starter',
     Cooldowns: [
       { Ability: 'bolt', ReadyTick: 9007199254740993n },

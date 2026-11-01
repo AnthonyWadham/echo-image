@@ -261,13 +261,14 @@ func TestBodiesPassThroughEachOther(t *testing.T) {
 	}
 }
 
-// A Body's speed and size are its champion's.
+// A Body's speed and size, and how its client draws a correction, are its champion's.
 func TestBodyHasItsChampionsNumbers(t *testing.T) {
 	w, _, _ := duel(t)
 	tuning := tuningOf[player.MovementTuning](t)
 	want := tuning.Champions[tuning.DevChampion]
 	s := bodiesFor(t, w, "alice")
-	if got := (player.ChampionDef{MoveSpeed: s.You.MoveSpeed, Radius: radiusOf(w, yourBody(t, s))}); got != want {
+	if got := (player.ChampionDef{MoveSpeed: s.You.MoveSpeed, Radius: radiusOf(w, yourBody(t, s)),
+		SnapSeconds: s.You.SnapSeconds, FadeSeconds: s.You.FadeSeconds}); got != want {
 		t.Fatalf("alice's Body has %+v, want her champion's %+v", got, want)
 	}
 	for b := range s.Bodies.Values() { // so clients draw each Body its size

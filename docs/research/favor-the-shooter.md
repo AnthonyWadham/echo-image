@@ -163,7 +163,7 @@ the claim model (problem 3).
   its key). That is a correction, and rare.
 - **Corrections fade per thing** (2026-11-01). Your Body, your Echo and each shot (by key) keep the
   path they're drawn on through a body_sync, then fade to their true spots as your Body always did;
-  past 3 units they jump. A new shot starts as far off as your Body, so it leaves where your Body is
+  past the champion's snap line (`snap_seconds` of its move speed, 3 units for the starter) they jump. A new shot starts as far off as your Body, so it leaves where your Body is
   drawn. An ending shot keeps its drawn start but ends where it ended. A shot drawn ending that flies
   on starts on the server's flight, since its drawn path stopped partway through the tick.
 - **A target that dies:** the hit's `Until` times the death (`combat.Died`). The Echo is sent once

@@ -390,7 +390,7 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "from: was && near(was.from, startOf(e)) ? was.from : startOf(e)",
+     "old": "from: was && near(was.from, startOf(e), this.#snap) ? was.from : startOf(e)",
      "new": "from: startOf(e)"
     }
    ]
@@ -402,8 +402,8 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "    this.#predictor.reset(sync, you)\n    let at",
-     "new": "    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n    let at"
+     "old": "    this.#predictor.reset(sync, you)\n    this.#snap",
+     "new": "    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n    this.#snap"
     },
     {
      "file": "client/src/game/player/prediction.ts",
@@ -431,7 +431,7 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "const keep = Math.exp(-tickSeconds / FadeSeconds)",
+     "old": "const keep = Math.exp(-tickSeconds / this.#fade)",
      "new": "const keep = 1 + 0 * tickSeconds"
     }
    ]
@@ -2053,6 +2053,42 @@
      "file": "shards/game/internal/effect/status/status.go",
      "old": "\t\t\tshown[i].End = max(shown[i].End, e.End)",
      "new": "\t\t\tshown[i].End = e.End"
+    }
+   ]
+  },
+  {
+   "id": "F32-Y1",
+   "breaks": "YouState doesn't send the champion's snap and fade",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\ty.SnapSeconds, y.FadeSeconds = def.SnapSeconds, def.FadeSeconds\n",
+     "new": "\t\t_ = def\n"
+    }
+   ]
+  },
+  {
+   "id": "F32-C1",
+   "breaks": "the client's snap line ignores your move speed",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#snap = sync.You.SnapSeconds * sync.You.MoveSpeed",
+     "new": "this.#snap = sync.You.SnapSeconds * 5"
+    }
+   ]
+  },
+  {
+   "id": "F32-C2",
+   "breaks": "the client's fade ignores your champion's",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#fade = sync.You.FadeSeconds",
+     "new": "this.#fade = 0.2"
     }
    ]
   }

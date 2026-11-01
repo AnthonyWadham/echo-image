@@ -14,6 +14,8 @@ const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap =
   InputQueued,
   InputCap,
   MoveSpeed: 5,
+  SnapSeconds: 0.6,
+  FadeSeconds: 0.1,
   Champion: 'starter',
   Cooldowns: [],
   Effects: [],

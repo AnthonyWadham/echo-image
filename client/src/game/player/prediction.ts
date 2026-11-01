@@ -6,14 +6,11 @@ import type { BodyState, BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor } from './predictor'
 
-const FadeSeconds = 0.1 // a correction shrinks to 1/e in this long
-const SnapDistance = 3 // world units; a bigger correction jumps instead of fading
-
 const keyOf = (s: PredictedShot) => `${s.Seq} ${s.Ability} ${s.Launch}`
 const startOf = (s: { PrevX: number; PrevY: number }): Spot => ({ X: s.PrevX, Y: s.PrevY })
 const spotOf = (v: Vec2): Spot => ({ X: v.x, Y: v.y })
 const plus = (a: Spot, b: Spot): Spot => ({ X: a.X + b.X, Y: a.Y + b.Y })
-const near = (a: Spot, b: Spot) => Math.hypot(a.X - b.X, a.Y - b.Y) <= SnapDistance
+const near = (a: Spot, b: Spot, limit: number) => Math.hypot(a.X - b.X, a.Y - b.Y) <= limit
 const none: Spot = { X: 0, Y: 0 }
 
 /** Where a predicted thing is drawn as the newest tick starts, and as its path ends: an ended shot's end. */
@@ -57,6 +54,8 @@ export class Prediction {
   #ending: Drawn<EndedShot>[] = [] // the shots that ended in the newest tick; a body_sync replays or keeps them
   #echo: Drawn<PredictedEcho> | undefined
   #kit: PredictedKit | undefined
+  #snap = 0 // world units: a bigger correction jumps instead of fading
+  #fade = 0 // seconds: a correction shrinks to 1/e in this long
   /** body_syncs whose replay didn't land where the frames had put your Body. */
   corrections = 0
 
@@ -82,6 +81,8 @@ export class Prediction {
   /** Starts over from sync, then replays the frames the server hasn't applied. */
   reconcile(sync: BodySync, you: BodyState, unacked: readonly InputFrame[]): void {
     this.#predictor.reset(sync, you)
+    this.#snap = sync.You.SnapSeconds * sync.You.MoveSpeed
+    this.#fade = sync.You.FadeSeconds
     let at: Vec2 = { x: you.X, y: you.Y }
     let ended: EndedShot[] | undefined
     for (const f of unacked) {
@@ -92,10 +93,10 @@ export class Prediction {
     const body = this.#body
     if (body && (at.x !== body.now.x || at.y !== body.now.y)) this.corrections++
     // The replay ends in the same tick, so each thing stays on the path it's drawn on and fades from there,
-    // unless that path ends more than SnapDistance from its new spot: then it starts where it now is, as
-    // does a thing not drawn before.
+    // unless that path ends more than your champion's snap line from its new spot: then it starts where it
+    // now is, as does a thing not drawn before.
     const stay = <T>(now: T, start: Spot, end: Spot, was: Path | undefined): Drawn<T> =>
-      was && near(was.to, end) ? { now, from: was.from, to: was.to } : { now, from: start, to: end }
+      was && near(was.to, end, this.#snap) ? { now, from: was.from, to: was.to } : { now, from: start, to: end }
     const here = spotOf(at)
     this.#body = stay(at, here, here, body)
     const shots = this.#predictor.shots()
@@ -103,7 +104,7 @@ export class Prediction {
       const drawn = new Map([...this.#shots, ...this.#ending].map((d) => [keyOf(d.now), d]))
       this.#ending = ended.map((e) => {
         const was = drawn.get(keyOf(e))
-        return { now: e, from: was && near(was.from, startOf(e)) ? was.from : startOf(e), to: e }
+        return { now: e, from: was && near(was.from, startOf(e), this.#snap) ? was.from : startOf(e), to: e }
       })
     } else {
       // Nothing replayed, so the newest tick is the sync's: keep the ends your frames drew in it, but
@@ -132,7 +133,7 @@ export class Prediction {
     const { at, ended } = this.#predictor.step(frame)
     // Each thing goes on from where it was drawn, and what that is off its true spot shrinks by keep. A
     // new shot starts as far off as your Body (lead), so it leaves where your Body is drawn.
-    const keep = Math.exp(-tickSeconds / FadeSeconds)
+    const keep = Math.exp(-tickSeconds / this.#fade)
     const onward = <T>(now: T, start: Spot, end: Spot, was: Path | undefined, lead = none): Drawn<T> => {
       if (!was) return { now, from: plus(start, lead), to: plus(end, lead) }
       const to = { X: end.X + (was.to.X - start.X) * keep, Y: end.Y + (was.to.Y - start.Y) * keep }

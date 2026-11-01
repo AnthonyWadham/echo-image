@@ -5,7 +5,8 @@ import { Prediction } from './prediction'
 import type { EndedShot, PredictedEcho, PredictedShot, Predictor } from './predictor'
 
 const tickSeconds = 0.05
-const keep = Math.exp(-tickSeconds / 0.1) // what a tick leaves of a correction
+const fadeSeconds = 0.1
+const keep = Math.exp(-tickSeconds / fadeSeconds) // what a tick leaves of a correction
 
 
 /**
@@ -79,6 +80,8 @@ const sync = (x: number): BodySync => ({
     InputQueued: 1,
     InputCap: 10,
     MoveSpeed: 5,
+    SnapSeconds: 0.6, // 3 units
+    FadeSeconds: fadeSeconds,
     Champion: 'starter',
     Cooldowns: [],
     Effects: [],
@@ -142,6 +145,14 @@ describe('Prediction', () => {
     p.reconcile(sync(10), you(10), [])
     expect(p.drawn(0)).toEqual({ x: 10, y: 0 })
     expect(p.drawn(1)).toEqual({ x: 10, y: 0 })
+  })
+
+  test('the snap line is seconds of your move speed: a faster champion fades a longer correction', () => {
+    const p = ahead()
+    const fast = sync(6)
+    fast.You.MoveSpeed = 20 // a 12-unit line
+    p.reconcile(fast, you(6), [])
+    expect(p.drawn(0)).toEqual({ x: 1, y: 0 })
   })
 
   test('starts over after clear', () => {

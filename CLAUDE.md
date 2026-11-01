@@ -596,8 +596,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `Cooldowns`, `Effects` with `EffectsNext`, never the folded status, `Shots`, and `EchoDelay` with
   `EchoPath`) at `Tick`, and replays the frames newer than `You.InputAck` (when `InputSession` is its
   own). A replay that lands elsewhere is a correction: your Body, Echo and each shot (by key) keep the
-  path they're drawn on and fade to their new spots, or jump past 3 units, and a new shot starts as far
-  off as your Body (`client/src/game/player/prediction.ts`). The HUD counts them.
+  path they're drawn on and fade to their new spots over the champion's `fade_seconds`, or jump past
+  its `snap_seconds` of move speed (`content/player/tuning.json`, sent in `YouState`), and a new shot
+  starts as far off as your Body (`client/src/game/player/prediction.ts`). The HUD counts them.
   - **Every input is predicted:** a shot leaves the frame you click, from where that frame moves your
     Body, a dash starts the tick after, and the HUD starts a cooldown at once.
     `ProjectileState.Predicted` and `Caster` say whose predictor draws a shot: a client draws its own

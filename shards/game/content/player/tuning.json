@@ -3,7 +3,7 @@
   "input_timeout_seconds": 0.5,
   "echo_path_seconds": 0.5,
   "champions": {
-    "starter": {"move_speed": 5.0, "radius": 0.5}
+    "starter": {"move_speed": 5.0, "radius": 0.5, "snap_seconds": 0.6, "fade_seconds": 0.1}
   },
   "dev_champion": "starter",
   "dev_spawns": [

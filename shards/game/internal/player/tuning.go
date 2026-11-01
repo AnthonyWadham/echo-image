@@ -30,6 +30,10 @@ type DevSpawn struct {
 type ChampionDef struct {
 	MoveSpeed float64 `json:"move_speed"` // world units per second at full input
 	Radius    float64 `json:"radius"`     // the Body's collider circle
+	// How its client draws a correction to its prediction: one longer than SnapSeconds of its move speed
+	// jumps, and a shorter one shrinks to 1/e in FadeSeconds. 0 draws every correction at once.
+	SnapSeconds float64 `json:"snap_seconds"`
+	FadeSeconds float64 `json:"fade_seconds"`
 }
 
 // JSONFile is the path within the content embed.FS.
@@ -58,8 +62,9 @@ func (t MovementTuning) Validate() error {
 			"and echo_path_seconds >= 0, got %+v", physics.ServerTickRateHz, t)
 	}
 	for id, c := range t.Champions {
-		if c.MoveSpeed < 0 || c.Radius <= 0 {
-			return fmt.Errorf("movement_tuning: champion %q needs move_speed >= 0 and radius > 0, got %+v", id, c)
+		if c.MoveSpeed < 0 || c.Radius <= 0 || c.SnapSeconds < 0 || c.FadeSeconds < 0 {
+			return fmt.Errorf("movement_tuning: champion %q needs radius > 0, and move_speed, snap_seconds and "+
+				"fade_seconds >= 0, got %+v", id, c)
 		}
 	}
 	if _, ok := t.Champions[t.DevChampion]; !ok {

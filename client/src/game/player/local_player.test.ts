@@ -49,6 +49,8 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
     InputQueued: 1,
     InputCap: 10,
     MoveSpeed: 5,
+    SnapSeconds: 0.6,
+    FadeSeconds: 0.1,
     Champion: 'starter',
     Cooldowns: [],
     Effects: [],
