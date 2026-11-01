@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Every check this repo has, at both tick rates: what CI would run. It needs Go, bun and go-ecs beside
-# this repo (the client's sdk alias). The pre-push hook runs it: git config core.hooksPath .githooks
+# Every check this repo has, at both tick rates. `scripts/check.sh go` runs the Go half, which needs only
+# Go; CI runs that (.github/workflows/check.yml). The client half needs bun and go-ecs beside this repo
+# (the client's sdk alias) until the SDK's MessagePack codec is on npm. The pre-push hook runs it all:
+# git config core.hooksPath .githooks
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,6 +16,9 @@ for tags in "" rate60; do
 	GOOS=js GOARCH=wasm go vet -tags "$tags" ./shards/game/predictor
 	go test -tags "$tags" ./...
 done
+if [ "${1:-}" = go ]; then
+	exit 0
+fi
 cd client
 bun run typecheck
 GOFLAGS=-tags=rate60 bun run test

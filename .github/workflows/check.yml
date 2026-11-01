@@ -1,0 +1,19 @@
+# Runs scripts/check.sh on every push and pull request, on amd64 and arm64, so determinism is checked
+# where an arm64 server would run. Only the Go half for now: the client half needs the SDK's
+# MessagePack codec released to npm, in place of the ../../go-ecs alias.
+name: check
+on:
+  push:
+  pull_request:
+jobs:
+  go:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/check.sh go

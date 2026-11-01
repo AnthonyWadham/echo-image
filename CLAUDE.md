@@ -25,7 +25,10 @@ one is the *what*.
   Run the tests at 60 Hz too: `go test -tags rate60 ./...`, and in `client/`
   `GOFLAGS=-tags=rate60 bun run test` (see tick-rate independence). `scripts/check.sh` runs every
   check at both rates (gofmt, vet, wasm vet, Go and client tests); `git config core.hooksPath
-  .githooks` makes each push run it first. There's no CI yet: a runner needs go-ecs beside the repo.
+  .githooks` makes each push run it first (on the working tree, not the pushed commits). CI
+  (`.github/workflows/check.yml`) runs its Go half, `scripts/check.sh go`, on amd64 and arm64 for
+  every push and pull request. The client half joins once the SDK's MessagePack codec is on npm and
+  `client/package.json` pins it in place of the `../../go-ecs` alias.
   The world tests in `shards/game` run real ticks through `main.go`'s `register` with
   `cardinal.NewTestWorld`, so a missing registration fails there; they also pin the client-sync,
   prediction, ability, shot, Echo, area, damage and effect rules below.
