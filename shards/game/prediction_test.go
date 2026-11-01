@@ -416,7 +416,8 @@ var recorded = map[string]string{
 // frames and a shot flying out its range. Her second bolt meets bob, walking across it, where her screen
 // drew him: the server ends it the same tick at the same point, and a replay of the frame ends it there
 // too. Effects others put on her surprise it, and come with the next state. Her Echo trails her by a
-// second (test content), so it retraces her path in the run.
+// second (test content), so it retraces her path in the run. Bob stops on his Echo, its anti-camp kills
+// it, and he is out: her last bolt flies through him.
 // testdata/prediction-20hz.txt (one per tick rate) is the digest of the run and the bad network's replays.
 // -record writes the run, so the client checks its wasm build lands there too (predictor.test.ts).
 func TestPredictionMatchesServer(t *testing.T) {
