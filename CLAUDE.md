@@ -26,9 +26,12 @@ one is the *what*.
   `GOFLAGS=-tags=rate60 bun run test` (see tick-rate independence). `scripts/check.sh` runs every
   check at both rates (gofmt, vet, wasm vet, Go and client tests); `git config core.hooksPath
   .githooks` makes each push run it first. There's no CI yet: a runner needs go-ecs beside the repo.
-  `shards/game/main_test.go` runs real ticks through `main.go`'s `register` with `cardinal.NewTestWorld`,
-  so a missing registration fails there; it also pins the client-sync, prediction, ability, shot,
-  Echo, area, damage and effect rules below.
+  The world tests in `shards/game` run real ticks through `main.go`'s `register` with
+  `cardinal.NewTestWorld`, so a missing registration fails there; they also pin the client-sync,
+  prediction, ability, shot, Echo, area, damage and effect rules below.
+- **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
+  `projectile_test.go`, … in `shards/game`). One harness: shared helpers live in `main_test.go`. Never
+  a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
 - **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
   `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.

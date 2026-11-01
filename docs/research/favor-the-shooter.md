@@ -253,5 +253,5 @@ the claim model (problem 3).
   `client/src/game/player/prediction.ts`, `client/src/game/player/local_player.ts`,
   `client/src/game/player/input_command.ts`, `client/src/game/projectile/projectile_sync_event.ts`,
   `client/src/game/projectile/target_sync_event.ts`.
-- Tests: `shards/game/main_test.go`, `shards/game/internal/projectile/flight/view_test.go`,
+- Tests: `shards/game/*_test.go`, `shards/game/internal/projectile/flight/view_test.go`,
   `shards/game/testdata/`, and the client `*.test.ts` files above.
