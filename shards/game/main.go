@@ -4,6 +4,8 @@ import (
 	"io/fs"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 
 	echoimage "echo_image"
 	"echo_image/shards/game/content"
@@ -33,10 +35,11 @@ func main() {
 }
 
 // register installs the plugins, game types and systems.
-func register(world *cardinal.World) { registerWith(world, content.FS) }
+func register(world *cardinal.World) { registerWith(world, content.FS, otel.GetMeterProvider()) }
 
-// registerWith is register with the content in fsys, so a test can change content.
-func registerWith(world *cardinal.World, fsys fs.FS) {
+// registerWith is register with the content in fsys and the game's metrics in meters, so a test can
+// change content or read the metrics.
+func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider) {
 	// Content: each file loaded strictly and checked once, here, so bad content fails the boot. Each
 	// system that reads a file holds it.
 	c, err := loadCatalog(fsys)
@@ -66,7 +69,12 @@ func registerWith(world *cardinal.World, fsys fs.FS) {
 	// moves the Body the same tick its ack is sent. Input, cast, move is the order a client predictor
 	// steps; effects a cast starts apply from the next tick. All run BEFORE the physics plugin, so its
 	// step sees each Body where it moved to this tick.
-	world.RegisterSystem(&player.InputSystem{Tuning: c.movement}, cardinal.WithHook(cardinal.PreUpdate))
+	inputMetrics, err := player.NewInputMetrics(meters)
+	if err != nil {
+		panic(err)
+	}
+	world.RegisterSystem(&player.InputSystem{Tuning: c.movement, Metrics: inputMetrics},
+		cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&player.MovementSystem{Tuning: c.movement, Physics: physicsPlugin},

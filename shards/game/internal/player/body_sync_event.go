@@ -7,6 +7,7 @@ import (
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/player/component"
 )
 
 // BodySync is one player's view of the Bodies this tick, plus their own prediction data. Server time
@@ -33,6 +34,7 @@ type YouState struct {
 	InputQueued  uint32                        // frames waiting for later ticks: the client paces its frames by it
 	InputCap     uint32                        // the most frames the queue holds: a bigger Input is dropped
 	InputTarget  uint32                        // frames to keep queued: it rises each time your queue runs dry
+	InputHealth  component.InputHealth         // what went wrong with your input stream, for your HUD
 	MoveSpeed    float64                       // units per second at full input
 	SnapSeconds  float64                       // a correction longer than this much of MoveSpeed jumps
 	FadeSeconds  float64                       // a shorter one shrinks to 1/e in this long

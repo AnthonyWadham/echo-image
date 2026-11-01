@@ -25,6 +25,7 @@ const bodySync: BodySync = {
     InputQueued: 3,
     InputCap: 10,
     InputTarget: 4,
+    InputHealth: { Coasts: 7, DroppedFrames: 2, OversizedInputs: 1, FlooredViews: 4294967295 },
     MoveSpeed: 5,
     SnapSeconds: 0.6,
     FadeSeconds: 0.125,

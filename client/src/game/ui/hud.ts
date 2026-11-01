@@ -66,6 +66,13 @@ export class Hud {
       const n = player.input.unacked.length
       lines.push(`Inputs in flight: ${n} (~${Math.round(n * player.tickSeconds * 1000)} ms)`)
       lines.push(`Prediction corrections: ${player.prediction.corrections}`)
+      const h = player.inputHealth
+      if (h) {
+        lines.push(
+          `Server input: ran dry ${h.Coasts}, frames dropped ${h.DroppedFrames}, ` +
+            `Inputs too big ${h.OversizedInputs}, views floored ${h.FlooredViews}`,
+        )
+      }
     } else if (status.state === 'connected') {
       lines.push('Waiting for the server to give you a Body…')
     }

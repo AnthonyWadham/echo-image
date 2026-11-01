@@ -50,6 +50,7 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
     InputQueued: 1,
     InputCap: 10,
     InputTarget: 1,
+    InputHealth: { Coasts: 0, DroppedFrames: 0, OversizedInputs: 0, FlooredViews: 0 },
     MoveSpeed: 5,
     SnapSeconds: 0.6,
     FadeSeconds: 0.1,
@@ -121,6 +122,14 @@ describe('LocalPlayer', () => {
     expect(player.otherSim).toBeUndefined()
     expect(player.playing).toBe(true)
     expect(player.inputsToSend(0.05, still)).not.toEqual([])
+  })
+
+  test('keeps the input health the newest body_sync counts', () => {
+    const player = playing()
+    const s = bodySync(101)
+    const health = { Coasts: 2, DroppedFrames: 1, OversizedInputs: 0, FlooredViews: 3 }
+    player.onBodySync({ ...s, You: { ...s.You, InputHealth: health } })
+    expect(player.inputHealth).toEqual(health)
   })
 
   test('sends nothing while disconnected', () => {

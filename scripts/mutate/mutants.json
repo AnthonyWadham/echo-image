@@ -17,7 +17,7 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "\t\tif !(q.Last.ViewTick >= q.ViewFloor) { // NaN too\n\t\t\tq.Last.ViewTick = q.ViewFloor\n\t\t}\n",
+     "old": "\t\tif !(q.Last.ViewTick >= q.ViewFloor) { // NaN too\n\t\t\tq.Last.ViewTick = q.ViewFloor\n\t\t\tq.Health.FlooredViews++\n\t\t\ts.Metrics.floored.Add(ctx, 1)\n\t\t}\n",
      "new": ""
     }
    ]
@@ -1309,8 +1309,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
-     "new": "if n := cmd.Payload.Frames.Len(); n > limit && false {"
+     "old": "if cmd.Payload.Frames.Len() > limit {",
+     "new": "if cmd.Payload.Frames.Len() > limit && false {"
     }
    ]
   },
@@ -1321,8 +1321,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
-     "new": "if n := cmd.Payload.Frames.Len(); n > limit+1 {"
+     "old": "if cmd.Payload.Frames.Len() > limit {",
+     "new": "if cmd.Payload.Frames.Len() > limit+1 {"
     }
    ]
   },
@@ -1333,8 +1333,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
-     "new": "if n := cmd.Payload.Frames.Len(); n >= limit {"
+     "old": "if cmd.Payload.Frames.Len() > limit {",
+     "new": "if cmd.Payload.Frames.Len() >= limit {"
     }
    ]
   },
@@ -1357,13 +1357,13 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "\t\tif index == nil {\n\t\t\tindex = indexBodies(bodies)\n\t\t}\n\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tw.Logger().Warn().Str(\"player\", player).Msg(\"input: no free player Body to control\")\n\t\t\tcontinue\n\t\t}\n",
+     "old": "\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tw.Logger().Warn().Str(\"player\", player).Msg(\"input: no free player Body to control\")\n\t\t\tcontinue\n\t\t}\n",
      "new": ""
     },
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "\t\tif n := cmd.Payload.Frames.Len(); n > limit {",
-     "new": "\t\tif index == nil {\n\t\t\tindex = indexBodies(bodies)\n\t\t}\n\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\tif n := cmd.Payload.Frames.Len(); n > limit {"
+     "old": "\t\tif cmd.Payload.Frames.Len() > limit {",
+     "new": "\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\tif cmd.Payload.Frames.Len() > limit {"
     }
    ]
   },
@@ -2221,6 +2221,138 @@
      "file": "client/src/game/player/input_stream.ts",
      "old": "const off = (this.#target - this.#queued) / this.#target",
      "new": "const off = this.#target - this.#queued"
+    }
+   ]
+  },
+  {
+   "id": "F25-C1",
+   "breaks": "a coast isn't counted on its Body",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/component/input.go",
+     "old": "\tq.Health.Coasts++\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-C2",
+   "breaks": "a coast isn't counted for ops",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\t\ts.Metrics.coasts.Add(ctx, 1)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-D1",
+   "breaks": "dropped frames aren't counted on their Body",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tq.Health.DroppedFrames += uint32(len(pending) - limit)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-D2",
+   "breaks": "dropped frames aren't counted for ops",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\ts.Metrics.dropped.Add(w.Context(), int64(dropped))\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-O1",
+   "breaks": "an oversized Input isn't counted on its Body",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\t\tq.Health.OversizedInputs++\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-O2",
+   "breaks": "an oversized Input isn't counted for ops",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\ts.Metrics.oversized.Add(w.Context(), 1)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-F1",
+   "breaks": "a floored view isn't counted on its Body",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\tq.Health.FlooredViews++\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-F2",
+   "breaks": "a floored view isn't counted for ops",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\t\ts.Metrics.floored.Add(ctx, 1)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-Q1",
+   "breaks": "queue depth isn't recorded",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\ts.Metrics.queued.Record(ctx, int64(q.Pending.Len()))\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F25-Y1",
+   "breaks": "YouState doesn't carry the counts",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": ", InputHealth: q.Health,",
+     "new": ","
+    }
+   ]
+  },
+  {
+   "id": "F25-T1",
+   "breaks": "the client doesn't keep the counts",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.inputHealth = s.You.InputHealth\n",
+     "new": ""
     }
    ]
   }

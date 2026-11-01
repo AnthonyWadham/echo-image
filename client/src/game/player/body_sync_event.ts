@@ -21,6 +21,7 @@ export interface YouState {
   InputQueued: number // uint32: frames waiting on the server for later ticks, which pace yours
   InputCap: number // uint32: the most frames the server queues: it drops an Input with more
   InputTarget: number // uint32: frames to keep queued; it rises each time your queue runs dry
+  InputHealth: InputHealth // what went wrong with your input stream
   MoveSpeed: number
   SnapSeconds: number // a correction longer than this much of MoveSpeed jumps
   FadeSeconds: number // a shorter one shrinks to 1/e in this long
@@ -31,6 +32,14 @@ export interface YouState {
   Shots: ShotState[] // the shots in flight your predictor flies: your frames cast them
   EchoDelay: number // uint32: ticks your Echo trails your Body; 0 with no Echo
   EchoPath: { X: number; Y: number }[] // your Echo this tick, then its spot on each next tick
+}
+
+/** component.InputHealth: shards/game/internal/player/component/input.go. Each a uint32 count. */
+export interface InputHealth {
+  Coasts: number // times your queue ran dry while you played: each a correction
+  DroppedFrames: number // frames dropped past the queue's cap
+  OversizedInputs: number // Inputs dropped whole, for more frames than the queue holds
+  FlooredViews: number // frames whose view went back, taken at the newest so far
 }
 
 /** cast.Cooldown: shards/game/internal/ability/cast/cast.go */

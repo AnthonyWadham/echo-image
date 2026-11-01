@@ -33,7 +33,7 @@ func (f InputFrame) Aim() (x, y float64) { return motion.Unit(f.AimX, f.AimY) }
 // restarted client (Seq back at 1) from a stale frame. ViewFloor is the largest ViewTick applied, from 0,
 // kept across sessions: a frame's view below it, or not a number, is taken at it, so a client can lag
 // but never pick an older moment for each shot. Target is how many frames its client should keep queued
-// as of Coasted, the last tick the queue ran dry (TargetAt).
+// as of Coasted, the last tick the queue ran dry (TargetAt). Health counts what went wrong.
 type InputQueue struct {
 	Session   uint32
 	Pending   cardinal.Slice[InputFrame]
@@ -42,6 +42,16 @@ type InputQueue struct {
 	ViewFloor float64
 	Target    uint32
 	Coasted   uint64
+	Health    InputHealth
+}
+
+// InputHealth counts what went wrong with a Body's input stream, for its HUD (YouState) and for ops
+// (player.InputMetrics).
+type InputHealth struct {
+	Coasts          uint32 // times its queue ran dry while its client played: each a correction
+	DroppedFrames   uint32 // frames dropped past the queue's cap
+	OversizedInputs uint32 // Inputs dropped whole, for more frames than the queue holds
+	FlooredViews    uint32 // frames whose view went back, taken at the newest so far
 }
 
 func (InputQueue) Name() string { return "input_queue" }
@@ -64,6 +74,7 @@ func (q InputQueue) TargetAt(tick uint64, step int, calm uint64, limit int) int 
 // Coast is q after its queue ran dry at tick: its target a step higher.
 func (q InputQueue) Coast(tick uint64, step int, calm uint64, limit int) InputQueue {
 	q.Target, q.Coasted = uint32(min(q.TargetAt(tick, step, calm, limit)+step, limit)), tick
+	q.Health.Coasts++
 	return q
 }
 

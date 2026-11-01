@@ -2,7 +2,7 @@ import type { Vec2 } from '../../engine/math/vec2'
 import type { Spot } from '../../engine/render/entity_views'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
 import type { TargetState, TargetSync } from '../projectile/target_sync_event'
-import type { BodyState, BodySync } from './body_sync_event'
+import type { BodyState, BodySync, InputHealth } from './body_sync_event'
 import type { Input } from './input_command'
 import { InputStream } from './input_stream'
 import { Prediction } from './prediction'
@@ -30,6 +30,8 @@ export class LocalPlayer {
   received = 0
   /** Your Body's EntityID, from the newest body_sync; undefined before one, since 0 is a Body too. */
   you: number | undefined
+  /** What went wrong with your input stream, as the newest body_sync counts it. */
+  inputHealth: InputHealth | undefined
   tickSeconds = 0
   /** The sim your predictor runs. */
   readonly sim: string
@@ -120,6 +122,7 @@ export class LocalPlayer {
     this.otherSim = undefined
     this.#timelines.add(this.bodies, s.Tick, s.Bodies)
     this.you = s.You.Body
+    this.inputHealth = s.You.InputHealth
     this.tickSeconds = s.TickSeconds
     this.input.ack(s.You, s.TickSeconds)
     const me = this.me

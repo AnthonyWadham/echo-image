@@ -22,19 +22,20 @@ type inputRow struct {
 // applied frame through InputQueue.Applied. It is the only writer of InputQueue, and emits BodyClaimed
 // the first tick each Body is claimed.
 type InputSystem struct {
-	Tuning MovementTuning
+	Tuning  MovementTuning
+	Metrics InputMetrics
 }
 
 func (s *InputSystem) Run(w *cardinal.World) {
-	limit := s.Tuning.BufferFrames()
 	bodies := w.Contains[inputRow]()
-	receive(w, bodies, limit)
-	advance(w, bodies, s.Tuning)
+	s.receive(w, bodies)
+	s.advance(w, bodies)
 }
 
 // receive queues every Input this tick on its sender's Body. O(B + C·L²) for C commands and a queue of L
 // frames: Bodies are indexed once.
-func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
+func (s *InputSystem) receive(w *cardinal.World, bodies cardinal.Search) {
+	limit := s.Tuning.BufferFrames()
 	var index *bodyIndex
 	for cmd := range w.Commands[Input]() {
 		player, ok := cmd.Player()
@@ -43,21 +44,31 @@ func receive(w *cardinal.World, bodies cardinal.Search, limit int) {
 			w.Logger().Warn().Str("sender", cmd.Sender()).Msg("input: not from a player, ignoring command")
 			continue
 		}
-		if n := cmd.Payload.Frames.Len(); n > limit {
-			// YouState.InputCap tells clients the limit, so only abuse sends more, and merging it costs O(n²).
-			w.Logger().Warn().Str("player", player).Int("frames", n).
-				Msg("input: more frames than the queue holds, ignoring command")
-			continue
-		}
 		if index == nil {
 			index = indexBodies(bodies)
+		}
+		if cmd.Payload.Frames.Len() > limit {
+			// YouState.InputCap tells clients the limit, so only abuse sends more, and merging it costs O(n²).
+			// Counted, not logged, so a bad client can't flood the logs.
+			s.Metrics.oversized.Add(w.Context(), 1)
+			if body, ok := index.owned[player]; ok {
+				q := body.Get[component.InputQueue]()
+				q.Health.OversizedInputs++
+				body.Set(q)
+			}
+			continue
 		}
 		body, ok := index.resolve(w, player)
 		if !ok {
 			w.Logger().Warn().Str("player", player).Msg("input: no free player Body to control")
 			continue
 		}
-		body.Set(enqueue(body.Get[component.InputQueue](), cmd.Payload, limit))
+		q := body.Get[component.InputQueue]()
+		next := enqueue(q, cmd.Payload, limit)
+		if dropped := next.Health.DroppedFrames - q.Health.DroppedFrames; dropped > 0 {
+			s.Metrics.dropped.Add(w.Context(), int64(dropped))
+		}
+		body.Set(next)
 	}
 }
 
@@ -81,6 +92,7 @@ func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 		}
 	}
 	if len(pending) > limit {
+		q.Health.DroppedFrames += uint32(len(pending) - limit)
 		pending = pending[len(pending)-limit:]
 	}
 	q.Pending = cardinal.SliceOf(pending...)
@@ -89,22 +101,26 @@ func enqueue(q component.InputQueue, in Input, limit int) component.InputQueue {
 
 // advance applies each Body's next queued frame, its view no older than the largest so far. A queue
 // that runs dry while its client sends raises the client's target: a coast is a correction. O(B).
-func advance(w *cardinal.World, bodies cardinal.Search, t MovementTuning) {
-	tick := w.TickHeight()
+func (s *InputSystem) advance(w *cardinal.World, bodies cardinal.Search) {
+	tick, ctx, t := w.TickHeight(), w.Context(), s.Tuning
 	for body := range bodies.Iter() {
 		q := body.Get[component.InputQueue]()
 		if q.Pending.Len() == 0 {
 			if q.Last.Seq != 0 && q.LastTick == tick-1 { // it just ran dry
 				body.Set(q.Coast(tick, t.QueueStepFrames(), t.QueueCalmTicks(), t.BufferFrames()))
+				s.Metrics.coasts.Add(ctx, 1)
 			}
 			continue
 		}
 		q.Last, q.LastTick = q.Pending.At(0), tick
 		if !(q.Last.ViewTick >= q.ViewFloor) { // NaN too
 			q.Last.ViewTick = q.ViewFloor
+			q.Health.FlooredViews++
+			s.Metrics.floored.Add(ctx, 1)
 		}
 		q.ViewFloor = q.Last.ViewTick
 		q.Pending = q.Pending.Sub(1, q.Pending.Len())
+		s.Metrics.queued.Record(ctx, int64(q.Pending.Len()))
 		body.Set(q)
 	}
 }

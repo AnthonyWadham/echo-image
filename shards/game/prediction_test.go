@@ -95,16 +95,16 @@ func TestPredictedEchoMatchesServer(t *testing.T) {
 // on its caster's Echo). Her Echo walks toward her along her shot's path, and her view had it 0.125 s
 // further back. Her bolt's hit is offset from where it is now.
 func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
-	files := patched(t, map[string]string{
+	patch := map[string]string{
 		"echo/tuning.json": `{"champions": {"starter": {"delay_seconds": 1}}}`,
 		"projectile/tuning.json": `{"shots": {"bolt": {"meets": [
 			{"kinds": ["echo"], "relations": ["own"], "do": "stop"}]}}}`,
-	})
-	w := cardinal.NewTestWorld(t, func(world *cardinal.World) { registerWith(world, files) })
+	}
+	w := cardinal.NewTestWorld(t, withContent(t, patch))
 	alice, _ := claim(t, w)
 	moveFor(w, alice, 1, 0, physics.ServerTickRateHz) // her Echo walks this a second later
 	flyFor(w, ticks(0.25))
-	rules, err := predict.Load(files)
+	rules, err := predict.Load(patched(t, patch))
 	if err != nil {
 		t.Fatal(err)
 	}

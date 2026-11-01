@@ -123,7 +123,7 @@ func you(e cardinal.Entity, shots []ShotState) YouState {
 	q := e.Get[component.InputQueue]()
 	y := YouState{
 		Body: uint32(e.ID()), Shots: cardinal.SliceOf(shots...),
-		InputSession: q.Session, InputAck: q.Ack(), InputQueued: uint32(q.Pending.Len()),
+		InputSession: q.Session, InputAck: q.Ack(), InputQueued: uint32(q.Pending.Len()), InputHealth: q.Health,
 		MoveSpeed: e.Get[component.MoveSpeed]().Value, Champion: e.Get[component.Champion]().ID,
 	}
 	if e.Has[abilitycomp.Abilities]() {

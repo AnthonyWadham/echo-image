@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 func requireAck(t *testing.T, s player.BodySync, want uint32) {
@@ -258,6 +262,73 @@ func TestBodiesPassThroughEachOther(t *testing.T) {
 		w.Tick()
 		requireMoved(t, aliceBefore, bodiesFor(t, w, "alice"), 1, 0)
 		requireMoved(t, bobBefore, bodiesFor(t, w, "bob"), -1, 0)
+	}
+}
+
+// What goes wrong with a client's input is counted, on its Body for its HUD and in the shard's metrics
+// for ops: a coast, a view that went back, a frame past the cap and an Input over it.
+func TestInputHealthIsCounted(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	w := cardinal.NewTestWorld(t, func(world *cardinal.World) {
+		registerWith(world, content.FS, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	})
+	alice, _ := claim(t, w)
+	limit := int(bodiesFor(t, w, "alice").You.InputCap)
+	moveFor(w, alice, 1, 0, ticks(0.5)) // past the views before tick 0, which are floored
+	before := bodiesFor(t, w, "alice").You.InputHealth
+	w.Tick() // no frame: a coast
+	alice.move(1, 0)
+	w.Tick()
+	alice.back += 5
+	alice.move(1, 0) // drawn further back than her last frame
+	w.Tick()
+	alice.back -= 5
+	for range limit + 1 {
+		alice.move(1, 0)
+	}
+	frames := make([]playercomp.InputFrame, limit+1)
+	for i := range frames {
+		frames[i] = frame(uint32(1000+i), 1, 0)
+	}
+	w.Command("alice", input(alice.session, frames...))
+	w.Tick()
+
+	want := playercomp.InputHealth{Coasts: before.Coasts + 1, DroppedFrames: before.DroppedFrames + 1,
+		OversizedInputs: before.OversizedInputs + 1, FlooredViews: before.FlooredViews + 1}
+	if got := bodiesFor(t, w, "alice").You.InputHealth; got != want {
+		t.Fatalf("her HUD gets %+v, want %+v", got, want)
+	}
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				for _, p := range data.DataPoints {
+					got[m.Name] += p.Value
+				}
+			case metricdata.Histogram[int64]:
+				for _, p := range data.DataPoints {
+					got[m.Name] += int64(p.Count)
+				}
+			}
+		}
+	}
+	// The shard's counts are its Bodies' added up.
+	a, b := want, bodiesFor(t, w, "bob").You.InputHealth
+	for name, n := range map[string]uint32{"echo.input.coasts": a.Coasts + b.Coasts,
+		"echo.input.views_floored":  a.FlooredViews + b.FlooredViews,
+		"echo.input.frames_dropped": a.DroppedFrames + b.DroppedFrames,
+		"echo.input.oversized":      a.OversizedInputs + b.OversizedInputs} {
+		if got[name] != int64(n) {
+			t.Errorf("%s = %d, want %d", name, got[name], n)
+		}
+	}
+	if got["echo.input.queued"] == 0 {
+		t.Error("no queue depths recorded")
 	}
 }
 

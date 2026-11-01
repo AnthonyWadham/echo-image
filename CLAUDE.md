@@ -513,8 +513,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   the catalog. Content never changes after boot, so a system reads it directly, never a copy per
   entity.
 - **Tests change content with `withContent`** (`main_test.go`): it deep-merges JSON patches into the
-  shipped files and boots the real `register` from that `fs.FS`; `patched` gives a predictor the same.
+  shipped files and boots the real `registerWith` from that `fs.FS`; `patched` gives a predictor the same.
   Use it for test-only shot types and champions; never add test content to the shipped files.
+  A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
+  one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
   (`dev_spawns` in `content/player/tuning.json`, e.g. `twoVsTwo`) and adds them with `join`. Players
   claim free Bodies in roster order.
@@ -684,6 +686,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   ticks). `InputSystem` drops a bigger one whole, before it claims a Body (Source's "too many cmds"),
   so merging an Input costs O(cap²), never O(frames²). The client sends its newest 0.4 s of unacked
   frames, at most `InputCap`, and one before the first body_sync says the cap.
+- **Input trouble is counted, never logged** (`InputQueue.Health`, `player.InputMetrics`). Coasts,
+  frames dropped past the cap, oversized Inputs and floored views add to the Body's counts, which
+  `YouState.InputHealth` shows on its HUD, and to the shard's otel counters (`echo.input.*`, plus a
+  queue-depth histogram) on the meter Cardinal installs. No per-player labels: unbounded.
 - **Systems act on input through `InputQueue.Applied(tick)`**, so each frame acts once: movement sets
   velocity from it, abilities cast from it. Buttons ride in the frame (like a Source or Overwatch
   user command), so a shot leaves from where the client predicted its Body when it fired.

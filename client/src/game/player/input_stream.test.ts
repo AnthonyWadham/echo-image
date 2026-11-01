@@ -14,6 +14,7 @@ const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap =
   InputQueued,
   InputCap,
   InputTarget,
+  InputHealth: { Coasts: 0, DroppedFrames: 0, OversizedInputs: 0, FlooredViews: 0 },
   MoveSpeed: 5,
   SnapSeconds: 0.6,
   FadeSeconds: 0.1,

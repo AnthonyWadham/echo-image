@@ -24,6 +24,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
+	"go.opentelemetry.io/otel"
 )
 
 func input(session uint32, frames ...playercomp.InputFrame) player.Input {
@@ -49,7 +50,7 @@ func tuningOf[T content.File](t *testing.T) T {
 func withContent(t testing.TB, patches ...map[string]string) func(*cardinal.World) {
 	t.Helper()
 	files := patched(t, patches...)
-	return func(world *cardinal.World) { registerWith(world, files) }
+	return func(world *cardinal.World) { registerWith(world, files, otel.GetMeterProvider()) }
 }
 
 // patched is the content withContent registers, which a predictor can load too.
