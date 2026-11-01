@@ -48,9 +48,9 @@ func (s *CastHookSystem) Run(w *cardinal.World) {
 			Pos: hooks.Vec2{X: pos.X, Y: pos.Y}, Aim: hooks.Vec2{X: c.AimX, Y: c.AimY},
 			TickRate: physics.ServerTickRateHz,
 		}, &out)
-		for _, l := range out.Launches {
+		for i, l := range out.Launches {
 			w.EmitSystemEvent(projectilecomp.LaunchIntent{
-				Shot: l.Shot, Cause: c.Cause, Owner: owner, Team: side,
+				Shot: l.Shot, Cause: c.Cause, Launch: uint32(i), Owner: owner, Team: side,
 				From: pos, Dir: physics2d.Vec2{X: l.Dir.X, Y: l.Dir.Y},
 			})
 		}

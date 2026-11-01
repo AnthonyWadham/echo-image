@@ -45,7 +45,7 @@ func (s *CastSystem) Run(w *cardinal.World) {
 		}
 		body.Set(component.Abilities{Cooldowns: cardinal.SliceOf(cooldowns...)})
 		for _, id := range casts {
-			cause := component.Cause{Caster: body.ID(), Ability: id, Tick: tick}
+			cause := component.Cause{Caster: body.ID(), Ability: id, Tick: tick, Seq: f.Seq}
 			w.EmitSystemEvent(component.AbilityCast{Cause: cause, AimX: aimX, AimY: aimY})
 		}
 	}

@@ -38,6 +38,12 @@ func (it *Items[S]) Add(e cardinal.Entity, a Audience, state S) {
 	it.list = append(it.list, i)
 }
 
+// AddGone queues the last state of an entity of team that was destroyed this tick, for the viewers a
+// allows.
+func (it *Items[S]) AddGone(team uint8, a Audience, state S) {
+	it.list = append(it.list, item[S]{team: team, hasTeam: true, audience: a, state: state})
+}
+
 // Lists is the states each viewer team may get. Viewers on a team share one list, so don't modify it.
 type Lists[S any] map[uint8]cardinal.Slice[S]
 
@@ -70,5 +76,6 @@ func (i item[S]) allowed(t uint8) bool {
 }
 
 // seenBy reports whether team can see e. Everything is visible today; invisibility and line of
-// sight go here. Hide what reveals a hidden entity too (an invisible Body's Echo replays its path).
+// sight go here. Hide what reveals a hidden entity too (an invisible Body's Echo replays its path). A
+// gone entity (AddGone) is the zero Entity: judge it by its last state.
 func seenBy(_ cardinal.Entity, _ uint8) bool { return true }

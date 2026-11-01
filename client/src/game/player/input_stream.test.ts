@@ -3,7 +3,7 @@ import type { InputFrame } from './input_command'
 import { InputStream, newSession } from './input_stream'
 
 const tick = 0.25 // exact in binary, so step counts are too
-const input = { MoveX: 1, MoveY: 0, AimX: 2, AimY: -1, Buttons: 1 }
+const input = { MoveX: 1, MoveY: 0, AimX: 2, AimY: -1, Buttons: 1, ViewTick: 0, Claims: [] }
 const next = () => input
 const seqs = (frames: readonly InputFrame[]) => frames.map((f) => f.Seq)
 const you = (InputSession: number, InputAck: number) => ({
@@ -34,7 +34,7 @@ describe('InputStream', () => {
     const s = new InputStream(7)
     expect(s.join({ x: 1, y: -1 })).toEqual({
       Session: 7,
-      Frames: [{ Seq: 1, MoveX: 1, MoveY: -1, AimX: 0, AimY: 0, Buttons: 0 }],
+      Frames: [{ Seq: 1, MoveX: 1, MoveY: -1, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0, Claims: [] }],
     })
     expect(s.unacked).toEqual([])
   })
@@ -44,7 +44,7 @@ describe('InputStream', () => {
     s.join({ x: 0, y: 0 })
     expect(s.moveChanged({ x: 0, y: 0 })).toBeUndefined()
     expect(s.moveChanged({ x: 1, y: 0 })?.Frames).toEqual([
-      { Seq: 2, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0 },
+      { Seq: 2, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0, Claims: [] },
     ])
     expect(s.moveChanged({ x: 1, y: 0 })).toBeUndefined()
     expect(s.moveChanged({ x: 0, y: 0 })?.Frames[0]?.Seq).toBe(3)

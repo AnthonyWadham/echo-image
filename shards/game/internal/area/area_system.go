@@ -75,6 +75,7 @@ func (s *AreaSystem) act(w *cardinal.World, world *box2d.World, e cardinal.Entit
 			// Self is the only To so far.
 			w.EmitSystemEvent(combatcomp.DamageIntent{
 				Target: e.ID(), Credit: cardinal.EntityID(side.Owner), Amount: rule.DamagePerSecond * physics.SecondsPerTick,
+				Until: 1,
 			})
 		}
 		return true

@@ -1,11 +1,29 @@
 import type { Object3D } from 'three'
+import type { Vec2 } from '../math/vec2'
 import type { Timeline } from '../sync/timeline'
 
-/** What a view needs of an entity's state. */
+/**
+ * What a view needs of an entity's state. Until is the part of the tick it lived, 1 if unset: one that
+ * ended in it is at X, Y.
+ */
 export interface Placed {
   EntityID: number
   X: number
   Y: number
+  Until?: number
+}
+
+/** A state's position. */
+type Spot = { X: number; Y: number }
+
+/**
+ * Where to draw an entity t (0 to 1) through a tick, blended from its older state p to s. One that ended
+ * partway through (until < 1) moves at its own pace to s, and is gone after it gets there.
+ */
+export function blend(p: Spot, s: Spot, t: number, until = 1): Vec2 | undefined {
+  if (t > until) return undefined
+  const k = until > 0 ? t / until : 1
+  return { x: p.X + (s.X - p.X) * k, y: p.Y + (s.Y - p.Y) * k }
 }
 
 /** One entity's objects. root goes in the scene. */
@@ -15,7 +33,7 @@ export interface EntityView {
 
 /**
  * One kind of entity's views, by EntityID, drawn from its timeline. A view is made when its entity
- * shows up and removed once the server stops reporting it.
+ * shows up, and removed once it ended (blend) or the server stops reporting it.
  */
 export class EntityViews<S extends Placed, V extends EntityView> {
   readonly #parent: Object3D
@@ -45,8 +63,8 @@ export class EntityViews<S extends Placed, V extends EntityView> {
       const { from, to, t } = sample
       const before = new Map(from.map((s): [number, S] => [s.EntityID, s]))
       for (const s of to) {
-        const p = before.get(s.EntityID) ?? s
-        this.#place(this.#view(s), s, p.X + (s.X - p.X) * t, p.Y + (s.Y - p.Y) * t)
+        const at = blend(before.get(s.EntityID) ?? s, s, t, s.Until)
+        if (at) this.#place(this.#view(s), s, at.x, at.y)
       }
     }
     for (const [id, view] of this.#views) {

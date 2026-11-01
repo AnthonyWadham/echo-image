@@ -1,5 +1,6 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
+import type { EchoSync } from '../echo/echo_sync_event'
 import type { BodyState, BodySync } from './body_sync_event'
 import type { Input } from './input_command'
 import { InputStream } from './input_stream'
@@ -13,6 +14,8 @@ export interface Held {
   ground: Vec2 | undefined
   /** InputFrame.Buttons: bit N casts kit slot N. */
   buttons: number
+  /** The render tick on screen: the last one drawn, if any. */
+  view: number | undefined
 }
 
 /** You: every Body's recent states, which one is yours, the Input you send, and your Body predicted. */
@@ -82,6 +85,7 @@ export class LocalPlayer {
 
   onBodySync(s: BodySync): void {
     this.#timelines.add(this.bodies, s.Tick, s.Bodies)
+    this.prediction.seeBodies(s)
     this.received++
     this.you = s.You.Body
     this.tickSeconds = s.TickSeconds
@@ -92,6 +96,11 @@ export class LocalPlayer {
     this.prediction.reconcile(s, me, this.input.unacked)
   }
 
+  /** Keeps the Echoes each echo_sync shows, for your shots to meet. */
+  onEchoSync(s: EchoSync): void {
+    this.prediction.seeEchoes(s)
+  }
+
   /** The Inputs to send this animation frame. Each frame runs your predicted Body one tick. */
   inputsToSend(dt: number, held: Held): Input[] {
     if (!this.#connected) return []
@@ -99,14 +108,13 @@ export class LocalPlayer {
       const input = this.input.moveChanged(held.move)
       return input ? [input] : []
     }
-    const { move, ground, buttons } = held
-    return this.input.step(dt, this.tickSeconds, () => {
+    const { move, ground, buttons, view } = held
+    return this.input.step(dt, this.tickSeconds, (seq) => {
       // The server casts from where this frame moves your Body, so aim from there.
       const at = this.prediction.peek(move.x, move.y)
       const aim = ground ? { x: ground.x - at.x, y: ground.y - at.y } : { x: 0, y: 0 }
-      const frame = { MoveX: move.x, MoveY: move.y, AimX: aim.x, AimY: aim.y, Buttons: buttons }
-      this.prediction.step(frame, this.tickSeconds)
-      return frame
+      const frame = { MoveX: move.x, MoveY: move.y, AimX: aim.x, AimY: aim.y, Buttons: buttons, ViewTick: view ?? 0 }
+      return { ...frame, Claims: this.prediction.step({ Seq: seq, ...frame, Claims: [] }, this.tickSeconds) }
     })
   }
 }

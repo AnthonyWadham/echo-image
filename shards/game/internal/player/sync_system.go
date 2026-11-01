@@ -6,6 +6,7 @@ import (
 
 	abilitycomp "echo_image/shards/game/internal/ability/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/netsync"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
@@ -49,6 +50,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			X:        pos.X,
 			Y:        pos.Y,
 			Radius:   radius(e),
+			Tags:     tagsAt(e, w.TickHeight()+1),
 		})
 	}
 	shots := map[cardinal.EntityID][]ShotState{} // by caster
@@ -56,7 +58,8 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 		p := e.Get[projectilecomp.Projectile]()
 		pos := e.Get[physics2d.Transform2D]().Position
 		shots[p.Cause.Caster] = append(shots[p.Cause.Caster], ShotState{
-			Type: p.Type, X: pos.X, Y: pos.Y, VelX: p.Velocity.X, VelY: p.Velocity.Y,
+			Type: p.Type, Ability: p.Cause.Ability, Seq: p.Cause.Seq, Launch: p.Launch,
+			X: pos.X, Y: pos.Y, VelX: p.Velocity.X, VelY: p.Velocity.Y,
 			Radius: p.Radius, Remaining: p.Remaining,
 		})
 	}
@@ -69,6 +72,14 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Bodies:      lists.For(v),
 		})
 	}
+}
+
+// tagsAt is the tags e's effects give it at tick.
+func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
+	if !e.Has[effectcomp.Effects]() {
+		return 0
+	}
+	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }
 
 // you returns a viewer's own data, with the shots their Body cast. A Body without movement

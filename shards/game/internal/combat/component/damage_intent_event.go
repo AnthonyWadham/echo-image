@@ -16,6 +16,7 @@ type DamageIntent struct {
 	Credit cardinal.EntityID // the Body credited with it
 	Cause  abilitycomp.Cause // the cast that dealt it; zero for an area
 	Amount float64
+	Until  float64 // when in the tick it lands, 0 to 1: a hit's flight.End.Until, 1 for damage over the tick
 }
 
 // Name is the system-event name.

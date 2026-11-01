@@ -67,7 +67,10 @@ async function play(playerId: string): Promise<void> {
   void net
     .subscribe([
       on(BodySyncEvent, (s) => player.onBodySync(s)),
-      on(EchoSyncEvent, (s) => timelines.add(echoes, s.Tick, s.Echoes)),
+      on(EchoSyncEvent, (s) => {
+        timelines.add(echoes, s.Tick, s.Echoes)
+        player.onEchoSync(s)
+      }),
       on(AbilitySyncEvent, (s) => timelines.add(abilities, s.Tick, cooldowns(s))),
       // Yours are drawn from the predictor.
       on(ProjectileSyncEvent, (s) =>
@@ -79,6 +82,7 @@ async function play(playerId: string): Promise<void> {
     })
 
   let last: number | undefined
+  let drawn: number | undefined // the render tick on screen, which this frame's inputs were made seeing
   function frame(now: number): void {
     requestAnimationFrame(frame)
     const dt = last === undefined ? 0 : (now - last) / 1000
@@ -88,10 +92,11 @@ async function play(playerId: string): Promise<void> {
       move: controls.move,
       ground: pointer && stage.groundPoint(pointer),
       buttons: controls.buttons,
+      view: drawn,
     }
     for (const input of player.inputsToSend(dt, held)) net.send(InputCommand, input)
-    const tick = timelines.renderTick(dt, player.bodies, player.tickSeconds)
-    for (const view of views) view.draw(tick)
+    drawn = timelines.renderTick(dt, player.bodies, player.tickSeconds)
+    for (const view of views) view.draw(drawn)
     stage.render()
     hud.draw(net.status, problem)
   }

@@ -28,10 +28,9 @@ one is the *what*.
 - **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
   `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
-- **world-engine is the local checkout** (`replace => ../world-engine` in `go.mod`), currently a
-  branch where codegen is reverted. The shard's Docker build only mounts this project, so it can't
-  see `../world-engine`: `world start` needs a fresh `go mod vendor` first (and a re-vendor whenever
-  world-engine changes), or a published world-engine release in place of the `replace`.
+- **world-engine is pinned** in `go.mod` to `v0.22.0-beta`, the commit of PR #1109 (codegen
+  reverted). To move it: `go get github.com/argus-labs/world-engine@<commit or tag>`. No
+  `vendor/`: the shard's Docker build downloads modules itself.
 - **Toolchain:** Go 1.27.1 (`GOTOOLCHAIN=auto` to auto-fetch if the local go is older).
 - `world.toml` declares the shards.
 - **No codegen.** Commands, events, components and system events are encoded as MessagePack by
@@ -60,8 +59,9 @@ shards/game/
                                   (Rate, Seconds) — imports nothing
     team/     package team        Team and Owner allegiance components + SameTeam, SideOf — a
                                   component-only leaf (imports only cardinal and interact)
-    combat/   package combat      damage: damage_system.go (the one writer of Health)
-      component/  package component   Health, DamageIntent, HealIntent — combat's leaf; any damage or
+    combat/   package combat      damage: damage_system.go (the one writer of Health), death_system.go
+                                  (removes what died, after the syncs)
+      component/  package component   Health, DamageIntent, HealIntent, Died — combat's leaf; any damage or
                                       heal source emits an intent without importing combat's systems
     area/     package area        areas: area_system.go (each area acts on what overlaps its holder,
                                   by rules), tuning.go (area kinds), doc.go
@@ -69,8 +69,8 @@ shards/game/
     player/   package player      player Body: spawn_system.go (the one Body constructor),
                                   input_system.go, movement_system.go, input_command.go,
                                   sync_system.go, tuning.go (champions)
-      component/  package component   Player, Champion, InputQueue + InputFrame, MoveSpeed, BodyClaimed
-                                      — player's leaf
+      component/  package component   Player, Champion, InputQueue + InputFrame + HitClaim, MoveSpeed,
+                                      BodyClaimed — player's leaf
       motion/     package motion      how a Body moves each tick: Step (the server's move, and the
                                       predictor's), Unit, Blockers — no Cardinal import
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
@@ -88,11 +88,13 @@ shards/game/
       hooks/      package hooks       what abilities do: one hook per name (launch_hook.go,
                                       dash_hook.go), Bind, Out — standard library only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
-                                  flight_system.go (flies each shot, acts on what it meets),
+                                  flight_system.go (flies each shot, checks hit claims, acts on what
+                                  it meets), history_system.go (each Body's and Echo's recent rows),
                                   sync_system.go, tuning.go (ProjectileTuning = flight.Tuning), doc.go
-      component/  package component   Projectile, LaunchIntent — projectile's leaf
+      component/  package component   Projectile, LaunchIntent, ShotEnded, TargetHistory — projectile's leaf
       flight/     package flight      one tick of a shot's flight and what it meets first: Tuning (shot
-                                      types and the default rules), Launch, Fly — no Cardinal import
+                                      types, the default rules, the claim window), Launch, Fly, and the
+                                      hit-claim check (Row, AtView, Confirm) — no Cardinal import
     effect/   package effect      timed effects on any entity: resolve_system.go (the one writer of
                                   Effects), tuning.go (EffectTuning = status.Tuning), doc.go
       component/  package component   Effects, EffectIntent — effect's leaf; any feature reads a status
@@ -102,8 +104,9 @@ shards/game/
     netsync/  package netsync     who may receive what: Viewers, Items (audience + seenBy). No events
                                   of its own; each feature sends its own
     predict/  package predict     the client's own Body ahead of the server: Reset from a body_sync,
-                                  Step per frame (cast gate, move, hooks, its shots, its effects) —
-                                  no Cardinal import
+                                  See each sync's Bodies and Echoes, Step per frame (cast gate, move,
+                                  hooks, its shots and their hit claims, its effects), Replay — no
+                                  Cardinal import
   predictor/  package main        js/wasm only: predict for the browser, with content.FS embedded
                                   (client/scripts/predictor.mjs)
 ```
@@ -114,15 +117,16 @@ reads — never another feature's behavior package (`player → {physics, intera
 player/component, player/motion, effect/component, effect/status, ability/component, ability/cast,
 projectile/component}`, `ability → {ability/hooks, ability/cast, physics, team, netsync,
 player/component, ability/component, effect/component, projectile/component}`, `projectile → {physics,
-interact, team, netsync, combat/component, effect/component, projectile/component, projectile/flight}`,
-`area → {physics, interact, team, area/component, combat/component, effect/component}`, `combat →
-{combat/component, ability/component}`, `echo → {physics, interact, team, netsync, echo/component,
-area/component, combat/component, player/component, effect/component}`, `effect → {data,
-effect/component, effect/status}`).
+interact, team, netsync, combat/component, effect/component, player/component, projectile/component,
+projectile/flight}`, `area → {physics, interact, team, area/component, combat/component,
+effect/component}`, `combat → {combat/component, ability/component}`, `echo → {physics, interact, team,
+netsync, echo/component, area/component, combat/component, player/component, effect/component,
+projectile/component}`, `effect → {data, effect/component, effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
 also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
-and combat's and projectile's leaves import ability's leaf for `Cause`), so they're dependency *sinks*
+combat's and projectile's leaves import ability's leaf for `Cause`, and projectile's imports
+`projectile/flight` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports nothing, `physics/mover` only box2d;
 `interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`); and
@@ -257,29 +261,56 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   (Update, registered *after* every emitter) drains them and is the **only** place `Health` changes.
   Sources today: `projectile.FlightSystem` (shot hits) and `area.AreaSystem` (anti-camp); no heals yet.
 - **HP stays between 0 and `MaxHP`.** For each target the resolver takes the tick's damage, then its
-  heals, and writes HP once, never above `MaxHP`. At 0 or below the target dies instead, so HP is never
-  stored below 0. Overkill counts, so a small heal can't save a target from a much bigger hit. Intents
-  are summed in sorted order, so the order they arrive in — or which source emitted first — never
-  changes the result, and there's **no per-type event fan-out**. (Rampage re-emitted a typed event per
+  heals, and writes HP once, never above `MaxHP`. Overkill counts, so a small heal can't save a target
+  from a much bigger hit. Intents are summed in sorted order, so the order they arrive in — or which
+  source emitted first — never changes the result, and there's **no per-type event fan-out**.
+- **A death is timed.** Each `DamageIntent` says when in the tick it lands (`Until`: a shot's
+  `flight.End.Until`, 1 for damage over the tick). At 0 or below the target dies: HP 0 and a `Died`
+  with the time of the hit that took it there. `combat.DeathSystem` removes it after the syncs, so each
+  sync sends it once more. (Rampage re-emitted a typed event per
   collision kind to control ordering; deferral makes that unnecessary.)
 - **Credit vs cause.** An intent's `Credit` is the Body credited with it (kills, lifesteal): the
   `team.Owner` of what dealt it. Its `Cause` is the cast that started it
-  (`ability/component.Cause{Caster, Ability, Tick}`, which `AbilityCast` embeds), carried by shots. A
-  reflect would change the shot's Owner and keep Cause. An area's damage has no cause.
+  (`ability/component.Cause{Caster, Ability, Tick, Seq}`, which `AbilityCast` embeds), carried by
+  shots. `Seq` is the input frame that cast it, or 0 for a cast no frame made (an Echo's). A reflect
+  would change the shot's Owner and keep Cause. An area's damage has no cause.
 - **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
   each shot every tick and resolves the **first** thing on its path that its rules don't pass, with one
-  Box2D shape cast on `Physics.Engine()` over the map kinds its rules stop at and every Body and Echo.
-  The cast's callback judges each shape found by its owner's relation and tags (team isn't a collision
-  bit) and keeps the nearest it doesn't pass. Bodies and Echoes mask `interact.Shot` so the cast finds
-  them. A shot's `Type` names its shot type, whose rules are looked up each tick; its numbers are copied
-  at launch.
+  Box2D shape cast (`flight.Fly`) on `Physics.Engine()` over the map kinds its rules stop at, and the
+  Bodies and Echoes for a shot no frame cast. The cast's callback judges each shape found by its
+  owner's relation and tags (team isn't a collision bit) and keeps the nearest it doesn't pass. Bodies
+  and Echoes mask `interact.Shot` so the cast finds them. A shot's `Type` names its shot type, whose
+  rules are looked up each tick; its numbers are copied at launch.
   - First hit wins, which is what makes body-blocking exact, and a swept path can't tunnel at any
-    speed. At the same point the earlier rule wins, then the lower entity ID, so by default a Body
-    standing on its own Echo shields it.
+    speed. At the same point the earlier rule wins, then the map, then the lower entity ID, so by
+    default a Body standing on its own Echo shields it.
+  - **Every end is one fact.** `flight.Fly` (and `flight.Confirm` for a claim) returns a `flight.End`
+    straight from the sweep: where the shot's center was, when in the tick (`Until`), and what it met.
+    `FlightSystem` emits it as `component.ShotEnded` for every end, its range included. Damage stays a
+    `DamageIntent`; the sync reads `ShotEnded`, as impacts and on-end rules will.
   - `pass` with a payload is rejected at load: with no hit list yet, it would hit the same thing every
     tick. Pierce, bounce and the rest come with their first users and a `Hits` list.
-  - Cost is O(S·T·R) per tick (shots × Bodies and Echoes × rules). If counts grow, gather candidates
-    with `OverlapAABB` first.
+  - Cost is one cast per shot per tick, O(log N + K·R) for N shapes, K found and R rules, plus one
+    pair cast, one overlap and one pair cast per candidate per hit claim.
+- **A Body's shots meet Bodies and Echoes through hit claims (favor the shooter).** A shot a frame cast
+  (`Cause.Seq` > 0) is cast against the map only. Its client's predictor flies it against the Bodies
+  and Echoes where the screen drew them, and the frame whose step stops it on one carries a `HitClaim`
+  (the shot's key `Seq` + `Ability` + `Launch`, and the target) with its `ViewTick`. `FlightSystem`
+  checks the claim in the caster's applied frame with `flight.Confirm`:
+  - the view is at most `rewind_seconds` old and its rows are saved (`flight.ValidView`);
+  - a Box2D pair cast of this tick's path meets the target at the view (`TargetHistory` and
+    `flight.AtView`), and its rules don't pass it there;
+  - the live map doesn't stop the shot first;
+  - no other Body or Echo comes first at the view: one overlap of the path, grown by
+    `max_target_speed` × the view's age, finds them, and each is pair-cast at its view. The caster's
+    own Body is where it is now.
+  - An accepted claim stops the shot now, and a payload becomes a `DamageIntent`. History is never
+    rewritten. A rejected one flies on.
+  - The pair cast is in the target's own frame, as a world cast does it, so it gets the predictor's
+    bits: no margin.
+  - Only this tick's path is checked. A client can claim the target a tick after its shot passed a
+    blocker, which an honest predictor would have claimed instead.
+  - Plan and limits: `docs/research/favor-the-shooter.md`.
 - **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
   `TriggerBegin/End` system events each tick (on PreUpdate). Blocking and sliding aren't reactions
   (a Body's happen in `player.MovementSystem`, see Movement and walls); these events carry category
@@ -304,7 +335,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Every collision or overlap check is a Box2D query. Never hand-write one.** No distance or overlap
   math between entities, and no loop over every target: ask Box2D with a cast, overlap or ray, through
   physics2d or `Physics.Engine()`, and decide pass or stop in its callback. Box2D's tree is what keeps
-  it scalable, and every shape is already in it.
+  it scalable, and every shape is already in it. A Box2D pair cast (`box2d.ShapeCastCircle`) on a shape
+  the tree found or a component saved counts too, like a hit claim's target at its view.
 - **Category bits describe what a shape IS (its kind, `interact.Kind`)** — `Body`, `Echo`, `Shot`,
   `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
   the bits, so never renumber one.
@@ -399,8 +431,13 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   before Cast), and a shot launched this tick moves this tick, its path starting at the shooter.
 - **`effect.ResolveSystem` runs after every system that reads status, just before the syncs.** What it
   adds applies from the next tick, and it drops what is over by then, so a whole tick reads one status.
+- **`projectile.HistorySystem` runs after `effect.ResolveSystem`, before the syncs.** Each Body's and
+  Echo's row is exactly what this tick's syncs show of it, its tags read for the next tick, so a hit
+  claim is checked against what the client drew. `FlightSystem` runs before it, so a claim can use
+  rows up to the tick before (`TestTargetHistoryIsWhatSyncsShow`).
 - **Sync systems run last** (`player`, `echo`, `ability`, `projectile`), so each sends the tick's final
-  state.
+  state. Only `combat.DeathSystem` comes after them: it removes what died this tick, once each sync
+  has sent it.
 
 ### Game data / definitions (data plugin)
 - **Use the engine's `pkg/plugin/data` plugin** for all data-driven config — it gives a typed
@@ -444,6 +481,13 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   hidden — so joining or reconnecting needs nothing else. Clients interpolate each stream on
   `Tick * TickSeconds`. A new synced feature adds its own event and `SyncSystem`; `netsync` doesn't
   change.
+- **An entity that ends partway through a tick is sent once more, where and when it ended.** A shot
+  comes in `ProjectileSync` on the tick it ended, `Ended`, at its end with `Until` (the part of the
+  tick it lived), through `netsync.Items.AddGone`. The engine's `EntityViews` draws every entity with
+  `blend`: one with `Until` below 1 moves at its own pace to its end, then goes, so it touches what it
+  hit. An Echo killed in a tick comes in `EchoSync` the same way: at HP 0, with `Until` from its `Died`,
+  so it goes when the shot reaches it. `flight.AtView` follows the same rule, so your predictor drops it
+  then too. Add `Until` to another entity's state when it needs the same.
 - **`netsync` decides who may receive what, never what is sent.** `netsync.Viewers(w)` lists the
   players with a Body. `netsync.Items[S]` collects a feature's per-entity state with an **audience**
   and filters it once per viewer team (`Lists`). It imports only `team` and `player/component`.
@@ -458,7 +502,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   player per tick. Serialization repeats once per player; bandwidth equals a broadcast.
 - **Player IDs are only trustworthy with Argus auth.** DEV auth trusts the `X-Player-ID` header.
 - **Clients predict their own Body with the server's own code.** Each tick a client sends
-  `Input{Session, Frames}` with its recent unacked frames — each frame is move, aim and buttons.
+  `Input{Session, Frames}` with its recent unacked frames — each frame is move, aim, buttons, the
+  render tick on screen (`ViewTick`) and its hit claims.
   `shards/game/predictor` builds `predict` (and through it `motion.Step` and world-engine's `box2d`) to
   wasm with the server's Go toolchain. Each frame the client sends runs one tick of it at once, in the
   server's order: the cast gate, the move, each cast's hook, your shots, then the effects your casts
@@ -471,18 +516,27 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     Body, a dash starts the tick after, and the HUD starts a cooldown at once. `ProjectileState.Caster`
     says whose a shot is: a client draws its own from the predictor and the rest from
     `ProjectileSync`.
-  - **What a shot hits is the server's to say.** A predicted shot flies through enemies until the next
-    body_sync drops it, about one round trip late. Lag compensation comes later.
+  - **Your shots stop where your screen shows them hit.** `BodyState` and `EchoState` carry what a
+    target needs (`Tags`; an Echo's `Owner` and `Radius`). The predictor keeps the last
+    `rewind_seconds` of them from each body_sync and echo_sync (`See`), and a body for each Body and
+    Echo the newest syncs show. Each new frame places them at its `ViewTick` with `flight.AtView` (the
+    rule `EntityViews` draws with), and your Body where it is. A shot that stops on one ends there, and
+    the frame claims it. `Step` also returns the shots that ended (`predict.Ended`, with their
+    `flight.End`), drawn with the same `blend` as everyone's. A replay (after each body_sync)
+    ends the shots its frame claimed and makes no claims. A shot you ended stays hidden while an
+    unacked frame claims it or the server still lists it, so a rejected claim never brings it back.
+    With a view too old or its syncs missing (ping above about 200 ms), your shots pass Bodies and
+    Echoes.
   - **The predictor embeds `content.FS`** and loads it with `predict.Load`, as the data plugin does. A
     client must be built from its server's tree, and a content hot reload shows as corrections until
     the client is rebuilt.
   - **Exact, unless the network surprises it.** `TestPredictionMatchesServer` checks the predictor lands
-    on the server's bits, and keeps its run in `testdata/prediction.msgpack`, which the wasm build must
-    match too (`predictor.test.ts`). Corrections still come from what the client can't know: a late
-    frame (the server repeats the last one), bunched frames past the buffer (the oldest are dropped),
-    and effects others cause.
+    on the server's bits, its hit claims included, and keeps its run in `testdata/prediction.msgpack`,
+    which the wasm build must match too (`predictor.test.ts`). Corrections still come from what the
+    client can't know: a late frame (the server repeats the last one), bunched frames past the buffer
+    (the oldest are dropped), and effects others cause.
   - The predictor's world has no map yet. Walls come with the arena, built exactly as the server builds
-    them.
+    them. Until then a claim behind a wall is rejected, though your screen showed the hit.
   - The client aims from where the frame moves its Body, since the server casts from there.
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
   (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, at
@@ -580,4 +634,5 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   fan-out). Compare against general best practice, not just what rampage did.
 - **Research findings** (not source of truth; this file and the code win) live in `docs/research/`.
   Map system: [`docs/research/map-system-findings.md`](docs/research/map-system-findings.md).
-- World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`; this project builds against the published release, not that checkout.
+- World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`; this project builds
+  against that checkout, through the `replace` in `go.mod` (see Build & run).

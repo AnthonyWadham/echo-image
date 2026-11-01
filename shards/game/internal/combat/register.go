@@ -11,4 +11,5 @@ func RegisterTypes(w *cardinal.World) {
 	w.RegisterComponent[component.Health]()
 	w.RegisterSystemEvent[component.DamageIntent]()
 	w.RegisterSystemEvent[component.HealIntent]()
+	w.RegisterSystemEvent[component.Died]()
 }

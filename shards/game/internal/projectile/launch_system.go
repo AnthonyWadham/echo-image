@@ -49,6 +49,7 @@ func launch(w *cardinal.World, in component.LaunchIntent, def flight.Shot) {
 	e.Set(component.Projectile{
 		Type:      in.Shot,
 		Cause:     in.Cause,
+		Launch:    in.Launch,
 		Velocity:  physics2d.Vec2(f.Velocity),
 		Radius:    f.Radius,
 		Damage:    def.Damage,
@@ -64,6 +65,8 @@ func compareLaunch(a, b component.LaunchIntent) int {
 		cmp.Compare(a.Cause.Caster, b.Cause.Caster),
 		cmp.Compare(a.Cause.Ability, b.Cause.Ability),
 		cmp.Compare(a.Cause.Tick, b.Cause.Tick),
+		cmp.Compare(a.Cause.Seq, b.Cause.Seq),
+		cmp.Compare(a.Launch, b.Launch),
 		cmp.Compare(a.Shot, b.Shot),
 		cmp.Compare(a.Owner, b.Owner),
 		cmp.Compare(a.Team, b.Team),

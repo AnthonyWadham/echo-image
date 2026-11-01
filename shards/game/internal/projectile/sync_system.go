@@ -9,8 +9,9 @@ import (
 	"echo_image/shards/game/internal/team"
 )
 
-// SyncSystem (Update, after shots fly) sends each player the shots they may see, with SendTo. O(P) to
-// collect, then one send per player.
+// SyncSystem (Update, after shots fly) sends each player the shots they may see, with SendTo: those in
+// flight, and each component.ShotEnded of the tick, where and when it ended, so a client draws it to
+// its end. O(P + E) to collect, then one send per player.
 type SyncSystem struct{}
 
 func (s *SyncSystem) Run(w *cardinal.World) {
@@ -30,6 +31,13 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			X:        pos.X,
 			Y:        pos.Y,
 			Radius:   p.Radius,
+			Until:    1,
+		})
+	}
+	for ev := range w.SystemEvents[component.ShotEnded]() {
+		shots.AddGone(ev.Team, netsync.Everyone, ProjectileState{
+			EntityID: uint32(ev.Shot), Type: ev.Type, Caster: uint32(ev.Cause.Caster), Team: ev.Team,
+			X: ev.End.At.X, Y: ev.End.At.Y, Radius: ev.Radius, Until: ev.End.Until, Ended: true,
 		})
 	}
 	lists := shots.Lists(viewers)

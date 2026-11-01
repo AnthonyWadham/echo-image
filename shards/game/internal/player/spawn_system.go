@@ -9,22 +9,25 @@ import (
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
+	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/team"
 )
 
 // bodyRow is a player Body: identity, champion, team, owner (itself), input, speed, the physics2d trio,
-// and its effect list. Deliberately NO Health — the Body is invincible; Health lives on the Echo.
+// its effect list, and the rows hit claims are checked against. Deliberately NO Health — the Body is
+// invincible; Health lives on the Echo.
 type bodyRow struct {
-	Player    component.Player
-	Champion  component.Champion
-	Team      team.Team
-	Owner     team.Owner
-	Input     component.InputQueue
-	Speed     component.MoveSpeed
-	Transform physics2d.Transform2D
-	Velocity  physics2d.Velocity2D
-	Body      physics2d.PhysicsBody2D
-	Effects   effectcomp.Effects
+	Player        component.Player
+	Champion      component.Champion
+	Team          team.Team
+	Owner         team.Owner
+	Input         component.InputQueue
+	Speed         component.MoveSpeed
+	Transform     physics2d.Transform2D
+	Velocity      physics2d.Velocity2D
+	Body          physics2d.PhysicsBody2D
+	Effects       effectcomp.Effects
+	TargetHistory projectilecomp.TargetHistory
 }
 
 // DevSpawnSystem drops two players on opposing teams (a 1v1) at fixed spawn points at world init.

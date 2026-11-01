@@ -3,16 +3,20 @@ package flight
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // Tuning is the shot types and their rules, loaded from content/projectile/tuning.json. What a shot
 // does when it meets a thing is a rule: the shot type's own rules first, then the defaults, and the
-// first match wins.
+// first match wins. A hit claim's view may be up to RewindSeconds old.
 type Tuning struct {
-	Defaults []Meet          `json:"defaults"` // the GDD's rules (§7), under every shot type's own
-	Shots    map[string]Shot `json:"shots"`    // by shot type ID
+	Defaults       []Meet          `json:"defaults"`         // the GDD's rules (§7), under every shot type's own
+	Shots          map[string]Shot `json:"shots"`            // by shot type ID
+	RewindSeconds  float64         `json:"rewind_seconds"`   // how long before its tick a hit claim's view may be
+	MaxTargetSpeed float64         `json:"max_target_speed"` // the fastest a Body or Echo moves, units per second
 }
 
 // Shot is a shot type.
@@ -50,8 +54,17 @@ func (Tuning) Name() string { return "projectile_tuning" }
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "projectile/tuning.json" }
 
+// RewindTicks converts RewindSeconds to ticks.
+func (t Tuning) RewindTicks() uint64 {
+	return uint64(math.Round(t.RewindSeconds * float64(timestep.Rate)))
+}
+
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t Tuning) Validate() error {
+	if !(t.RewindSeconds > 0) || t.RewindTicks() < 1 || !(t.MaxTargetSpeed > 0) {
+		return fmt.Errorf("projectile_tuning: rewind_seconds must be >= 1 tick at %d Hz and max_target_speed > 0, "+
+			"got %v and %v", timestep.Rate, t.RewindSeconds, t.MaxTargetSpeed)
+	}
 	if err := validMeets("defaults", t.Defaults); err != nil {
 		return err
 	}

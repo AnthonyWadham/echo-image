@@ -3,7 +3,7 @@ module echo_image
 go 1.27.1
 
 require (
-	github.com/argus-labs/world-engine v0.21.0
+	github.com/argus-labs/world-engine v0.22.0-beta
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
@@ -170,7 +170,5 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/argus-labs/world-engine => ../world-engine
 
 tool github.com/argus-labs/world-engine/cli/cmd/world

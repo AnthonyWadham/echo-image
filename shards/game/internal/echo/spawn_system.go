@@ -12,6 +12,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	playercomp "echo_image/shards/game/internal/player/component"
+	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/team"
 )
 
@@ -26,18 +27,19 @@ type bodyRow struct {
 }
 
 // echoRow is the Echo entity: identity + trail, the Health it carries, team and owner, the physics2d
-// trio and its effect list. BodyTypeManual means the replay owns the pose; the collider is the hurtbox projectile
-// tests shots against.
+// trio, its effect list, and the rows hit claims are checked against. BodyTypeManual means the replay
+// owns the pose; the collider is the hurtbox projectile tests shots against.
 type echoRow struct {
-	Echo      component.Echo
-	History   component.PathHistory
-	Health    combatcomp.Health
-	Team      team.Team
-	Owner     team.Owner
-	Transform physics2d.Transform2D
-	Velocity  physics2d.Velocity2D
-	Body      physics2d.PhysicsBody2D
-	Effects   effectcomp.Effects
+	Echo          component.Echo
+	History       component.PathHistory
+	Health        combatcomp.Health
+	Team          team.Team
+	Owner         team.Owner
+	Transform     physics2d.Transform2D
+	Velocity      physics2d.Velocity2D
+	Body          physics2d.PhysicsBody2D
+	Effects       effectcomp.Effects
+	TargetHistory projectilecomp.TargetHistory
 }
 
 // SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.InputSystem takes

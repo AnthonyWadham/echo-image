@@ -1,7 +1,8 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
+import type { EchoSync } from '../echo/echo_sync_event'
 import type { BodyState, BodySync } from './body_sync_event'
-import type { FrameInput } from './input_stream'
+import type { HitClaim, InputFrame } from './input_command'
 import wasmUrl from './predictor.wasm?url'
 
 /** One of your shots after the newest tick: where it is, and where it was a tick before. */
@@ -20,14 +21,34 @@ export interface PredictedKit {
   Slots: { Ability: string; ReadyTick: number }[]
 }
 
+/** One of your shots that ended in the newest tick: X, Y is where it ended, Until (0 to 1) through the tick. */
+export interface EndedShot extends PredictedShot {
+  Until: number
+}
+
+/** A new frame's tick: where it leaves your Body, its claims, and your shots that ended in it. */
+export interface Stepped {
+  at: Vec2
+  claims: HitClaim[]
+  ended: EndedShot[]
+}
+
 /** The server's own code for your Body and what it casts: shards/game/predictor, built to wasm. */
 export interface Predictor {
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync, you: BodyState): void
+  /** Keeps the Bodies a body_sync shows, so your shots meet them where your screen drew them. */
+  seeBodies(sync: BodySync): void
+  /** Keeps the Echoes an echo_sync shows, the same way. */
+  seeEchoes(sync: EchoSync): void
+  /** Forgets the Bodies and Echoes it saw: after a reconnect or a server restart. */
+  forget(): void
   /** Where a frame's move would leave your Body next tick, without stepping: aim from there. */
   peek(moveX: number, moveY: number): Vec2
-  /** Runs the next tick for a frame, as the server will, and returns your Body's new center. */
-  step(frame: FrameInput): Vec2
+  /** Runs the next tick for a new frame, as the server will. Your shots meet others where its ViewTick drew them. */
+  step(frame: InputFrame): Stepped
+  /** Runs the next tick for a frame stepped before: the shots it claimed end, and it claims none. */
+  replay(frame: InputFrame): Vec2
   /** Your shots after the newest tick. */
   shots(): PredictedShot[]
   /** Your kit after the newest tick. */
@@ -37,8 +58,12 @@ export interface Predictor {
 /** What shards/game/predictor/main.go sets on globalThis. */
 interface Exports {
   reset(state: object): void
+  seeBodies(sync: object): void
+  seeEchoes(sync: object): void
+  forget(): void
   peek(moveX: number, moveY: number): Vec2
-  step(frame: FrameInput): Vec2
+  step(frame: InputFrame): Vec2 & { claims: HitClaim[]; ended: EndedShot[] }
+  replay(frame: InputFrame): Vec2
   shots(): PredictedShot[]
   kit(): PredictedKit
 }
@@ -74,8 +99,17 @@ export async function loadPredictor(wasm?: BufferSource): Promise<Predictor> {
         Shots,
       })
     },
+    seeBodies: (sync) =>
+      exports.seeBodies({ Tick: String(sync.Tick), Bodies: sync.Bodies.map((b) => ({ ...b, Tags: String(b.Tags) })) }),
+    seeEchoes: (sync) =>
+      exports.seeEchoes({ Tick: String(sync.Tick), Echoes: sync.Echoes.map((e) => ({ ...e, Tags: String(e.Tags) })) }),
+    forget: () => exports.forget(),
     peek: (moveX, moveY) => exports.peek(moveX, moveY),
-    step: (frame) => exports.step(frame),
+    step: (frame) => {
+      const { x, y, claims, ended } = exports.step(frame)
+      return { at: { x, y }, claims, ended }
+    },
+    replay: (frame) => exports.replay(frame),
     shots: () => exports.shots(),
     kit: () => exports.kit(),
   }

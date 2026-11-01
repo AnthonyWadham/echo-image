@@ -5,6 +5,7 @@ import (
 
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/effect/status"
+	"echo_image/shards/game/internal/interact"
 )
 
 // BodySync is one player's view of the Bodies this tick, plus their own prediction data. Server time
@@ -35,21 +36,28 @@ type YouState struct {
 	Shots        cardinal.Slice[ShotState]     // the shots your Body cast that are in flight
 }
 
-// ShotState is one of your shots in flight: what the predictor flies it on with.
+// ShotState is one of your shots in flight: what the predictor flies it on with. Ability, Seq and
+// Launch are its key: the ability and input frame that cast it, and its place among that cast's
+// launches.
 type ShotState struct {
 	Type       string // shot type ID: its rules
+	Ability    string
+	Seq        uint32
+	Launch     uint32
 	X, Y       float64
 	VelX, VelY float64 // units per second
 	Radius     float64
 	Remaining  float64 // distance left before it expires
 }
 
-// BodyState is one player Body.
+// BodyState is one player Body. A Body is its own owner. Its position, radius and tags are its
+// projectilecomp.TargetHistory row.
 type BodyState struct {
 	EntityID uint32
 	PlayerID uint32
 	Nickname string
 	Team     uint8
 	X, Y     float64
-	Radius   float64 // its collider circle, set by its champion
+	Radius   float64       // its collider circle, set by its champion
+	Tags     interact.Tags // what its effects make it from the next tick on, as that tick's rules read them
 }

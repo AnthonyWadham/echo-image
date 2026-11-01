@@ -35,12 +35,34 @@ func main() {
 			return point(p.Peek(args[0].Float(), args[1].Float()))
 		}),
 		"step": js.FuncOf(func(_ js.Value, args []js.Value) any {
-			f := args[0]
-			return point(p.Step(predict.Frame{
-				MoveX: f.Get("MoveX").Float(), MoveY: f.Get("MoveY").Float(),
-				AimX: f.Get("AimX").Float(), AimY: f.Get("AimY").Float(),
-				Buttons: uint32(f.Get("Buttons").Int()),
-			}))
+			at, claims, ended := p.Step(frame(args[0]))
+			out := []any{}
+			for _, c := range claims {
+				out = append(out, map[string]any{"Seq": c.Seq, "Ability": c.Ability, "Launch": c.Launch, "Target": c.Target})
+			}
+			ends := []any{}
+			for _, e := range ended { // drawn from where the tick found it to where it ended
+				ends = append(ends, map[string]any{
+					"Type": e.Type, "X": e.End.At.X, "Y": e.End.At.Y, "PrevX": e.Pos.X, "PrevY": e.Pos.Y,
+					"Radius": e.Radius, "Until": e.End.Until,
+				})
+			}
+			return map[string]any{"x": at.X, "y": at.Y, "claims": out, "ended": ends}
+		}),
+		"replay": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return point(p.Replay(frame(args[0])))
+		}),
+		"seeBodies": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			p.See(uint64Of(args[0].Get("Tick")), interact.Body, sights(args[0].Get("Bodies"), false))
+			return nil
+		}),
+		"seeEchoes": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			p.See(uint64Of(args[0].Get("Tick")), interact.Echo, sights(args[0].Get("Echoes"), true))
+			return nil
+		}),
+		"forget": js.FuncOf(func(js.Value, []js.Value) any {
+			p.Forget()
+			return nil
 		}),
 		"shots": js.FuncOf(func(js.Value, []js.Value) any {
 			var shots []any
@@ -63,6 +85,49 @@ func main() {
 }
 
 func point(v box2d.Vec2) map[string]any { return map[string]any{"x": v.X, "y": v.Y} }
+
+// frame reads an InputFrame.
+func frame(f js.Value) predict.Frame {
+	out := predict.Frame{
+		Seq:   uint32(f.Get("Seq").Int()),
+		MoveX: f.Get("MoveX").Float(), MoveY: f.Get("MoveY").Float(),
+		AimX: f.Get("AimX").Float(), AimY: f.Get("AimY").Float(),
+		Buttons:  uint32(f.Get("Buttons").Int()),
+		ViewTick: f.Get("ViewTick").Float(),
+	}
+	claims := f.Get("Claims")
+	for i := range claims.Length() {
+		c := claims.Index(i)
+		key := predict.Key{
+			Seq: uint32(c.Get("Seq").Int()), Ability: c.Get("Ability").String(), Launch: uint32(c.Get("Launch").Int()),
+		}
+		out.Claims = append(out.Claims, predict.Claim{Key: key, Target: uint32(c.Get("Target").Int())})
+	}
+	return out
+}
+
+// sights reads a body_sync's Bodies or an echo_sync's Echoes, as predictor.ts sends them. A Body owns
+// itself and lives the whole tick; an Echo names its owner and how much of the tick it lived.
+func sights(list js.Value, echoes bool) []predict.Sight {
+	var out []predict.Sight
+	for i := range list.Length() {
+		v := list.Index(i)
+		id := uint32(v.Get("EntityID").Int())
+		owner, until := id, 1.0
+		if echoes {
+			owner, until = uint32(v.Get("Owner").Int()), v.Get("Until").Float()
+		}
+		out = append(out, predict.Sight{
+			ID:     id,
+			Side:   interact.Side{Owner: owner, Team: uint8(v.Get("Team").Int())},
+			Center: box2d.Vec2{X: v.Get("X").Float(), Y: v.Get("Y").Float()},
+			Radius: v.Get("Radius").Float(),
+			Tags:   interact.Tags(uint64Of(v.Get("Tags"))),
+			Until:  until,
+		})
+	}
+	return out
+}
 
 // state reads the predict.State that predictor.ts built from a body_sync. A uint64 comes as a decimal
 // string, since a JS number can't hold every one.
@@ -104,7 +169,10 @@ func state(v js.Value) predict.State {
 	shots := v.Get("Shots")
 	for i := range shots.Length() {
 		h := shots.Index(i)
-		s.Shots = append(s.Shots, predict.Shot{Type: h.Get("Type").String(), Flight: flight.Flight{
+		key := predict.Key{
+			Seq: uint32(h.Get("Seq").Int()), Ability: h.Get("Ability").String(), Launch: uint32(h.Get("Launch").Int()),
+		}
+		s.Shots = append(s.Shots, predict.Shot{Type: h.Get("Type").String(), Key: key, Flight: flight.Flight{
 			Pos:       box2d.Vec2{X: h.Get("X").Float(), Y: h.Get("Y").Float()},
 			Velocity:  box2d.Vec2{X: h.Get("VelX").Float(), Y: h.Get("VelY").Float()},
 			Radius:    h.Get("Radius").Float(),

@@ -139,8 +139,9 @@ These were checked against primary sources (docs, engine source, data-mined file
 - Shared core, built: `physics/mover`, `physics/timestep`, `effect/status`, `interact`, `ability/hooks`,
   `ability/cast`, `projectile/flight`, `player/motion`, `predict`. Planned: `ability/charges`, `echo/rewind`. None may
   import Cardinal or a component leaf (a leaf pulls in about 737 packages).
-- Predicted: your own movement, cast gate, cooldowns, self effects and your shots' flight. Not hits, damage, death or
-  other players. A predicted shot flies through enemies until the server's next state drops it.
+- Predicted: your own movement, cast gate, cooldowns, self effects, your shots' flight, and where they stop on a Body
+  or Echo your screen drew (built 2026-10-26: the frame claims the hit, and the server checks it; see
+  `favor-the-shooter.md`). Not damage, death or other players.
 - `YouState` carries your champion, cooldown ticks, effect entries (with `EffectsNext`) and shots. Send the entries,
   never the folded mask.
 - Determinism: round every product, no `math.Sin`, `Exp`, `Pow` or `Hypot` (it fuses on arm64; use `box2d.Length`),
@@ -183,7 +184,7 @@ Left for later, each with its first user:
 - Immunity and modifier stages (step 5). The generic on-cast reactor (step 3) is built as `ability.CastHookSystem`.
 - Charges, teleports and the Echo rewind.
 - A test that pins the tick order (step 1).
-- Predicted shot hits (lag compensation), and walls in the predictor (with the arena).
+- Walls in the predictor (with the arena). Predicted shot hits are built (`favor-the-shooter.md`).
 
 ## Open decisions
 

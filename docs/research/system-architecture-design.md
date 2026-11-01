@@ -178,7 +178,8 @@ type Owner struct{ Body uint32 }
 - **Owns:** shots. **Executor:** `FlightSystem` (built), in fixed stages per shot: steer, sweep, what it met, end.
 - **Rules:** `meets` (the shot type's, then the defaults), `target` (for homing and chain), `on_end` (none, split,
   return), counts (`bounces`, `pierces`, `chains`), and an on-hit payload (damage plus effects).
-- **`on_end` fires whenever a shot ends:** on something it met, or at max range.
+- **`on_end` fires whenever a shot ends:** on something it met, or at max range. Its fact is built:
+  `ShotEnded` in projectile's leaf, with `flight.End` (where, when in the tick, on what).
 - **In:** `LaunchIntent{Shot, Cause, Owner, Dir, Target}`. **Out:** `DamageIntent` (built), `EffectIntent`,
   `ShotHit` (a fact for hooks).
 

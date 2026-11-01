@@ -10,7 +10,10 @@ export interface ProjectileSync {
   Projectiles: ProjectileState[]
 }
 
-/** projectile.ProjectileState */
+/**
+ * projectile.ProjectileState. Until is the part of the tick it flew: 1 in flight, and for an Ended shot
+ * when it reached X, Y.
+ */
 export interface ProjectileState {
   EntityID: number // uint32
   Type: string // shot type ID, for its look
@@ -19,4 +22,6 @@ export interface ProjectileState {
   X: number
   Y: number
   Radius: number
+  Until: number
+  Ended: boolean // it ended this tick at X, Y; the next sync drops it
 }

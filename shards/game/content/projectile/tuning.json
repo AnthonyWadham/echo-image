@@ -5,6 +5,8 @@
     {"kinds": ["body"], "do": "stop"},
     {"kinds": ["echo"], "do": "stop", "payload": true}
   ],
+  "rewind_seconds": 0.4,
+  "max_target_speed": 20,
   "shots": {
     "bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}
   }

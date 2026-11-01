@@ -46,9 +46,12 @@ export interface EffectEntry {
   Serial: number // uint32
 }
 
-/** player.ShotState: one of your shots in flight. */
+/** player.ShotState: one of your shots in flight. Ability, Seq and Launch are its key. */
 export interface ShotState {
   Type: string // shot type ID: its rules
+  Ability: string // the ability that cast it
+  Seq: number // uint32: the input frame that cast it
+  Launch: number // uint32: its place among that cast's launches
   X: number
   Y: number
   VelX: number // units per second
@@ -66,4 +69,5 @@ export interface BodyState {
   X: number
   Y: number
   Radius: number // its collider circle
+  Tags: bigint // interact.Tags: what its effects make it from the next tick on
 }

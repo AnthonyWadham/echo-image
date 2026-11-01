@@ -55,16 +55,34 @@ const bodySync: BodySync = {
       },
     ],
     EffectsNext: 4294967295,
-    Shots: [{ Type: 'bolt', X: -4.25, Y: 1.5, VelX: 9, VelY: -12, Radius: 0.15, Remaining: 17.75 }],
+    Shots: [
+      {
+        Type: 'bolt',
+        Ability: 'bolt',
+        Seq: 4294967295,
+        Launch: 1,
+        X: -4.25,
+        Y: 1.5,
+        VelX: 9,
+        VelY: -12,
+        Radius: 0.15,
+        Remaining: 17.75,
+      },
+    ],
   },
   Bodies: [
-    { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5 },
-    { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75, Radius: 0.75 },
+    { EntityID: 1, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 0n },
+    { EntityID: 2, PlayerID: 2, Nickname: 'Échø ✦', Team: 1, X: -0.25, Y: 3.75, Radius: 0.75, Tags: 3n },
   ],
 }
 const echoSync: EchoSync = {
   Tick: 7n,
-  Echoes: [{ EntityID: 3, PlayerID: 1, Team: 0, X: -4.5, Y: 0.5, HP: 62.5, MaxHP: 100 }],
+  Echoes: [
+    { EntityID: 3, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n, HP: 62.5, MaxHP: 100,
+      Until: 1 },
+    { EntityID: 4, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, HP: 0, MaxHP: 100,
+      Until: 0.625 },
+  ],
 }
 const abilitySync: AbilitySync = {
   Tick: 7n,
@@ -72,13 +90,16 @@ const abilitySync: AbilitySync = {
 }
 const projectileSync: ProjectileSync = {
   Tick: 8n,
-  Projectiles: [{ EntityID: 9, Type: 'bolt', Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15 }],
+  Projectiles: [
+    { EntityID: 9, Type: 'bolt', Caster: 4294967295, Team: 1, X: 0.125, Y: -7.5, Radius: 0.15, Until: 1, Ended: false },
+    { EntityID: 10, Type: 'bolt', Caster: 3, Team: 0, X: 2.5, Y: 1, Radius: 0.15, Until: 0.375, Ended: true },
+  ],
 }
 const projectileSyncEmpty: ProjectileSync = { Tick: 9n, Projectiles: [] }
 const input: Input = {
   Session: 305419896,
   Frames: [
-    { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0 },
+    { Seq: 1, MoveX: 1, MoveY: 0, AimX: 0, AimY: 0, Buttons: 0, ViewTick: 0, Claims: [] },
     {
       Seq: 2,
       MoveX: 0.7071067811865476,
@@ -86,6 +107,11 @@ const input: Input = {
       AimX: 3.5,
       AimY: -1.25,
       Buttons: 1,
+      ViewTick: 41.375,
+      Claims: [
+        { Seq: 1, Ability: 'bolt', Launch: 1, Target: 4294967295 },
+        { Seq: 2, Ability: 'nova', Launch: 0, Target: 3 },
+      ],
     },
   ],
 }

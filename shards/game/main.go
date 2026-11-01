@@ -114,9 +114,16 @@ func registerWith(world *cardinal.World, src data.Source) {
 	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
 	world.RegisterSystem(&effect.ResolveSystem{Data: dataPlugin})
 
-	// Client sync (Update, last): each feature sends each player this tick's final state it may see.
+	// Target history (Update, after everything that moves, kills or tags a Body or Echo, before the
+	// syncs): each saves what this tick's syncs show of it, so a hit claim is checked at the shooter's view.
+	world.RegisterSystem(&projectile.HistorySystem{Data: dataPlugin})
+
+	// Client sync (Update): each feature sends each player this tick's final state it may see.
 	world.RegisterSystem(&player.SyncSystem{})
 	world.RegisterSystem(&echo.SyncSystem{})
 	world.RegisterSystem(&ability.SyncSystem{Data: dataPlugin})
 	world.RegisterSystem(&projectile.SyncSystem{})
+
+	// Deaths (Update, last): what died this tick goes, after each sync sent it once more.
+	world.RegisterSystem(&combat.DeathSystem{})
 }

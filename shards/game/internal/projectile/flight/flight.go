@@ -42,44 +42,79 @@ type Target struct {
 // the world has no Bodies or Echoes for shots to meet, as in the client predictor's.
 type Targets func(shape box2d.ShapeID) (Target, bool)
 
-// Hit is what a shot ended at. It is zero when the shot flew its range, and has no Target on the map.
+// Hit is what a shot ended at: its kind, and the entity of a Body or Echo. It is zero when the shot
+// flew its range.
 type Hit struct {
+	Kind   interact.Kind
 	Target uint32
 	Meet   Meet
+}
+
+// End is how a shot's flight ended in a tick: where its center was, the part of the tick it flew to get
+// there (0 to 1), and what it met.
+type End struct {
+	At    box2d.Vec2
+	Until float64
+	Hit   Hit
 }
 
 // hit is a thing on a shot's path that it doesn't pass.
 type hit struct {
 	fraction float64
 	rule     int // the index of the rule that met it
-	onMap    bool
+	kind     interact.Kind
 	target   uint32
 	meet     Meet
 }
 
+// onMap reports whether h is on the map, not a Body or Echo.
+func (h hit) onMap() bool { return h.kind&(interact.Body|interact.Echo) == 0 }
+
+// before reports whether h comes before o on a shot's path: the nearer first, then the earlier rule,
+// then the map, then the lower target ID.
+func (h hit) before(o hit) bool {
+	return cmp.Or(cmp.Compare(h.fraction, o.fraction), cmp.Compare(h.rule, o.rule),
+		compareBool(h.onMap(), o.onMap()), cmp.Compare(h.target, o.target)) < 0
+}
+
+func (h hit) result() Hit { return Hit{Kind: h.kind, Target: h.target, Meet: h.meet} }
+
 // Fly flies f, a shot of type def from side, one tick of dt seconds through world, where targets says
-// whose each Body and Echo shape is. It returns f after the tick, and over=true when the shot ends in
-// it: at its range, or at hit, the first thing on its path that its rules don't pass. A shot launched
-// this tick flies this tick, so its path starts at the shooter.
+// whose each Body and Echo shape is. It returns f after the tick, or over=true and how it ended in it: at
+// its range, or at the first thing on its path that its rules don't pass. A shot launched this tick flies
+// this tick, so its path starts at the shooter.
 func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, targets Targets, dt float64,
-) (next Flight, over bool, h Hit) {
+) (next Flight, end End, over bool) {
+	to, flown, seconds, last := f.step(dt)
+	if first, found := t.firstHit(world, def, f.Pos, to, f.Radius, side, targets); found {
+		return f, f.endAt(to, seconds/dt, first), true // Stop is the only response that ends at a thing
+	}
+	if last {
+		return f, End{At: to, Until: seconds / dt}, true // flew its range
+	}
+	f.Pos = to
+	f.Remaining -= flown
+	return f, End{}, false
+}
+
+// step is where f's flight this tick goes, how far and how many seconds it flies, and last=true when
+// that reaches its range.
+func (f Flight) step(dt float64) (to box2d.Vec2, flown, seconds float64, last bool) {
 	speed := box2d.Length(f.Velocity)
-	seconds := dt
+	seconds = dt
 	// Decided before the step: a remainder after it can round to a hair above 0 and never reach it.
-	last := f.Remaining <= float64(speed*seconds)
+	last = f.Remaining <= float64(speed*seconds)
 	if last {
 		seconds = f.Remaining / speed // the last step stops at the range
 	}
-	end := box2d.Vec2{X: f.Pos.X + float64(f.Velocity.X*seconds), Y: f.Pos.Y + float64(f.Velocity.Y*seconds)}
-	if first, found := t.firstHit(world, def, f.Pos, end, f.Radius, side, targets); found {
-		return f, true, Hit{Target: first.target, Meet: first.meet} // Stop is the only response that ends at a thing
-	}
-	if last {
-		return f, true, Hit{} // flew its range
-	}
-	f.Pos = end
-	f.Remaining -= float64(speed * seconds)
-	return f, false, Hit{}
+	to = box2d.Vec2{X: f.Pos.X + float64(f.Velocity.X*seconds), Y: f.Pos.Y + float64(f.Velocity.Y*seconds)}
+	return to, float64(speed * seconds), seconds, last
+}
+
+// endAt is how f, flying to to over part of the tick, ends at h: where the cast touched it.
+func (f Flight) endAt(to box2d.Vec2, part float64, h hit) End {
+	at := box2d.Vec2{X: f.Pos.X + float64((to.X-f.Pos.X)*h.fraction), Y: f.Pos.Y + float64((to.Y-f.Pos.Y)*h.fraction)}
+	return End{At: at, Until: h.fraction * part, Hit: h.result()}
 }
 
 // firstHit returns the nearest thing on the path that the shot doesn't pass, from one Box2D shape cast
@@ -136,8 +171,9 @@ func meetShape(shape box2d.ShapeID, _, _ box2d.Vec2, fraction float64, ctx any) 
 	if c.world.IsShapeSensor(shape) {
 		return -1 // skip sensors
 	}
-	h := hit{fraction: fraction, rule: c.mapRule, onMap: true, meet: Meet{Do: Stop}}
-	if kind := interact.Kind(c.world.ShapeFilter(shape).CategoryBits) & (interact.Body | interact.Echo); kind != 0 {
+	category := interact.Kind(c.world.ShapeFilter(shape).CategoryBits)
+	h := hit{fraction: fraction, rule: c.mapRule, kind: category & (interact.Wall | interact.Bounds), meet: Meet{Do: Stop}}
+	if kind := category & (interact.Body | interact.Echo); kind != 0 {
 		target, ok := c.targets(shape)
 		if !ok {
 			return -1
@@ -146,10 +182,9 @@ func meetShape(shape box2d.ShapeID, _, _ box2d.Vec2, fraction float64, ctx any) 
 		if m.Do == Pass {
 			return -1
 		}
-		h = hit{fraction: fraction, rule: i, target: target.ID, meet: m}
+		h = hit{fraction: fraction, rule: i, kind: kind, target: target.ID, meet: m}
 	}
-	if !c.found || cmp.Or(cmp.Compare(h.fraction, c.first.fraction), cmp.Compare(h.rule, c.first.rule),
-		compareBool(h.onMap, c.first.onMap), cmp.Compare(h.target, c.first.target)) < 0 {
+	if !c.found || h.before(c.first) {
 		c.first, c.found = h, true
 	}
 	return 1

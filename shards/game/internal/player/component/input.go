@@ -8,12 +8,25 @@ import (
 
 // InputFrame is one tick of a client's input, with its sequence number. Move and Aim are directions
 // of any length; read them through Move() and Aim(). Buttons has bit N set while the button for kit
-// slot N is held (bit 0 is primary fire), so a new ability never changes this type.
+// slot N is held (bit 0 is primary fire), so a new ability never changes this type. ViewTick is the
+// render tick on the client's screen when it made the frame, and Claims are the shots its step ended
+// on Bodies and Echoes there.
 type InputFrame struct {
 	Seq          uint32
 	MoveX, MoveY float64
 	AimX, AimY   float64
 	Buttons      uint32
+	ViewTick     float64
+	Claims       cardinal.Slice[HitClaim]
+}
+
+// HitClaim says a frame's step ended one of its Body's shots on a Body or Echo, as its client drew
+// them at the frame's ViewTick. Seq, Ability and Launch are the shot's key.
+type HitClaim struct {
+	Seq     uint32
+	Ability string
+	Launch  uint32
+	Target  uint32 // the Body's or Echo's EntityID
 }
 
 // ButtonCount is how many buttons, and so kit slots, an InputFrame carries.
