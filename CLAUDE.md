@@ -619,7 +619,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     on the server's bits, each shot's end and your Echo included, after a step and after a replay. Its
     golden is the run's text digest, `testdata/prediction-20hz.txt` (`-60hz` at 60 Hz, a line a step):
     `-update` rewrites it, so review that diff. The wasm build must land on the same run: vitest's setup
-    has the test write it (`-record`, a gitignored build output) and `predictor.test.ts` replays it. Its bad network (`badNetwork`: lost, held
+    has the test write it (`-record`, a gitignored build output) and `predictor.test.ts` replays it.
+    The run plays its own pinned content (`recorded` in `prediction_test.go`), so a balance change
+    never moves it. Its bad network (`badNetwork`: lost, held
     and bunched Inputs, a full queue dropping frames) checks each replay of several unacked frames
     lands there too once its frame applies, unless the server coasted or dropped a frame first, and
     that a correction is at most a tick of walking per such surprise. The recording keeps those

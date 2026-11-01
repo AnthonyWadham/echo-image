@@ -388,6 +388,27 @@ func record(p *predict.Predictor, sync player.BodySync, targets projectile.Targe
 	return step
 }
 
+// recorded is the content TestPredictionMatchesServer's run plays: every number it reads, pinned, so a
+// balance change never moves the recording. Her Echo trails her by a second.
+var recorded = map[string]string{
+	"player/tuning.json": `{"input_buffer_seconds": 0.5, "input_timeout_seconds": 0.5, "echo_path_seconds": 0.5,
+		"champions": {"starter": {"move_speed": 5.0, "radius": 0.5}}}`,
+	"echo/tuning.json": `{"max_hp": 100, "hit_radius": 0.5,
+		"champions": {"starter": {"delay_seconds": 1, "area": "anticamp"}}}`,
+	"area/tuning.json": `{"kinds": {"anticamp": {"rules": [
+		{"kinds": ["body"], "relations": ["own"], "to": "self", "damage_per_second": 25}]}}}`,
+	"ability/tuning.json": `{"kits": {"starter": ["bolt", "dash"]}, "abilities": {
+		"bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
+		"dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
+			"params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}}}`,
+	"projectile/tuning.json": `{"rewind_seconds": 0.4,
+		"shots": {"bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}}}`,
+	"effect/tuning.json": `{"kinds": {
+		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
+		"stun": {"tags": ["stunned", "cc"], "stacking": "merge"},
+		"slow": {"tags": ["cc"], "stat": "move_speed", "stacking": "per_source"}}}`,
+}
+
 // The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts
 // and their cooldowns, its dash, its shots and its Echo. Started from any tick's state and stepped by the
 // frames after it, it lands on the server's bits, through slows, stuns, forced moves, held buttons, bad
@@ -399,19 +420,17 @@ func record(p *predict.Predictor, sync player.BodySync, targets projectile.Targe
 // -record writes the run, so the client checks its wasm build lands there too (predictor.test.ts).
 func TestPredictionMatchesServer(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, map[string]string{
-		"echo/tuning.json": `{"champions": {"starter": {"delay_seconds": 1}}}`,
-	}), fx))
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, recorded), fx))
 	alice, bob := claim(t, w)
-	rules, err := predict.Load(content.FS)
+	rules, err := predict.Load(patched(t, recorded))
 	if err != nil {
 		t.Fatal(err)
 	}
 	p := predict.New(rules)
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	from := yourBody(t, bodiesFor(t, w, "bob")).EntityID
-	dashSlot, _ := dash(t)
-	boltCast, bolt := primary(t)
+	const dashSlot = 1 // recorded's kit: bolt, then dash
+	boltCast, bolt := rules.Abilities.Abilities["bolt"], rules.Shots.Shots["bolt"]
 	second := int(boltCast.CooldownTicks()) // the step her bolt is ready again
 	step := bolt.Speed * physics.SecondsPerTick
 	if steps := int(bolt.Range / step); steps >= second {
@@ -528,7 +547,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		}
 	}
 
-	run = append(run, badNetwork(t, w, p, alice)...)
+	run = append(run, badNetwork(t, w, p, alice, bolt)...)
 	// Shots end out of range and on bob, after one frame and after several, so the wasm build meets each.
 	pairs := map[[2]bool]bool{}
 	for _, s := range run {
@@ -605,16 +624,16 @@ func TestPredictionMatchesServer(t *testing.T) {
 // then applies those frames a tick each, it lands where the replay did, to the bit, its shots' ends
 // included. A correction comes only from a surprise: at most a tick of walking for each tick the server
 // coasted or frame it dropped. It returns each tick's replay, for the recording.
-func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice *client) []predictionStep {
+func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice *client, bolt flight.Shot,
+) []predictionStep {
 	t.Helper()
 	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
-	queue, gap := tuningOf[player.MovementTuning](t).BufferFrames(), strings.Repeat(".", ticks(0.2))
+	queue, gap := int(before.You.InputCap), strings.Repeat(".", ticks(0.2))
 	head := strings.Repeat(".", ticks(0.3)) + strings.Repeat("h", queue+2) + "." + strings.Repeat("0", queue-1) +
 		strings.Repeat(".", ticks(0.3))
 	// From the lost frame on, the server stays a frame behind her until her bolt is ready again and has
 	// flown to bob, so a replay of several frames ends it on him at any rate.
-	_, bolt := primary(t)
-	i := before.You.Cooldowns.IndexFunc(func(c cast.Cooldown) bool { return c.Ability == kit(t)[0] })
+	i := before.You.Cooldowns.IndexFunc(func(c cast.Cooldown) bool { return c.Ability == "bolt" })
 	ready := int(before.You.Cooldowns.At(i).ReadyTick - before.Tick)
 	a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
 	flight := ticks(math.Hypot(b.X-a.X, b.Y-a.Y)/bolt.Speed + 0.25)

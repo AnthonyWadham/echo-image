@@ -1499,8 +1499,8 @@
    "edits": [
     {
      "file": "shards/game/prediction_test.go",
-     "old": "run = append(run, badNetwork(t, w, p, alice)...)",
-     "new": "badNetwork(t, w, p, alice)"
+     "old": "run = append(run, badNetwork(t, w, p, alice, bolt)...)",
+     "new": "badNetwork(t, w, p, alice, bolt)"
     }
    ]
   },
@@ -1547,8 +1547,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "t.RewindSeconds * float64(timestep.Rate)",
-     "new": "t.RewindSeconds * 20"
+     "old": "timestep.Ticks(t.RewindSeconds)",
+     "new": "timestep.TicksAt(t.RewindSeconds, 20)"
     }
    ]
   },
@@ -1559,8 +1559,8 @@
    "edits": [
     {
      "file": "shards/game/internal/ability/cast/tuning.go",
-     "old": "d.CooldownSeconds * float64(timestep.Rate)",
-     "new": "d.CooldownSeconds * 20"
+     "old": "timestep.Ticks(d.CooldownSeconds)",
+     "new": "timestep.TicksAt(d.CooldownSeconds, 20)"
     }
    ]
   },
@@ -1571,8 +1571,8 @@
    "edits": [
     {
      "file": "shards/game/internal/echo/tuning.go",
-     "old": "d.DelaySeconds * float64(physics.ServerTickRateHz)",
-     "new": "d.DelaySeconds * 20"
+     "old": "timestep.Ticks(d.DelaySeconds)",
+     "new": "timestep.TicksAt(d.DelaySeconds, 20)"
     }
    ]
   },
@@ -1583,8 +1583,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/tuning.go",
-     "old": "t.InputBufferSeconds * float64(physics.ServerTickRateHz)",
-     "new": "t.InputBufferSeconds * 20"
+     "old": "timestep.Ticks(t.InputBufferSeconds)",
+     "new": "timestep.TicksAt(t.InputBufferSeconds, 20)"
     }
    ]
   },
@@ -1595,8 +1595,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/tuning.go",
-     "old": "t.EchoPathSeconds * float64(physics.ServerTickRateHz)",
-     "new": "t.EchoPathSeconds * 20"
+     "old": "timestep.Ticks(t.EchoPathSeconds)",
+     "new": "timestep.TicksAt(t.EchoPathSeconds, 20)"
     }
    ]
   },
@@ -1607,8 +1607,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/tuning.go",
-     "old": "t.InputTimeoutSeconds * float64(physics.ServerTickRateHz)",
-     "new": "t.InputTimeoutSeconds * 20"
+     "old": "timestep.Ticks(t.InputTimeoutSeconds)",
+     "new": "timestep.TicksAt(t.InputTimeoutSeconds, 20)"
     }
    ]
   },
@@ -1619,8 +1619,8 @@
    "edits": [
     {
      "file": "shards/game/internal/ability/hooks/hooks.go",
-     "old": "return ticks(seconds, c.TickRate)",
-     "new": "return ticks(seconds, 20)"
+     "old": "timestep.TicksAt(seconds, c.TickRate)",
+     "new": "timestep.TicksAt(seconds, 20)"
     }
    ]
   },
@@ -1739,8 +1739,8 @@
    "edits": [
     {
      "file": "shards/game/main.go",
-     "old": "\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n",
-     "new": "\tworld.RegisterSystem(&ability.CastSystem{Data: dataPlugin}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
+     "old": "\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n",
+     "new": "\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
     }
    ]
   },
@@ -1765,6 +1765,42 @@
      "file": "shards/game/prediction_test.go",
      "old": "\t\t\tended = append(ended, e...)\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}",
      "new": "\t\t\tended = e\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}"
+    }
+   ]
+  },
+  {
+   "id": "F13-T1",
+   "breaks": "timestep.Ticks at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/timestep/timestep.go",
+     "old": "return TicksAt(seconds, Rate)",
+     "new": "return TicksAt(seconds, 20)"
+    }
+   ]
+  },
+  {
+   "id": "F3-L1",
+   "breaks": "content decodes loosely: a typo key loads as 0",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/content/embed.go",
+     "old": "\tdec.DisallowUnknownFields()\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F3-L2",
+   "breaks": "the boot skips the cross-file checks",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/catalog.go",
+     "old": "\treturn c, c.lineUp()\n",
+     "new": "\treturn c, nil\n"
     }
    ]
   }

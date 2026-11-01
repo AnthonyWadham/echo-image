@@ -54,7 +54,7 @@ func TestAreaActsOnWhatTouchesIt(t *testing.T) {
 // its own Body is stunned).
 func TestAreaRulesSeeTags(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, map[string]string{
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, effectKinds, map[string]string{
 		"area/tuning.json": `{"kinds": {"trap": {"rules": [
 			{"kinds": ["body"], "require": ["stunned"], "to": "self", "damage_per_second": 20}]}}}`,
 	}), fx))

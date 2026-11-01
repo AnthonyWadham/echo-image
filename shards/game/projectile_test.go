@@ -676,7 +676,7 @@ func TestShotTypeRulesComeFirst(t *testing.T) {
 // content).
 func TestShotRulesSeeTags(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, map[string]string{
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, effectKinds, map[string]string{
 		"ability/tuning.json": `{"kits": {"starter": ["needle"]},
 			"abilities": {"needle": {"aimed": true, "hook": "launch", "params": {"shot": "needle"}}}}`,
 		"projectile/tuning.json": `{"shots": {"needle": {"speed": 15, "range": 20, "radius": 0.15, "damage": 10,

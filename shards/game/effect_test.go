@@ -186,7 +186,7 @@ func TestEffectsAreDeterministic(t *testing.T) {
 	var fx *emitter // the current run's: each run calls setup, then script
 	cardinal.RequireDeterministic(t, func(world *cardinal.World) {
 		fx = &emitter{}
-		withEmitter(register, fx)(world)
+		withEmitter(withContent(t, effectKinds), fx)(world)
 	}, func(w *cardinal.TestWorld) {
 		alice, bob := claim(t, w)
 		a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))

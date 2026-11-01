@@ -46,37 +46,54 @@ func tuningOf[T content.File](t *testing.T) T {
 	return v
 }
 
-// withContent is register with each patch deep-merged into the shipped content file it names, so a
-// test can add a shot type or a champion. Objects merge, and anything else replaces.
-func withContent(t *testing.T, patches map[string]string) func(*cardinal.World) {
+// withContent is register with each patch deep-merged into the shipped content file it names, in
+// order, so a test can add a shot type or a champion. Objects merge, and anything else replaces.
+func withContent(t *testing.T, patches ...map[string]string) func(*cardinal.World) {
 	t.Helper()
-	files := patched(t, patches)
+	files := patched(t, patches...)
 	return func(world *cardinal.World) { registerWith(world, files) }
 }
 
 // patched is the content withContent registers, which a predictor can load too.
-func patched(t *testing.T, patches map[string]string) overlay {
+func patched(t *testing.T, patches ...map[string]string) overlay {
 	t.Helper()
+	docs := map[string]map[string]any{}
+	for _, files := range patches {
+		for file, patch := range files {
+			if docs[file] == nil {
+				raw, err := content.FS.ReadFile(file)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var doc map[string]any
+				if err := json.Unmarshal(raw, &doc); err != nil {
+					t.Fatal(err)
+				}
+				docs[file] = doc
+			}
+			var add map[string]any
+			if err := json.Unmarshal([]byte(patch), &add); err != nil {
+				t.Fatalf("patch for %s: %v", file, err)
+			}
+			merge(docs[file], add)
+		}
+	}
 	files := overlay{}
-	for file, patch := range patches {
-		var base, add map[string]any
-		raw, err := content.FS.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal(raw, &base); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal([]byte(patch), &add); err != nil {
-			t.Fatalf("patch for %s: %v", file, err)
-		}
-		merge(base, add)
-		if files[file], err = json.Marshal(base); err != nil {
+	for file, doc := range docs {
+		var err error
+		if files[file], err = json.Marshal(doc); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return files
 }
+
+// effectKinds are the effect kinds tests put on things through an emitter. No ability uses them yet, so
+// they stay out of the shipped content.
+var effectKinds = map[string]string{"effect/tuning.json": `{"kinds": {
+	"phase": {"passes": ["wall"], "stacking": "merge"},
+	"stun":  {"tags": ["stunned", "cc"], "stacking": "merge"},
+	"slow":  {"tags": ["cc"], "stat": "move_speed", "stacking": "per_source"}}}`}
 
 func merge(dst, src map[string]any) {
 	for k, v := range src {
@@ -367,7 +384,7 @@ func withEmitter(setup func(*cardinal.World), fx *emitter) func(*cardinal.World)
 func fxDuel(t *testing.T) (w *cardinal.TestWorld, alice, bob *client, fx *emitter) {
 	t.Helper()
 	fx = &emitter{}
-	w = cardinal.NewTestWorld(t, withEmitter(register, fx))
+	w = cardinal.NewTestWorld(t, withEmitter(withContent(t, effectKinds), fx))
 	alice, bob = claim(t, w)
 	return w, alice, bob, fx
 }
