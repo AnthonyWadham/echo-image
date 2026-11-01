@@ -1995,6 +1995,18 @@
      "new": "\tfor i, d := range s.Tuning.DevSpawns[:1] {"
     }
    ]
+  },
+  {
+   "id": "F6-D1",
+   "breaks": "body_sync sends a dead Echo's path",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\tif !died[e.ID()] {",
+     "new": "\t\tif true {"
+    }
+   ]
   }
  ]
 }

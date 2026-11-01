@@ -5,6 +5,7 @@ import (
 	echoimage "echo_image"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
+	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
@@ -18,6 +19,7 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -390,6 +392,74 @@ func record(p *predict.Predictor, sync player.BodySync, targets projectile.Targe
 
 // recorded is the content TestPredictionMatchesServer's run plays: every number it reads, pinned, so a
 // balance change never moves the recording. Her Echo trails her by a second.
+// The tick your Echo dies, body_sync sends no path for it, so your predictor doesn't draw it the tick
+// after, when the server has none.
+func TestDeadEchoIsNotPredicted(t *testing.T) {
+	w, alice, _, fx := fxDuel(t)
+	rules, err := predict.Load(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")))
+	emit(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
+	w.Tick() // it dies, and is sent once more
+	p := predict.New(rules)
+	p.Reset(predictFrom(t, bodiesFor(t, w, "alice")))
+	f := alice.send(playercomp.InputFrame{MoveX: 1})
+	w.Tick()
+	p.Step(predictFrame(f))
+	requirePredicted(t, "the tick after", guessOf(p), bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), true)
+}
+
+// Random but honest play: each player holds a random move for a while, closes in when far, aims near the
+// other and presses random buttons. Her predictor, reset to each tick's state, lands on the server's next
+// one to the bit, as in TestPredictionMatchesServer. The only surprise is her Echo dying, which puts her
+// out. A failure names its seed, and -seed reruns it.
+func TestRandomPlayIsPredicted(t *testing.T) {
+	s := *seed
+	if s == 0 {
+		s = rand.Uint64()
+	}
+	rng := rand.New(rand.NewPCG(s, 0))
+	w, alice, bob := duel(t)
+	rules, err := predict.Load(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := predict.New(rules)
+	me := yourBody(t, bodiesFor(t, w, "alice")).EntityID
+	moves := map[*client][2]float64{}
+	frame := func(c *client, from, to player.BodyState) playercomp.InputFrame {
+		if rng.IntN(ticks(0.5)) == 0 {
+			moves[c] = [2]float64{rng.Float64()*2 - 1, rng.Float64()*2 - 1}
+		}
+		m, dx, dy := moves[c], to.X-from.X, to.Y-from.Y
+		if dx*dx+dy*dy > 64 { // over 8 m apart
+			m = [2]float64{dx, dy}
+		}
+		return playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: dx + rng.NormFloat64(), AimY: dy + rng.NormFloat64(),
+			Buttons: uint32(rng.IntN(4))}
+	}
+	for i := range 2000 {
+		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
+		mine, mineOK := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), me)
+		a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
+		see(t, p, targets)
+		p.Reset(predictFrom(t, before))
+		f := alice.next(frame(alice, a, b))
+		_, ended := p.Step(predictFrame(f))
+		alice.send(f)
+		bob.send(frame(bob, b, a))
+		w.Tick()
+		died := mineOK && slices.ContainsFunc(w.Emitted[combatcomp.Died](), func(d combatcomp.Died) bool {
+			return uint32(d.Target) == mine.EntityID
+		})
+		at := fmt.Sprintf("seed %d, tick %d", s, i)
+		requirePredicted(t, at, guessOf(p), bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), !died)
+		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), me)
+	}
+}
+
 var recorded = map[string]string{
 	"player/tuning.json": `{"input_buffer_seconds": 0.5, "input_timeout_seconds": 0.5, "echo_path_seconds": 0.5,
 		"champions": {"starter": {"move_speed": 5.0, "radius": 0.5}}}`,

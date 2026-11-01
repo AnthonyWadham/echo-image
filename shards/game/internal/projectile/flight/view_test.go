@@ -84,50 +84,6 @@ func TestViewIsHeldInsideTheRows(t *testing.T) {
 // the bit: that is how the client predicts it. The server's world has them where they are now, any
 // distance away.
 func TestFlyAtViewMatchesFlyBitForBit(t *testing.T) {
-	var tuning Tuning
-	if err := json.Unmarshal([]byte(`{"defaults": [
-		{"kinds": ["wall", "bounds"], "do": "stop"},
-		{"relations": ["own", "ally"], "do": "pass"},
-		{"kinds": ["body"], "do": "stop"},
-		{"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}]}`), &tuning); err != nil {
-		t.Fatal(err)
-	}
-	def := Shot{Speed: 15, Range: 20, Radius: 0.15}
-	const dt = 0.05
-	shooter := interact.Side{Owner: 1, Team: 1}
-	ally, enemy := interact.Side{Owner: 3, Team: 1}, interact.Side{Owner: 2, Team: 2}
-	start, dir := box2d.Vec2{X: 1.25, Y: -0.5}, box2d.Vec2{X: 0.6, Y: 0.8}
-	along := func(k, left float64) box2d.Vec2 { // k along the path from start, left of it
-		return box2d.Vec2{X: start.X + dir.X*k - dir.Y*left, Y: start.Y + dir.Y*k + dir.X*left}
-	}
-	type thing struct {
-		kind      interact.Kind
-		side      interact.Side
-		view, now box2d.Vec2
-	}
-	// fly flies the shot both ways and checks they agree, so the server ends it where its client did.
-	fly := func(name string, remaining float64, wall bool, things ...thing) End {
-		server, client := testWorld(wall, along(0.35, 0), dir), testWorld(wall, along(0.35, 0), dir)
-		reach, seen, placed := NewReach(), map[uint32]Seen{}, map[box2d.ShapeID]Target{}
-		for i, th := range things {
-			target := Target{ID: uint32(10 + i), Side: th.side}
-			row := Row{Kind: th.kind, Side: th.side, Center: th.view, Radius: 0.5}
-			addCircle(server, th.kind, th.now)
-			reach.Add(target.ID, Row{Kind: th.kind, Side: th.side, Center: th.now, Radius: 0.5}, row)
-			seen[target.ID] = Seen{ID: target.ID, Row: row}
-			placed[addCircle(client, th.kind, th.view)] = target
-		}
-		f := Flight{Pos: start, Velocity: box2d.Vec2{X: dir.X * def.Speed, Y: dir.Y * def.Speed}, Radius: def.Radius,
-			Remaining: remaining}
-		sights := func(id uint32) (Seen, bool) { v, ok := seen[id]; return v, ok }
-		targets := func(s box2d.ShapeID) (Target, bool) { v, ok := placed[s]; return v, ok }
-		next, end, over := tuning.FlyAtView(server, def, f, shooter, reach, sights, dt)
-		wantNext, wantEnd, wantOver := tuning.Fly(client, def, f, shooter, targets, dt)
-		if next != wantNext || end != wantEnd || over != wantOver {
-			t.Errorf("%s: FlyAtView %+v %+v %v, Fly %+v %+v %v", name, next, end, over, wantNext, wantEnd, wantOver)
-		}
-		return end
-	}
 	for _, c := range []struct {
 		name      string
 		remaining float64
@@ -158,7 +114,7 @@ func TestFlyAtViewMatchesFlyBitForBit(t *testing.T) {
 		{"past its range in a last tick", 0.3, false,
 			[]thing{{interact.Echo, enemy, along(1.2, 0), along(1.2, 0)}}, 0},
 	} {
-		end := fly(c.name, c.remaining, c.wall, c.things...)
+		end := flyBoth(t, c.name, c.remaining, c.wall, c.things...)
 		var offset box2d.Vec2 // from the center it met, where the view drew it
 		if c.hit != 0 {
 			at := c.things[c.hit-10].view
@@ -169,18 +125,101 @@ func TestFlyAtViewMatchesFlyBitForBit(t *testing.T) {
 				c.hit, offset)
 		}
 	}
-	hits := 0
-	const sweep = 60 // hits, grazes, misses and starts inside
-	for i := range sweep {
-		view := along(-0.3+float64(i)*0.0217, float64(i*7%13-6)*0.1625)
-		now := box2d.Vec2{X: view.X + 2.5*math.Cos(float64(i)), Y: view.Y + 2.5*math.Sin(float64(i))}
-		if fly(fmt.Sprint("sweep ", i), 20, false, thing{interact.Echo, enemy, view, now}).Hit.Target != 0 {
+	hits, things := 0, sweep()
+	for i, th := range things {
+		if flyBoth(t, fmt.Sprint("sweep ", i), 20, false, th).Hit.Target != 0 {
 			hits++
 		}
 	}
-	if hits < 10 || sweep-hits < 10 {
-		t.Errorf("the sweep hit %d of %d: it should hit and miss often", hits, sweep)
+	if hits < 10 || len(things)-hits < 10 {
+		t.Errorf("the sweep hit %d of %d: it should hit and miss often", hits, len(things))
 	}
+}
+
+// Any enemy Echo, drawn anywhere in an arena and now anywhere else, meets the shot the same both ways.
+// The sweep is the seed corpus.
+func FuzzFlyAtViewMatchesFly(f *testing.F) {
+	for _, th := range sweep() {
+		f.Add(th.view.X, th.view.Y, th.now.X, th.now.Y)
+	}
+	f.Fuzz(func(t *testing.T, viewX, viewY, nowX, nowY float64) {
+		for _, v := range []float64{viewX, viewY, nowX, nowY} {
+			if !(math.Abs(v) <= 100) { // an arena, and never NaN
+				t.Skip()
+			}
+		}
+		flyBoth(t, "fuzz", 20, false, thing{interact.Echo, enemy, box2d.Vec2{X: viewX, Y: viewY},
+			box2d.Vec2{X: nowX, Y: nowY}})
+	})
+}
+
+// The view tests' shot flies from start along dir at 20 Hz, under the GDD's default rules.
+var (
+	viewRules = func() (tuning Tuning) {
+		if err := json.Unmarshal([]byte(`{"defaults": [
+			{"kinds": ["wall", "bounds"], "do": "stop"},
+			{"relations": ["own", "ally"], "do": "pass"},
+			{"kinds": ["body"], "do": "stop"},
+			{"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}]}`), &tuning); err != nil {
+			panic(err)
+		}
+		return tuning
+	}()
+	viewShot    = Shot{Speed: 15, Range: 20, Radius: 0.15}
+	start, dir  = box2d.Vec2{X: 1.25, Y: -0.5}, box2d.Vec2{X: 0.6, Y: 0.8}
+	shooter     = interact.Side{Owner: 1, Team: 1}
+	ally, enemy = interact.Side{Owner: 3, Team: 1}, interact.Side{Owner: 2, Team: 2}
+)
+
+// along is k along the shot's path from start, left of it.
+func along(k, left float64) box2d.Vec2 {
+	return box2d.Vec2{X: start.X + dir.X*k - dir.Y*left, Y: start.Y + dir.Y*k + dir.X*left}
+}
+
+// thing is a Body or Echo where the view drew it and where it is now.
+type thing struct {
+	kind      interact.Kind
+	side      interact.Side
+	view, now box2d.Vec2
+}
+
+// sweep is 60 enemy Echoes the shot hits, grazes, misses or starts inside in the view, each 2.5 units
+// from there now.
+func sweep() []thing {
+	var things []thing
+	for i := range 60 {
+		view := along(-0.3+float64(i)*0.0217, float64(i*7%13-6)*0.1625)
+		now := box2d.Vec2{X: view.X + 2.5*math.Cos(float64(i)), Y: view.Y + 2.5*math.Sin(float64(i))}
+		things = append(things, thing{interact.Echo, enemy, view, now})
+	}
+	return things
+}
+
+// flyBoth flies the shot both ways, with remaining units to go and, if wall, a wall across its path 0.35
+// along. It fails t unless they agree to the bit, so the server ends it where its client did.
+func flyBoth(t testing.TB, name string, remaining float64, wall bool, things ...thing) End {
+	t.Helper()
+	server, client := testWorld(wall, along(0.35, 0), dir), testWorld(wall, along(0.35, 0), dir)
+	reach, seen, placed := NewReach(), map[uint32]Seen{}, map[box2d.ShapeID]Target{}
+	for i, th := range things {
+		target := Target{ID: uint32(10 + i), Side: th.side}
+		row := Row{Kind: th.kind, Side: th.side, Center: th.view, Radius: 0.5}
+		addCircle(server, th.kind, th.now)
+		reach.Add(target.ID, Row{Kind: th.kind, Side: th.side, Center: th.now, Radius: 0.5}, row)
+		seen[target.ID] = Seen{ID: target.ID, Row: row}
+		placed[addCircle(client, th.kind, th.view)] = target
+	}
+	f := Flight{Pos: start, Velocity: box2d.Vec2{X: dir.X * viewShot.Speed, Y: dir.Y * viewShot.Speed},
+		Radius: viewShot.Radius, Remaining: remaining}
+	sights := func(id uint32) (Seen, bool) { v, ok := seen[id]; return v, ok }
+	targets := func(s box2d.ShapeID) (Target, bool) { v, ok := placed[s]; return v, ok }
+	const dt = 0.05
+	next, end, over := viewRules.FlyAtView(server, viewShot, f, shooter, reach, sights, dt)
+	wantNext, wantEnd, wantOver := viewRules.Fly(client, viewShot, f, shooter, targets, dt)
+	if next != wantNext || end != wantEnd || over != wantOver {
+		t.Errorf("%s: FlyAtView %+v %+v %v, Fly %+v %+v %v", name, next, end, over, wantNext, wantEnd, wantOver)
+	}
+	return end
 }
 
 // A target is met where the view had it, at its size there, however far it moved and grew since.
@@ -189,14 +228,12 @@ func TestFlyAtViewMeetsTargetsWhereverTheyWent(t *testing.T) {
 	if err := json.Unmarshal([]byte(`{"defaults": [{"kinds": ["echo"], "do": "stop"}]}`), &tuning); err != nil {
 		t.Fatal(err)
 	}
-	enemy := interact.Side{Owner: 2, Team: 2}
 	then := Row{Kind: interact.Echo, Side: enemy, Center: box2d.Vec2{X: 0, Y: 1.2}, Radius: 1.5}
 	reach := NewReach()
 	reach.Add(10, Row{Kind: interact.Echo, Side: enemy, Center: box2d.Vec2{X: 50, Y: 50}, Radius: 0.5}, then)
 	sights := func(id uint32) (Seen, bool) { return Seen{ID: id, Row: then}, id == 10 }
 	f := Flight{Pos: box2d.Vec2{X: -2}, Velocity: box2d.Vec2{X: 40}, Radius: 0.15, Remaining: 20}
 	def := Shot{Speed: 40, Range: 20, Radius: 0.15}
-	shooter := interact.Side{Owner: 1, Team: 1}
 	world := testWorld(false, box2d.Vec2{}, box2d.Vec2{X: 1})
 	_, end, over := tuning.FlyAtView(world, def, f, shooter, reach, sights, 0.05)
 	if !over || end.Hit.Target != 10 {

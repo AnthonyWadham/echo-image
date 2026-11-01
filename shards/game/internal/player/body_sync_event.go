@@ -40,7 +40,7 @@ type YouState struct {
 	Shots        cardinal.Slice[ShotState]     // the shots in flight your predictor flies: your frames cast them
 	EchoDelay    uint32                        // ticks your Echo trails your Body: 0 with no Echo
 	// EchoPath is your Echo's spot this tick, then where it will be on each next tick, up to
-	// echo_path_seconds ahead: your predictor draws it at your predicted tick.
+	// echo_path_seconds ahead: your predictor draws it at your predicted tick. Empty the tick it dies.
 	EchoPath cardinal.Slice[physics2dcomp.Vec2]
 }
 

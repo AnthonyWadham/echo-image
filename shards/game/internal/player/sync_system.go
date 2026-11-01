@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	abilitycomp "echo_image/shards/game/internal/ability/component"
+	combatcomp "echo_image/shards/game/internal/combat/component"
 	echocomp "echo_image/shards/game/internal/echo/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
@@ -80,9 +81,15 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Radius: p.Radius, Remaining: p.Remaining,
 		})
 	}
-	paths := map[cardinal.EntityID]echocomp.PathHistory{} // by owner Body
+	died := map[cardinal.EntityID]bool{}
+	for d := range w.SystemEvents[combatcomp.Died]() {
+		died[d.Target] = true
+	}
+	paths := map[cardinal.EntityID]echocomp.PathHistory{} // by owner Body, of Echoes still there next tick
 	for e := range w.Contains[echoRow]().Iter() {
-		paths[e.Get[team.Owner]().Body] = e.Get[echocomp.PathHistory]()
+		if !died[e.ID()] {
+			paths[e.Get[team.Owner]().Body] = e.Get[echocomp.PathHistory]()
+		}
 	}
 	tuning := s.Tuning
 	ahead := tuning.EchoPathTicks()

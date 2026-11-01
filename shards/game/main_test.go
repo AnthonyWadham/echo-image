@@ -491,4 +491,5 @@ var (
 	update = flag.Bool("update", false,
 		"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture")
 	recordTo = flag.String("record", "", "write TestPredictionMatchesServer's run to this file, for the wasm build")
+	seed     = flag.Uint64("seed", 0, "TestRandomPlayIsPredicted's seed, to rerun a failure; 0 picks one")
 )

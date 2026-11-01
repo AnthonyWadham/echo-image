@@ -35,6 +35,9 @@ one is the *what*.
 - **Mutation checks:** `go run ./scripts/mutate` breaks each rule in `scripts/mutate/mutants.json` once,
   in a temporary copy (never the working tree), and fails if a test misses one or its old text is gone.
   Add a mutant with each new rule; run it when a rule changes.
+- **Random play:** `TestRandomPlayIsPredicted` plays 2,000 random but honest ticks from a new seed
+  each run, and checks prediction every tick. A failure names its seed; `-seed` reruns it.
+  `FuzzFlyAtViewMatchesFly` (`go test -fuzz`) fuzzes where a shot meets a target its client drew.
 - **Tick cost:** `BenchmarkTick` times a 3v3 tick (`go test -run '^$' -bench Tick ./shards/game`, with
   `-tags rate60` for 60 Hz). `TestTickAllocations` fails when that tick allocates past its ceiling for
   the rate. Allocation counts don't depend on the machine; raise a ceiling only for a known reason.
@@ -602,6 +605,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     predictor walks the path a spot per step (`Predictor.Echo`). Past the delay, your Echo is where it
     predicted your Body that many steps back; past the path but inside the delay, it waits at the
     path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from `EchoSync`.
+    The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
     (`flight.Row`: kind, side, circle, tags and `Until`) is its one record: `TargetHistory` keeps its
     rows, and `TargetSync` sends each tick's, which is all your predictor reads to place targets. The
