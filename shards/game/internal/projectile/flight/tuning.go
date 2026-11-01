@@ -88,6 +88,10 @@ func validMeets(of string, meets []Meet) error {
 			return fmt.Errorf("projectile_tuning: %s rule %d needs a do", of, i)
 		case m.Do == Pass && m.Payload:
 			return fmt.Errorf("projectile_tuning: %s rule %d passes with a payload, so it would hit every tick", of, i)
+		case m.Payload && m.Relations == 0:
+			// A shot type's own rules come before the defaults' own and ally pass, so say who it hits.
+			return fmt.Errorf(`projectile_tuning: %s rule %d carries a payload but names no relations, so it `+
+				`would hit your own and your allies' too: name them, e.g. ["enemy"]`, of, i)
 		case m.Kinds&^meetable != 0:
 			return fmt.Errorf("projectile_tuning: %s rule %d names a kind a shot never meets", of, i)
 		}

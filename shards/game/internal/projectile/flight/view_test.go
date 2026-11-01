@@ -89,7 +89,7 @@ func TestFlyAtViewMatchesFlyBitForBit(t *testing.T) {
 		{"kinds": ["wall", "bounds"], "do": "stop"},
 		{"relations": ["own", "ally"], "do": "pass"},
 		{"kinds": ["body"], "do": "stop"},
-		{"kinds": ["echo"], "do": "stop", "payload": true}]}`), &tuning); err != nil {
+		{"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}]}`), &tuning); err != nil {
 		t.Fatal(err)
 	}
 	def := Shot{Speed: 15, Range: 20, Radius: 0.15}

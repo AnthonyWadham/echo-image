@@ -309,6 +309,8 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
 			`unknown shot "blot"`},
 		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},
+		{"payload with no relations", "projectile/tuning.json",
+			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := loadCatalog(patched(t, map[string]string{c.file: c.patch}))

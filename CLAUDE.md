@@ -275,8 +275,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   Content names them in JSON lists; an unknown name fails the boot.
 - **The GDD's rules are default content, not code.** A shot type's own `meets` rules are checked first,
   then `defaults` in `content/projectile/tuning.json` (walls and bounds stop, own and ally pass, Bodies
-  stop, Echoes take the payload). So "some shots pass Bodies" is one rule on that shot type. Order is
-  the only priority; the rule index breaks ties between things met at the same point.
+  stop, enemy Echoes take the payload). So "some shots pass Bodies" is one rule on that shot type. Order
+  is the only priority; the rule index breaks ties between things met at the same point. A rule with a
+  payload must name its relations, since a shot type's own rules come before the defaults' own and ally
+  pass: friendly fire is written out, never a default.
 - **Executors switch on responses and options, never on content IDs.** `projectile.FlightSystem` (shot
   `meets`: `stop`, `pass`, payload yes or no) and `area.AreaSystem` (area rules) are the executors
   today. A new response is an enum value with a JSON name plus one branch in its executor, tested

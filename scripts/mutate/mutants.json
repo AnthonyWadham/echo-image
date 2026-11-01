@@ -1803,6 +1803,18 @@
      "new": "\treturn c, nil\n"
     }
    ]
+  },
+  {
+   "id": "F30-P1",
+   "breaks": "a payload rule may name no relations",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "\t\tcase m.Payload && m.Relations == 0:\n",
+     "new": "\t\tcase m.Payload && m.Relations == 0 && false:\n"
+    }
+   ]
   }
  ]
 }

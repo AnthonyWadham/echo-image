@@ -135,7 +135,7 @@ type Owner struct{ Body uint32 }
     {"kinds": ["wall", "bounds"], "do": "stop"},
     {"relations": ["own", "ally"], "do": "pass"},
     {"kinds": ["body", "barrier"], "do": "stop"},
-    {"kinds": ["echo"], "do": "stop", "payload": true}
+    {"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}
   ],
   "bolt": {"speed": 18, "damage": 25},
   "lance": {"speed": 24, "damage": 15, "pierces": 2, "meets": [
