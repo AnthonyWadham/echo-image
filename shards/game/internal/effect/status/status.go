@@ -125,18 +125,12 @@ func (s Status) Speed(base float64) float64 {
 	return base * (float64(bps) / 10000)
 }
 
-// Add applies e to list from tick for ticks ticks, and returns the new list, or ok=false when an
-// active Unstoppable blocks it. The caller sets every field of e but Start, End and Serial.
-func Add(list []Entry, next *uint32, e Entry, rule Stacking, tick, ticks uint64) ([]Entry, bool) {
-	if e.Tags&interact.CC != 0 {
-		if Fold(slices.Values(list), tick).Tags&interact.Unstoppable != 0 {
-			return list, false
-		}
-		list = Remove(list, func(o Entry) bool { return o.Tags&interact.EndsOnCC != 0 })
-	}
+// Add applies e to list from tick for ticks ticks by rule, and returns the new list. The caller sets
+// every field of e but Start, End, Serial and Stacking. What a kind ends or is blocked by is Apply's.
+func Add(list []Entry, next *uint32, e Entry, rule Stacking, tick, ticks uint64) []Entry {
 	e.Start, e.End, e.Stacking = tick, tick+ticks, rule
 	if slices.ContainsFunc(list, func(o Entry) bool { return o.covers(e, tick) }) {
-		return list, true
+		return list
 	}
 	// e takes the place, and the serial, of the first entry it covers, and the rest it covers go. An
 	// entry stronger but shorter, or weaker but longer, stays beside it: Fold counts the strongest.
@@ -151,11 +145,11 @@ func Add(list []Entry, next *uint32, e Entry, rule Stacking, tick, ticks uint64)
 		}
 	}
 	if placed {
-		return kept, true
+		return kept
 	}
 	*next++
 	e.Serial = *next
-	return append(list, e), true
+	return append(list, e)
 }
 
 // Remove drops the entries match reports, keeping the order of the rest.

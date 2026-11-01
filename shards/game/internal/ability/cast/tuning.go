@@ -5,14 +5,16 @@ import (
 	"fmt"
 
 	"echo_image/shards/game/internal/ability/hooks"
+	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // Tuning is the ability rows, loaded from content/ability/tuning.json: the kits, how each ability is
 // cast, and the hook that does it with its params. Bind binds the hooks after loading.
 type Tuning struct {
-	Kits      map[string][]string `json:"kits"`      // by champion ID: its ability IDs, slot 0 first
-	Abilities map[string]Def      `json:"abilities"` // by ability ID
+	Kits      map[string][]string `json:"kits"`       // by champion ID: its ability IDs, slot 0 first
+	Abilities map[string]Def      `json:"abilities"`  // by ability ID
+	BlockedBy interact.Tags       `json:"blocked_by"` // a caster with any of these tags casts nothing
 	bound     map[string]hooks.Hook
 }
 

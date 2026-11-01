@@ -47,12 +47,12 @@ func (c Cooldowns) index(ability string) int {
 
 // Gate returns what a frame casts at tick for a caster playing champion: each ready ability in the
 // champion's kit whose button is held, in slot order, and the cooldowns after them. Bit N of buttons
-// is held for kit slot N, and aim is a unit vector or zero. A stunned caster casts nothing, and an
-// aimed ability needs an aim.
+// is held for kit slot N, and aim is a unit vector or zero. A caster with a tag in BlockedBy (stunned)
+// casts nothing, and an aimed ability needs an aim.
 func (t Tuning) Gate(champion string, cooldowns Cooldowns, tags interact.Tags, buttons uint32, aim hooks.Vec2,
 	tick uint64,
 ) (Cooldowns, []string) {
-	if buttons == 0 || tags&interact.Stunned != 0 {
+	if buttons == 0 || tags&t.BlockedBy != 0 {
 		return cooldowns, nil
 	}
 	var casts []string

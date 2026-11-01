@@ -284,7 +284,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   today. A new response is an enum value with a JSON name plus one branch in its executor, tested
   against the others.
 - **Tags are a closed Go list, append only** (snapshots keep the bits). Add one only when several
-  features read it; state one champion alone reads stays in its own component.
+  features read it; state one champion alone reads stays in its own component. What a tag does to
+  other effects is data: an effect kind's `ends` (the holder's entries it removes as it lands) and
+  `blocked_by` (holder tags that stop it), and the abilities' `blocked_by` (the cast gate).
 - **Areas test who is inside every tick.** An `area/component.Area{Kind, Start}` makes its entity's
   first shape act on what overlaps it: one Box2D circle overlap (`Physics.Engine().OverlapShape`), then
   the first matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
@@ -664,7 +666,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   in `content/echo/tuning.json`. A new champion is JSON entries, never new code.
 - **The cast gate decides whether a cast happens.** A Body casts from its champion's kit.
   `cast.Gate`, which `ability.CastSystem` and the predictor both run, checks the button, cooldown and
-  aim, and that the Body isn't stunned, then starts the cooldown; `CastSystem` emits
+  aim, and that the Body has no tag in the abilities' `blocked_by` (`stunned`), then starts the cooldown; `CastSystem` emits
   `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
   follows its ability into whichever slot holds it.
 - **What an ability does is its hook.** Every ability row names a hook in `ability/hooks` and gives
@@ -685,11 +687,12 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   hook names the type it launches. A new shot ability is a shot type (with its own `meets` only where it
   differs from the defaults) plus an ability row.
 - **A dash is a forced-move effect.** The `dash` hook turns the cast into one along the aim, covering
-  `distance` in `seconds` (whole ticks). It runs from the tick after the cast, walls stop it, and CC
-  ends it (the `dash` kind has `ends_on_cc`).
+  `distance` in `seconds` (whole ticks). It runs from the tick after the cast, walls stop it, and an
+  effect whose kind `ends` `ends_on_cc` (a stun) ends it (the `dash` kind has `ends_on_cc`). A slow
+  doesn't.
 - **Timed effects (stun, slow, pass, forced move) belong to `effect`.** A feature asks with
   `EffectIntent{Target, Kind, Ticks, Value, VelX, VelY, Source}`; what each kind does (tags, passes,
-  stat, stacking) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
+  stat, stacking, ends, blocked_by) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
   know. An intent of an unknown kind is dropped with an error log. A refresh keeps what is strongest at
   every tick: a new entry is dropped only if one with its refresh key (its kind, plus its source for
   `per_source`) is as strong and lasts as long, and it replaces those it beats on both. Otherwise both

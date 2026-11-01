@@ -92,8 +92,8 @@ func patched(t *testing.T, patches ...map[string]string) overlay {
 // they stay out of the shipped content.
 var effectKinds = map[string]string{"effect/tuning.json": `{"kinds": {
 	"phase": {"passes": ["wall"], "stacking": "merge"},
-	"stun":  {"tags": ["stunned", "cc"], "stacking": "merge"},
-	"slow":  {"tags": ["cc"], "stat": "move_speed", "stacking": "per_source"}}}`}
+	"stun":  {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
+	"slow":  {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"}}}`}
 
 func merge(dst, src map[string]any) {
 	for k, v := range src {

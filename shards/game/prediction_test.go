@@ -397,7 +397,7 @@ var recorded = map[string]string{
 		"champions": {"starter": {"delay_seconds": 1, "area": "anticamp"}}}`,
 	"area/tuning.json": `{"kinds": {"anticamp": {"rules": [
 		{"kinds": ["body"], "relations": ["own"], "to": "self", "damage_per_second": 25}]}}}`,
-	"ability/tuning.json": `{"kits": {"starter": ["bolt", "dash"]}, "abilities": {
+	"ability/tuning.json": `{"blocked_by": ["stunned"], "kits": {"starter": ["bolt", "dash"]}, "abilities": {
 		"bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
 		"dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
 			"params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}}}`,
@@ -405,8 +405,8 @@ var recorded = map[string]string{
 		"shots": {"bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}}}`,
 	"effect/tuning.json": `{"kinds": {
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
-		"stun": {"tags": ["stunned", "cc"], "stacking": "merge"},
-		"slow": {"tags": ["cc"], "stat": "move_speed", "stacking": "per_source"}}}`,
+		"stun": {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
+		"slow": {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"}}}`,
 }
 
 // The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts

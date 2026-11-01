@@ -1,4 +1,5 @@
 {
+  "blocked_by": ["stunned"],
   "kits": {
     "starter": ["bolt", "dash"]
   },

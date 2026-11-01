@@ -3,6 +3,7 @@ package status
 import (
 	"cmp"
 	"fmt"
+	"slices"
 
 	"echo_image/shards/game/internal/interact"
 )
@@ -15,10 +16,12 @@ type Tuning struct {
 
 // KindDef is what an effect kind does. The load fails on a name it doesn't know.
 type KindDef struct {
-	Tags     interact.Tags `json:"tags"`     // states it grants the holder: "stunned", "cc", "ends_on_cc", "unstoppable"
-	Passes   interact.Kind `json:"passes"`   // map kinds the holder moves through: only "wall"
-	Stat     string        `json:"stat"`     // the stat Value changes: "move_speed", or "" for none
-	Stacking string        `json:"stacking"` // "merge", "per_source" or "instanced"
+	Tags      interact.Tags `json:"tags"`       // states it grants the holder: "stunned", "cc", "ends_on_cc", "unstoppable"
+	Passes    interact.Kind `json:"passes"`     // map kinds the holder moves through: only "wall"
+	Stat      string        `json:"stat"`       // the stat Value changes: "move_speed", or "" for none
+	Stacking  string        `json:"stacking"`   // "merge", "per_source" or "instanced"
+	Ends      interact.Tags `json:"ends"`       // it removes the holder's entries with any of these tags as it lands
+	BlockedBy interact.Tags `json:"blocked_by"` // it doesn't land on a holder with any of these tags
 }
 
 // Intent asks for an effect of kind Kind on Target, from the tick it is applied at, for Ticks ticks.
@@ -45,12 +48,13 @@ func (t Tuning) Validate() error {
 	return nil
 }
 
-// Compare orders intents by target, then CC last, so an Unstoppable added the same tick blocks it.
-// The rest of the key keeps emit order out of it, since that can change after a restore.
+// Compare orders intents by target, then the kinds something can block last, so an unstoppable added
+// the same tick blocks a stun. The rest of the key keeps emit order out of it, since that can change
+// after a restore.
 func (t Tuning) Compare(a, b Intent) int {
 	return cmp.Or(
 		cmp.Compare(a.Target, b.Target),
-		cmp.Compare(t.ccRank(a.Kind), t.ccRank(b.Kind)),
+		cmp.Compare(t.blockable(a.Kind), t.blockable(b.Kind)),
 		cmp.Compare(a.Source, b.Source),
 		cmp.Compare(a.Kind, b.Kind),
 		cmp.Compare(a.Ticks, b.Ticks),
@@ -60,20 +64,28 @@ func (t Tuning) Compare(a, b Intent) int {
 	)
 }
 
-// Apply adds in to list from tick on, and returns the new list, or ok=false for a kind t doesn't know.
+// Apply adds in to list from tick on, by its kind's rules, and returns the new list, or ok=false for a
+// kind t doesn't know. It doesn't land on a holder with a tag its kind is blocked by, and it ends the
+// entries with a tag its kind ends.
 func (t Tuning) Apply(list []Entry, next *uint32, in Intent, tick uint64) ([]Entry, bool) {
 	e, rule, ok := t.entry(in.Kind)
 	if !ok {
 		return list, false
 	}
+	def := t.Kinds[in.Kind]
+	if Fold(slices.Values(list), tick).Tags&def.BlockedBy != 0 {
+		return list, true
+	}
+	if def.Ends != 0 {
+		list = Remove(list, func(o Entry) bool { return o.Tags&def.Ends != 0 })
+	}
 	e.Value, e.VelX, e.VelY, e.Source = in.Value, in.VelX, in.VelY, in.Source
-	list, _ = Add(list, next, e, rule, tick, in.Ticks)
-	return list, true
+	return Add(list, next, e, rule, tick, in.Ticks), true
 }
 
-// ccRank is 1 for a CC kind and 0 for any other.
-func (t Tuning) ccRank(kind string) int {
-	if e, _, _ := t.entry(kind); e.Tags&interact.CC != 0 {
+// blockable is 1 for a kind a tag can block and 0 for any other.
+func (t Tuning) blockable(kind string) int {
+	if t.Kinds[kind].BlockedBy != 0 {
 		return 1
 	}
 	return 0

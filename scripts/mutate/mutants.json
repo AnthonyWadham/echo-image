@@ -1851,6 +1851,54 @@
      "new": ""
     }
    ]
+  },
+  {
+   "id": "F17-E1",
+   "breaks": "a kind ends nothing as it lands",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/tuning.go",
+     "old": "\tif def.Ends != 0 {",
+     "new": "\tif def.Ends != 0 && false {"
+    }
+   ]
+  },
+  {
+   "id": "F17-B1",
+   "breaks": "blocked_by blocks nothing",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/tuning.go",
+     "old": "\tif Fold(slices.Values(list), tick).Tags&def.BlockedBy != 0 {",
+     "new": "\tif Fold(slices.Values(list), tick).Tags&def.BlockedBy != 0 && false {"
+    }
+   ]
+  },
+  {
+   "id": "F17-G1",
+   "breaks": "the cast gate ignores blocked_by",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "\tif buttons == 0 || tags&t.BlockedBy != 0 {",
+     "new": "\tif buttons == 0 {"
+    }
+   ]
+  },
+  {
+   "id": "F17-O1",
+   "breaks": "blockable kinds land first, so a same-tick unstoppable can't block them",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/tuning.go",
+     "old": "\t\tcmp.Compare(t.blockable(a.Kind), t.blockable(b.Kind)),",
+     "new": "\t\tcmp.Compare(t.blockable(b.Kind), t.blockable(a.Kind)),"
+    }
+   ]
   }
  ]
 }
