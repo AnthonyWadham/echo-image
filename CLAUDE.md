@@ -428,10 +428,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **The mover is shared sim code** the client predictor runs too, so it must stay deterministic: no
   Cardinal import, FMA-free arithmetic (`float64(a*b)`, or box2d helpers like `box2d.MulAdd`), and
   planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID. So must the cast gate, hooks,
-  shot flight and effect rules. `TestSharedCoreIsDeterministic` checks `physics/mover`,
-  `physics/timestep`, `effect/status`, `interact`, `ability/hooks`, `ability/cast`,
-  `projectile/flight`, `player/motion`, `predict` and world-engine's `box2d`: no Cardinal import, no FMA
-  instruction on arm64, amd64/v3 or wasm, and no `math` call but the exact ones (floor, mod, …).
+  shot flight and effect rules. `TestSharedCoreIsDeterministic` checks every package the predictor
+  links from this module and world-engine (`go list -deps`, so a new import is scanned the day it
+  lands): no Cardinal import, no FMA instruction on arm64, amd64/v3 or wasm, and no `math` call but the
+  exact ones (floor, mod, …).
   **Never `math.Hypot`:** it fuses on arm64. Use `box2d.Length`.
 
 ### System registration ordering (`main.go`)

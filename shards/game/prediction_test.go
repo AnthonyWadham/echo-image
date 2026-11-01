@@ -802,10 +802,29 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	}
 }
 
-// sharedCore is the code the client predictor runs too, box2d included.
-var sharedCore = []string{"./internal/physics/mover", "./internal/physics/timestep", "./internal/effect/status",
-	"./internal/interact", "./internal/ability/hooks", "./internal/ability/cast", "./internal/projectile/flight",
-	"./internal/player/motion", "./internal/predict", "github.com/argus-labs/world-engine/pkg/box2d"}
+// sharedCore is the code the client predictor links from this module and world-engine (box2d), all but
+// its js-only glue: the code that must give every target the same bits. Taken from the build, so a new
+// import is scanned the day it lands.
+func sharedCore(t *testing.T) []string {
+	list := exec.Command("go", "list", "-deps", "./predictor")
+	list.Env = append(list.Environ(), "GOOS=js", "GOARCH=wasm")
+	deps, err := list.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, deps)
+	}
+	var core []string
+	for dep := range strings.Lines(string(deps)) {
+		dep = strings.TrimSpace(dep)
+		if strings.HasPrefix(dep, "github.com/argus-labs/world-engine/pkg/cardinal") {
+			t.Errorf("the predictor imports %s", dep) // a component leaf pulls in about 737 packages
+		}
+		if (strings.HasPrefix(dep, "echo_image/") || strings.HasPrefix(dep, "github.com/argus-labs/world-engine/")) &&
+			dep != "echo_image/shards/game/predictor" {
+			core = append(core, dep)
+		}
+	}
+	return core
+}
 
 // exactMath is the math functions the shared core may call: their results are exact, so no target
 // rounds them differently. The rest of math isn't scanned, and some of it fuses (math.Hypot on arm64).
@@ -817,21 +836,12 @@ var exactMath = map[string]bool{"remainder": true, "mod": true, "modf": true, "f
 // than a target that can't fuse, like wasm. Fix a hit by rounding the product: float64(a*b). It calls
 // only exactMath of the math package: use box2d's FMA-free helpers (box2d.Length) for the rest.
 func TestSharedCoreIsDeterministic(t *testing.T) {
-	deps, err := exec.Command("go", append([]string{"list", "-deps"}, sharedCore...)...).CombinedOutput()
-	if err != nil {
-		t.Fatalf("go list: %v\n%s", err, deps)
-	}
-	for dep := range strings.Lines(string(deps)) {
-		if strings.HasPrefix(dep, "github.com/argus-labs/world-engine/pkg/cardinal") {
-			t.Errorf("the shared core imports %s", strings.TrimSpace(dep))
-			break
-		}
-	}
+	core := sharedCore(t)
 	fma := regexp.MustCompile(`\bV?FN?M(ADD|SUB)[0-9A-Z]*\b`) // FMADDD on arm64, VFMADD231SD on amd64/v3
 	mathCall := regexp.MustCompile(`\bCALL\s+math\.(\w+)`)
 	for _, target := range [][]string{{"GOOS=linux", "GOARCH=arm64"}, {"GOOS=linux", "GOARCH=amd64", "GOAMD64=v3"},
 		{"GOOS=js", "GOARCH=wasm"}} {
-		build := exec.Command("go", append([]string{"build", "-gcflags=-S"}, sharedCore...)...) // -S prints assembly
+		build := exec.Command("go", append([]string{"build", "-gcflags=-S"}, core...)...) // -S prints assembly
 		build.Env = append(build.Environ(), target...)
 		asm, err := build.CombinedOutput()
 		if err != nil {
