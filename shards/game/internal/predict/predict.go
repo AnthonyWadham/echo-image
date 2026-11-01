@@ -10,6 +10,7 @@ package predict
 import (
 	"errors"
 	"io/fs"
+	"reflect"
 	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
@@ -113,6 +114,15 @@ type Predictor struct {
 	moves   []box2d.Vec2                // your Body's center after each step since then
 	seen    map[uint64]map[uint64]Sight // the last KeptRows ticks of target syncs: by tick, then serial
 	targets map[uint64]target           // by serial
+	stepped []stepped                   // each frame stepped since the last Reset, oldest first
+}
+
+// stepped is the state a frame's step left, without its EchoPath, and whether its shots flew without
+// the target syncs of its view.
+type stepped struct {
+	seq   uint32
+	state State
+	blind bool
 }
 
 // target is a target's body in the predictor's world. Its user data is the entity's serial.
@@ -243,7 +253,50 @@ func (p *Predictor) place(view float64, st status.Status) flight.Targets {
 func (p *Predictor) Reset(s State) {
 	s.Cooldowns, s.Effects, s.Shots = slices.Clone(s.Cooldowns), slices.Clone(s.Effects), slices.Clone(s.Shots)
 	s.EchoPath = slices.Clone(s.EchoPath)
-	p.state, p.start, p.moves = s, s.Tick, p.moves[:0]
+	p.state, p.start, p.moves, p.stepped = s, s.Tick, p.moves[:0], p.stepped[:0]
+}
+
+// Agrees reports whether s, the server's state after your frame seq, is the state stepping seq left,
+// your Echo included up to the newest step, and every frame since flew your shots with its view's
+// target syncs. Then those frames are right as they are, and the client skips its Reset and replay; the
+// predictor takes the rest of s's Echo path, which it only guessed. It forgets the frames up to seq.
+func (p *Predictor) Agrees(seq uint32, s State) bool {
+	i := slices.IndexFunc(p.stepped, func(st stepped) bool { return st.seq == seq })
+	if i < 0 {
+		return false
+	}
+	was := p.stepped[i].state
+	p.stepped = p.stepped[i+1:]
+	if slices.ContainsFunc(p.stepped, func(st stepped) bool { return st.blind }) || !same(was, s) ||
+		len(s.EchoPath) > 0 != (len(p.state.EchoPath) > 0) {
+		return false
+	}
+	k := int(was.Tick - p.start)
+	for i, at := range s.EchoPath {
+		if s.Tick+uint64(i) <= p.state.Tick && at != p.echoAt(k+i) {
+			return false
+		}
+	}
+	p.start, p.moves, p.state.EchoPath = s.Tick, p.moves[k:], slices.Clone(s.EchoPath)
+	return true
+}
+
+// same reports whether a and b are the same state but for EchoPath, an empty list being the same as
+// none.
+func same(a, b State) bool {
+	for _, s := range []*State{&a, &b} {
+		s.EchoPath = nil
+		if len(s.Cooldowns) == 0 {
+			s.Cooldowns = nil
+		}
+		if len(s.Effects) == 0 {
+			s.Effects = nil
+		}
+		if len(s.Shots) == 0 {
+			s.Shots = nil
+		}
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 // State returns the state after the last step.
@@ -318,8 +371,13 @@ func (p *Predictor) Step(f Frame) (box2d.Vec2, []Ended) {
 			Pos: hooks.Vec2(s.Center), Aim: aim,
 		}, &asked)
 	}
-	ends := p.fly(asked.launches, f.Seq, p.place(f.ViewTick, st))
+	targets := p.place(f.ViewTick, st)
+	blind := targets == nil && (len(s.Shots) > 0 || len(asked.launches) > 0)
+	ends := p.fly(asked.launches, f.Seq, targets)
 	p.affect(asked.effects)
+	was := p.State()
+	was.EchoPath = nil
+	p.stepped = append(p.stepped, stepped{seq: f.Seq, state: was, blind: blind})
 	return s.Center, ends
 }
 

@@ -65,7 +65,8 @@ export class Hud {
     if (player.playing) {
       const n = player.input.unacked.length
       lines.push(`Inputs in flight: ${n} (~${Math.round(n * player.tickSeconds * 1000)} ms)`)
-      lines.push(`Prediction corrections: ${player.prediction.corrections}`)
+      const { replays, corrections } = player.prediction
+      lines.push(`Prediction: ${replays} replays, ${corrections} corrections`)
       const h = player.inputHealth
       if (h) {
         lines.push(

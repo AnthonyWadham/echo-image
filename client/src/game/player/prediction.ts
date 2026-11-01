@@ -41,11 +41,11 @@ export interface DrawnShot {
 /**
  * Your Body ahead of the server, with what it casts. Each frame you send runs one tick at once,
  * through the server's own code: it moves your Body, casts, and launches and flies your shots. A shot
- * meets Bodies and Echoes where your screen drew them, as the server judges it. Each body_sync starts it
- * over from the server's state after your last applied frame, then replays the frames the server
- * hasn't applied. With no surprise that lands on the same spot; when it doesn't, your Body, your Echo
- * and each shot fade to their new spots instead of jumping, and a shot the server never launched is
- * gone. A shot that ends in a tick still flies that tick, up to where it ended.
+ * meets Bodies and Echoes where your screen drew them, as the server judges it. A body_sync whose state
+ * after your last applied frame isn't what that frame predicted starts it over from there, then replays
+ * the frames the server hasn't applied. Your Body, your Echo and each shot fade to their new spots
+ * instead of jumping, and a shot the server never launched is gone. A shot that ends in a tick still
+ * flies that tick, up to where it ended.
  */
 export class Prediction {
   readonly #predictor: Predictor
@@ -58,6 +58,8 @@ export class Prediction {
   #fade = 0 // seconds: a correction shrinks to 1/e in this long
   /** body_syncs whose replay didn't land where the frames had put your Body. */
   corrections = 0
+  /** body_syncs that started it over and replayed your unacked frames. */
+  replays = 0
 
   constructor(predictor: Predictor) {
     this.#predictor = predictor
@@ -78,11 +80,16 @@ export class Prediction {
     this.#predictor.seeTargets(sync)
   }
 
-  /** Starts over from sync, then replays the frames the server hasn't applied. */
-  reconcile(sync: BodySync, you: BodyState, unacked: readonly InputFrame[]): void {
-    this.#predictor.reset(sync, you)
+  /**
+   * Starts over from sync, then replays the frames the server hasn't applied, unless sync acks your
+   * session's frames (ours) and your predictor agrees with it: then they're right as they are.
+   */
+  reconcile(sync: BodySync, you: BodyState, unacked: readonly InputFrame[], ours = false): void {
     this.#snap = sync.You.SnapSeconds * sync.You.MoveSpeed
     this.#fade = sync.You.FadeSeconds
+    if (ours && this.#body && this.#predictor.agrees(sync, you)) return
+    this.replays++
+    this.#predictor.reset(sync, you)
     let at: Vec2 = { x: you.X, y: you.Y }
     let ended: EndedShot[] | undefined
     for (const f of unacked) {

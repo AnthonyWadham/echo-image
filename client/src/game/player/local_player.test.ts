@@ -18,6 +18,10 @@ function predictor(seen: string[] = []): Predictor {
   return {
     version: sim,
     interpolationSeconds: 0.1,
+    agrees: () => {
+      seen.push('agrees')
+      return false
+    },
     reset: (s, you) => {
       at = { x: you.X, y: you.Y }
       const e = s.You.EchoPath[0]
@@ -130,6 +134,18 @@ describe('LocalPlayer', () => {
     const health = { Coasts: 2, DroppedFrames: 1, OversizedInputs: 0, FlooredViews: 3 }
     player.onBodySync({ ...s, You: { ...s.You, InputHealth: health } })
     expect(player.inputHealth).toEqual(health)
+  })
+
+  test("asks its predictor to agree only with a body_sync of its own session's", () => {
+    const seen: string[] = []
+    const player = newPlayer(new Timelines(0.1), seen)
+    player.setConnected(true, { x: 0, y: 0 })
+    player.onBodySync(bodySync(100)) // nothing predicted yet
+    const s = bodySync(101)
+    player.onBodySync({ ...s, You: { ...s.You, InputSession: session + 1 } })
+    expect(seen).toEqual([])
+    player.onBodySync(bodySync(102))
+    expect(seen).toEqual(['agrees'])
   })
 
   test('sends nothing while disconnected', () => {

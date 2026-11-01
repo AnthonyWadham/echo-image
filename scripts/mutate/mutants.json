@@ -402,8 +402,8 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "    this.#predictor.reset(sync, you)\n    this.#snap",
-     "new": "    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n    this.#snap"
+     "old": "    this.replays++\n    this.#predictor.reset(sync, you)\n",
+     "new": "    this.replays++\n    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n"
     },
     {
      "file": "client/src/game/player/prediction.ts",
@@ -1499,8 +1499,8 @@
    "edits": [
     {
      "file": "shards/game/prediction_test.go",
-     "old": "run = append(run, badNetwork(t, w, p, alice, bolt)...)",
-     "new": "badNetwork(t, w, p, alice, bolt)"
+     "old": "run = append(run, badNetwork(t, w, p, predict.New(rules), alice, bolt)...)",
+     "new": "badNetwork(t, w, p, predict.New(rules), alice, bolt)"
     }
    ]
   },
@@ -2389,6 +2389,126 @@
      "file": "sim.go",
      "old": "\tif tags != \"\" {\n\t\tv += \"+\" + tags",
      "new": "\tif false {\n\t\tv += \"+\" + tags"
+    }
+   ]
+  },
+  {
+   "id": "F12-A1",
+   "breaks": "agrees with nothing stepped",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tif i < 0 {\n\t\treturn false\n\t}\n\twas := p.stepped[i].state",
+     "new": "\tif i < 0 {\n\t\treturn true\n\t}\n\twas := p.stepped[i].state"
+    }
+   ]
+  },
+  {
+   "id": "F12-A2",
+   "breaks": "a surprise is agreed with",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": " || !same(was, s) ||",
+     "new": " ||"
+    }
+   ]
+  },
+  {
+   "id": "F12-A3",
+   "breaks": "a frame stepped without its view's syncs is agreed with",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "slices.ContainsFunc(p.stepped, func(st stepped) bool { return st.blind })",
+     "new": "false"
+    }
+   ]
+  },
+  {
+   "id": "F12-E1",
+   "breaks": "the Echo isn't compared",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "s.Tick+uint64(i) <= p.state.Tick && at != p.echoAt(k+i)",
+     "new": "s.Tick+uint64(i) < 0 && at != p.echoAt(k+i)"
+    }
+   ]
+  },
+  {
+   "id": "F12-E2",
+   "breaks": "the Echo keeps its guessed path",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tp.start, p.moves, p.state.EchoPath = s.Tick, p.moves[k:], slices.Clone(s.EchoPath)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F12-S1",
+   "breaks": "an empty shot list differs from none",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\tif len(s.Shots) == 0 {\n\t\t\ts.Shots = nil\n\t\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F12-T1",
+   "breaks": "another session's body_sync is agreed with",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "if (ours && this.#body &&",
+     "new": "if (this.#body &&"
+    }
+   ]
+  },
+  {
+   "id": "F12-T2",
+   "breaks": "every body_sync replays",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "    if (ours && this.#body && this.#predictor.agrees(sync, you)) return\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F12-L1",
+   "breaks": "LocalPlayer calls every body_sync its own",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "s.You.InputSession === this.input.session",
+     "new": "true"
+    }
+   ]
+  },
+  {
+   "id": "F12-W1",
+   "breaks": "the glue checks the wrong frame",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "sync.You.InputAck)",
+     "new": "sync.You.InputAck + 1)"
     }
    ]
   }

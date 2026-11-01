@@ -59,6 +59,11 @@ export interface Predictor {
   readonly interpolationSeconds: number
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync, you: BodyState): void
+  /**
+   * Whether your Body as a body_sync left it is what stepping your last applied frame left, and every
+   * frame since met its view's targets: then they need no reset and replay.
+   */
+  agrees(sync: BodySync, you: BodyState): boolean
   /** Keeps the targets a target_sync shows, so your shots meet them where your screen drew them. */
   seeTargets(sync: TargetSync): void
   /** Forgets the targets it saw: after a reconnect or a server restart. */
@@ -79,6 +84,7 @@ export interface Predictor {
 interface Exports {
   version: string
   reset(state: object): void
+  agrees(state: object, seq: number): boolean
   seeTargets(sync: object): void
   forget(): void
   peek(moveX: number, moveY: number): Vec2
@@ -102,35 +108,37 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
   const refused = content && exports.useContent(content)
   if (refused) throw new Error(refused)
   const interpolationSeconds = exports.interpolationSeconds()
+  // A uint64 goes as a decimal string, since a number can't hold every one.
+  const stateOf = (sync: BodySync, you: BodyState) => {
+    const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } = sync.You
+    return {
+      Tick: String(sync.Tick),
+      Body,
+      Team: you.Team,
+      X: you.X,
+      Y: you.Y,
+      Radius: you.Radius,
+      MoveSpeed,
+      Champion,
+      Cooldowns: Cooldowns.map((c) => ({ ...c, ReadyTick: String(c.ReadyTick) })),
+      Effects: Effects.map((e) => ({
+        ...e,
+        Tags: String(e.Tags),
+        Pass: String(e.Pass),
+        Start: String(e.Start),
+        End: String(e.End),
+      })),
+      EffectsNext,
+      Shots,
+      EchoDelay,
+      EchoPath,
+    }
+  }
   return {
     version: exports.version,
     interpolationSeconds,
-    // A uint64 goes as a decimal string, since a number can't hold every one.
-    reset: (sync, you) => {
-      const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } = sync.You
-      exports.reset({
-        Tick: String(sync.Tick),
-        Body,
-        Team: you.Team,
-        X: you.X,
-        Y: you.Y,
-        Radius: you.Radius,
-        MoveSpeed,
-        Champion,
-        Cooldowns: Cooldowns.map((c) => ({ ...c, ReadyTick: String(c.ReadyTick) })),
-        Effects: Effects.map((e) => ({
-          ...e,
-          Tags: String(e.Tags),
-          Pass: String(e.Pass),
-          Start: String(e.Start),
-          End: String(e.End),
-        })),
-        EffectsNext,
-        Shots,
-        EchoDelay,
-        EchoPath,
-      })
-    },
+    reset: (sync, you) => exports.reset(stateOf(sync, you)),
+    agrees: (sync, you) => exports.agrees(stateOf(sync, you), sync.You.InputAck),
     seeTargets: (sync) =>
       exports.seeTargets({
         Tick: String(sync.Tick),

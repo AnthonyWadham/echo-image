@@ -128,7 +128,7 @@ export class LocalPlayer {
     const me = this.me
     if (!(this.tickSeconds > 0 && me)) return
     this.#playing = true
-    this.prediction.reconcile(s, me, this.input.unacked)
+    this.prediction.reconcile(s, me, this.input.unacked, s.You.InputSession === this.input.session)
   }
 
   /** Keeps the targets each target_sync shows, for your shots to meet, once the shard runs your sim. */

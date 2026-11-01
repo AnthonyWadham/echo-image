@@ -22,6 +22,7 @@ function predictor(): Predictor {
   return {
     version: 'this build',
     interpolationSeconds: 0.1,
+    agrees: () => false,
     reset: (sync, you) => {
       at = { x: you.X, y: you.Y }
       tick = Number(sync.Tick)
@@ -129,6 +130,23 @@ describe('Prediction', () => {
     expect(p.position).toEqual({ x: 2, y: 0 })
     expect(p.corrections).toBe(0)
     expect(p.drawn(0.5)).toEqual({ x: 1.5, y: 0 })
+  })
+
+  test("keeps its prediction while the predictor agrees with a body_sync of your session's", () => {
+    let agrees = true
+    const p = new Prediction({ ...predictor(), agrees: () => agrees })
+    p.reconcile(sync(0), you(0), [], true) // nothing to agree with yet
+    p.step(right(1), tickSeconds)
+    p.step(right(2), tickSeconds)
+    p.reconcile(sync(-5), you(-5), [right(2)], true) // its state isn't checked here: the predictor's is
+    expect(p.replays).toBe(1)
+    expect(p.position).toEqual({ x: 2, y: 0 })
+    p.reconcile(sync(1), you(1), [right(2)]) // another session's
+    expect(p.replays).toBe(2)
+    agrees = false
+    p.reconcile(sync(0.5), you(0.5), [right(2)], true)
+    expect(p.replays).toBe(3)
+    expect(p.position).toEqual({ x: 1.5, y: 0 })
   })
 
   test('a correction keeps the drawn Body in place, then fades', () => {

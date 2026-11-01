@@ -604,13 +604,18 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `shards/game/predictor` builds `predict` (and through it `motion.Step` and world-engine's `box2d`) to
   wasm with the server's Go toolchain. Each frame the client sends runs one tick of it at once, in the
   server's order: the cast gate, the move, each cast's hook, your shots, then the effects your casts
-  put on you. Each `BodySync` restarts it from your Body and `You` (`MoveSpeed`, `Champion`,
+  put on you. The predictor keeps its state after each frame. A `BodySync` of your session whose state
+  is what your frame `You.InputAck` left (`predict.Agrees`: everything, your Echo up to your newest
+  frame, and no frame since stepped without its view's target syncs) changes nothing, but your Echo's
+  path takes the server's. Any other restarts it from your Body and `You` (`MoveSpeed`, `Champion`,
   `Cooldowns`, `Effects` with `EffectsNext`, never the folded status, `Shots`, and `EchoDelay` with
   `EchoPath`) at `Tick`, and replays the frames newer than `You.InputAck` (when `InputSession` is its
-  own). A replay that lands elsewhere is a correction: your Body, Echo and each shot (by key) keep the
+  own). So a clean link replays nothing, and a body_sync costs a compare, not a replay of every
+  unacked frame. A replay that lands elsewhere is a correction: your Body, Echo and each shot (by key) keep the
   path they're drawn on and fade to their new spots over the champion's `fade_seconds`, or jump past
   its `snap_seconds` of move speed (`content/player/tuning.json`, sent in `YouState`), and a new shot
-  starts as far off as your Body (`client/src/game/player/prediction.ts`). The HUD counts them.
+  starts as far off as your Body (`client/src/game/player/prediction.ts`). The HUD counts replays and
+  corrections.
   - **Every input is predicted:** a shot leaves the frame you click, from where that frame moves your
     Body, a dash starts the tick after, and the HUD starts a cooldown at once.
     `ProjectileState.Predicted` and `Caster` say whose predictor draws a shot: a client draws its own
@@ -663,7 +668,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     and bunched Inputs, a full queue dropping frames) checks each replay of several unacked frames
     lands there too once its frame applies, unless the server coasted or dropped a frame first, and
     that a correction is at most a tick of walking per such surprise. The recording keeps those
-    replays. `TestPredictedEchoMatchesServer` checks your Echo over ten frames from one state, and
+    replays. A second predictor there replays only when `Agrees` says no, lands where they do every
+    tick, and never replays without a surprise; the main run replays only after its two. `TestPredictedEchoMatchesServer` checks your Echo over ten frames from one state, and
     `TestShotMeetsYourEchoWhereYouDrawIt` a shot that stops on it.
     Corrections still come from what the client can't know: a late frame (the server repeats the last
     one, at a view moved on), effects others cause, and a target someone else kills first. Pacing

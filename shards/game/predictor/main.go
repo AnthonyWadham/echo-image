@@ -41,6 +41,9 @@ func main() {
 			p.Reset(state(args[0]))
 			return nil
 		}),
+		"agrees": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return p.Agrees(uint32(args[1].Int()), state(args[0]))
+		}),
 		"peek": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			return point(p.Peek(args[0].Float(), args[1].Float()))
 		}),

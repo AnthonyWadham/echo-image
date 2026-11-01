@@ -89,6 +89,21 @@ test('the wasm build lands on the server bits each tick, ended shots included, a
   }
 })
 
+test('agrees with a body_sync only where its own step left your Body', () => {
+  const [s, next] = [run[0]!, run[1]!] // the server applied s's frame, with no surprise
+  const body = (x: Step) => x.Sync.Bodies.find((b) => b.EntityID === x.Sync.You.Body)!
+  for (const [you, agrees] of [
+    [{ ...body(next), X: body(next).X + 1e-9 }, false],
+    [body(next), true],
+  ] as const) {
+    predictor.forget()
+    predictor.seeTargets(s.Targets)
+    predictor.reset(s.Sync, body(s))
+    stepAll(s.Frames)
+    expect(predictor.agrees(next.Sync, you)).toBe(agrees)
+  }
+})
+
 test("effects keep their stacking through the wasm glue: two sources' per-source hastes add", () => {
   const s = run[0]!
   const you = s.Sync.Bodies.find((b) => b.EntityID === s.Sync.You.Body)!

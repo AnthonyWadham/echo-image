@@ -419,8 +419,8 @@ func TestDeadEchoIsNotPredicted(t *testing.T) {
 }
 
 // Random but honest play: each player holds a random move for a while, closes in when far, aims near the
-// other and presses random buttons. Her predictor, reset to each tick's state, lands on the server's next
-// one to the bit, as in TestPredictionMatchesServer. The only surprise is her Echo dying, which puts her
+// other and presses random buttons. Her predictor, reset when a tick's state disagrees with it (Agrees),
+// lands on the server's next one to the bit, as in TestPredictionMatchesServer. The only surprise is her Echo dying, which puts her
 // out. A failure names its seed, and -seed reruns it.
 func TestRandomPlayIsPredicted(t *testing.T) {
 	s := *seed
@@ -452,7 +452,9 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 		mine, mineOK := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), me)
 		a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
 		see(t, p, targets)
-		p.Reset(predictFrom(t, before))
+		if s := predictFrom(t, before); !p.Agrees(before.You.InputAck, s) {
+			p.Reset(s)
+		}
 		f := alice.next(frame(alice, a, b))
 		_, ended := p.Step(predictFrame(f))
 		alice.send(f)
@@ -545,6 +547,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 	// client sees each tick's syncs, steps the frame from the newest state, and sends it.
 	var run []predictionStep
 	var ends []predict.Ended
+	var replays []int // the steps her client started over at: the first, and each after a surprise
 	for i := range 2 * second {
 		e, surprised := surprises[i]
 		if surprised {
@@ -555,7 +558,10 @@ func TestPredictionMatchesServer(t *testing.T) {
 		}
 		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
 		see(t, p, targets)
-		p.Reset(predictFrom(t, before))
+		if s := predictFrom(t, before); !p.Agrees(before.You.InputAck, s) {
+			p.Reset(s)
+			replays = append(replays, i)
+		}
 		f := frameAt(i)
 		if i == second {
 			// Aim where her screen will draw bob when the bolt gets there: at step k, his rows from k-3
@@ -582,6 +588,10 @@ func TestPredictionMatchesServer(t *testing.T) {
 		_, replayed := p.Step(predictFrame(f))
 		requirePredicted(t, at+" replayed", guessOf(p), after, afterEchoes, !surprised)
 		requireEnded(t, at+" replayed", replayed, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
+	}
+	if want := []int{0, 3, 7}; !slices.Equal(replays, want) {
+		t.Errorf("her client started over at steps %v, want %v: the first, and the step after each surprise", replays,
+			want)
 	}
 	if len(run[0].Shots) != 1 || len(run[second-1].Shots) != 0 {
 		t.Fatalf("predicted %d shots after her first frame and %d before her second bolt, want one, then none",
@@ -626,7 +636,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		}
 	}
 
-	run = append(run, badNetwork(t, w, p, alice, bolt)...)
+	run = append(run, badNetwork(t, w, p, predict.New(rules), alice, bolt)...)
 	// Shots end out of range and on bob, after one frame and after several, so the wasm build meets each.
 	pairs := map[[2]bool]bool{}
 	for _, s := range run {
@@ -702,12 +712,13 @@ func TestPredictionMatchesServer(t *testing.T) {
 // tick of the script: '.' her client makes a frame and sends it, '0' its clock runs slow and makes none,
 // '2' it makes two after a hitch, 'l' the frame's Input is lost (the next one resends it), and 'h' the
 // network holds it until the next '.' or '2'. Two more held in a row than the server's queue holds
-// overflow it, and the slow ticks after drain it before her bolt is ready again. Each tick her client
-// starts over from the newest body_sync and replays her unacked frames, as it does. Whenever the server
-// then applies those frames a tick each, it lands where the replay did, to the bit, its shots' ends
-// included. A correction comes only from a surprise: at most a tick of walking for each tick the server
-// coasted or frame it dropped. It returns each tick's replay, for the recording.
-func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice *client, bolt flight.Shot,
+// overflow it, and the slow ticks after drain it before her bolt is ready again. Each tick p starts over
+// from the newest body_sync and replays her unacked frames. Whenever the server then applies those
+// frames a tick each, it lands where the replay did, to the bit, its shots' ends included. A correction
+// comes only from a surprise: at most a tick of walking for each tick the server coasted or frame it
+// dropped. Her client's predictor q replays only when the server disagrees with it (Agrees), and lands
+// where p does each tick: so only after a surprise. It returns each tick's replay, for the recording.
+func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, alice *client, bolt flight.Shot,
 ) []predictionStep {
 	t.Helper()
 	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
@@ -740,12 +751,14 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 		surprises                       int        // since her client last predicted
 		exact, deep, coasts, dropped    int
 		deepHits, deepMisses, corrected int
+		replays                         int // her client's
 	)
 	for i, c := range script {
 		at := fmt.Sprintf("bad network tick %d", i)
-		var ended []predict.Ended // every shot her client's steps ended this tick
-		// Her client starts over from the newest body_sync and replays what the server hasn't applied.
+		var ended []predict.Ended // every shot p's steps ended this tick
+		// p starts over from the newest body_sync and replays what the server hasn't applied.
 		see(t, p, targets)
+		see(t, q, targets)
 		p.Reset(predictFrom(t, before))
 		ack := before.You.InputAck
 		unacked = slices.DeleteFunc(unacked, func(f playercomp.InputFrame) bool { return f.Seq <= ack })
@@ -753,6 +766,16 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 			_, e := p.Step(predictFrame(f))
 			ended = append(ended, e...)
 			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})
+		}
+		if s := predictFrom(t, before); !q.Agrees(ack, s) {
+			if i > 0 && surprises == 0 {
+				t.Fatalf("%s: her client replayed with no surprise", at)
+			}
+			replays++
+			q.Reset(s)
+			for _, f := range unacked {
+				q.Step(predictFrame(f))
+			}
 		}
 		if i > 0 {
 			moved := box2d.Length(box2d.Sub(p.State().Center, drawn))
@@ -775,6 +798,7 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 				Buttons: 1})
 			alice.seq = f.Seq
 			_, e := p.Step(predictFrame(f))
+			q.Step(predictFrame(f))
 			ended = append(ended, e...)
 			open = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})
 			unacked = append(unacked, f)
@@ -787,6 +811,9 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 				}
 				held = nil
 			}
+		}
+		if got, want := fmt.Sprintf("%+v", guessOf(q)), fmt.Sprintf("%+v", guessOf(p)); got != want { // floats exactly
+			t.Fatalf("%s: her client has %s, a replay %s", at, got, want)
 		}
 		drawn = p.State().Center
 		run = append(run, record(p, before, targets, unacked, ended))
@@ -828,11 +855,12 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 		before, targets = after, sentTo[projectile.TargetSync](t, w, "alice")
 	}
 	if exact < len(script) || deep == 0 || deepHits == 0 || deepMisses == 0 || coasts < 3 || dropped == 0 ||
-		corrected == 0 {
+		corrected == 0 || replays < 2 {
 		t.Fatalf("bad network: %d exact replays, %d of several frames, ending %d shots on bob and %d elsewhere; "+
-			"%d coasts, %d frames dropped, %d corrections: want each", exact, deep, deepHits, deepMisses, coasts,
-			dropped, corrected)
+			"%d coasts, %d frames dropped, %d corrections, %d replays by her client: want each", exact, deep,
+			deepHits, deepMisses, coasts, dropped, corrected, replays)
 	}
+	t.Logf("bad network: her client replayed %d of %d ticks", replays, len(script))
 	return run
 }
 
@@ -930,6 +958,52 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		if math.Abs(math.Hypot(to.X-c.drawn.X, to.Y-c.drawn.Y)-(bolt.Radius+enemy.Radius)) > 2*box2d.LinearSlop ||
 			math.Abs(math.Hypot(to.X-e.Pos.X, to.Y-e.Pos.Y)-e.End.Until*step) > 1e-9 {
 			t.Errorf("%s: ended %+v, want her shot touching the enemy at %v, at its speed", c.name, e, *c.drawn)
+		}
+	}
+	// A frame stepped before its view's syncs came flew her shot past every target, so her client
+	// replays it, though the server agrees with the frame before.
+	for view, agrees := range map[float64]bool{10.5: true, 9.5: false} {
+		p := predict.New(rules)
+		sync(p, 10, far)
+		sync(p, 11, far)
+		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
+		p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 10.5})
+		first := p.State()
+		p.Step(predict.Frame{Seq: 2, AimX: 1, ViewTick: view})
+		if got := p.Agrees(1, first); got != agrees {
+			t.Errorf("her second frame drawn at %v: agrees %v, want %v", view, got, agrees)
+		}
+	}
+}
+
+// Past the path her last state sent, her Echo is a guess: where that path ends. A state that has it
+// elsewhere at a tick her frames stepped disagrees, though all else agrees. One that differs only after
+// them agrees, and her Echo takes its path.
+func TestPredictorAgreesOnlyWithTheEchoItStepped(t *testing.T) {
+	rules, err := predict.Load(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name   string
+		path   []box2d.Vec2 // the server's, from tick 11
+		agrees bool
+	}{
+		{"as guessed", []box2d.Vec2{{X: 1}, {X: 1}, {X: 1}}, true},
+		{"elsewhere after her frames", []box2d.Vec2{{X: 1}, {X: 1}, {X: 2}}, true},
+		{"elsewhere at her second frame", []box2d.Vec2{{X: 1}, {X: 1.5}, {X: 2}}, false},
+	} {
+		p := predict.New(rules)
+		p.Reset(predict.State{Tick: 10, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter", EchoDelay: 5,
+			EchoPath: []box2d.Vec2{{}, {X: 1}}})
+		p.Step(predict.Frame{Seq: 1})
+		first := p.State()
+		p.Step(predict.Frame{Seq: 2})
+		first.EchoPath = c.path
+		if got := p.Agrees(1, first); got != c.agrees {
+			t.Errorf("%s: agrees %v, want %v", c.name, got, c.agrees)
+		} else if at, _, _ := p.Echo(); got && at != c.path[1] {
+			t.Errorf("%s: her Echo at %v, want the server's %v", c.name, at, c.path[1])
 		}
 	}
 }
