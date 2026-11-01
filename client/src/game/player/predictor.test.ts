@@ -7,11 +7,12 @@ import type { InputFrame } from './input_command'
 import { loadPredictor } from './predictor'
 import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor } from './predictor'
 
-// TestPredictionMatchesServer's run (shards/game/main_test.go): the body_sync and target_sync before
-// each tick, the frames her client stepped from them, and what the Go predictor gave after the last: the
-// server's state once it applies that frame, unless it coasted or dropped one first. Casts, a dash, a
-// shot flying out its range, slows, a stun, bad frames, a shot that stops on bob where the frame's view
-// drew him, her Echo retracing her path, and a bad network's lost, late and held Inputs are in it.
+// TestPredictionMatchesServer's run (shards/game/prediction_test.go), which scripts/predictor.mjs has
+// it write before the tests, at the wasm's rate: the body_sync and target_sync before each tick, the
+// frames her client stepped from them, and what the Go predictor gave after the last: the server's
+// state once it applies that frame, unless it coasted or dropped one first. Casts, a dash, a shot
+// flying out its range, slows, a stun, bad frames, a shot that stops on bob where the frame's view drew
+// him, her Echo retracing her path, and a bad network's lost, late and held Inputs are in it.
 interface Step {
   Sync: BodySync
   Targets: TargetSync
@@ -23,9 +24,7 @@ interface Step {
   Kit: PredictedKit
   Echo: PredictedEcho | null // null with no Echo
 }
-const hz = /\+(\d+)hz\+/.exec(inject('simVersion'))?.[1] // the wasm's rate: GOFLAGS=-tags=rate60 builds 60 Hz
-const recording = new URL(`../../../../shards/game/testdata/prediction-${hz}hz.msgpack`, import.meta.url)
-const run = decodePayload(new Uint8Array(readFileSync(recording))) as Step[]
+const run = decodePayload(new Uint8Array(readFileSync(new URL('prediction.msgpack', import.meta.url)))) as Step[]
 
 declare module 'vitest' {
   export interface ProvidedContext {

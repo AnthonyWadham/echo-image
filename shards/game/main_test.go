@@ -434,5 +434,8 @@ func dash(t *testing.T) (int, dashParams) {
 	return 0, dashParams{}
 }
 
-var update = flag.Bool("update", false,
-	"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture")
+var (
+	update = flag.Bool("update", false,
+		"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture")
+	recordTo = flag.String("record", "", "write TestPredictionMatchesServer's run to this file, for the wasm build")
+)

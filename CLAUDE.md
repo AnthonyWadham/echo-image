@@ -29,6 +29,9 @@ one is the *what*.
   The world tests in `shards/game` run real ticks through `main.go`'s `register` with
   `cardinal.NewTestWorld`, so a missing registration fails there; they also pin the client-sync,
   prediction, ability, shot, Echo, area, damage and effect rules below.
+- **Mutation checks:** `go run ./scripts/mutate` breaks each rule in `scripts/mutate/mutants.json` once,
+  in a temporary copy (never the working tree), and fails if a test misses one or its old text is gone.
+  Add a mutant with each new rule; run it when a rule changes.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
   `projectile_test.go`, … in `shards/game`). One harness: shared helpers live in `main_test.go`. Never
   a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
@@ -605,10 +608,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     says to reload (in dev, restart `bun run dev` first). `TestSimVersionCoversWhatTheSimIsBuiltFrom`
     checks every file the shard and the predictor build from is hashed.
   - **Exact, unless the network surprises it.** `TestPredictionMatchesServer` checks the predictor lands
-    on the server's bits, each shot's end and your Echo included, after a step and after a replay, and
-    keeps its run in `testdata/prediction-20hz.msgpack` (`-60hz` at 60 Hz), which the wasm build must
-    match too (`predictor.test.ts`). `-update` re-records it and its text digest, `.txt` beside it (a
-    line a step, checked against the run): review that diff. Its bad network (`badNetwork`: lost, held
+    on the server's bits, each shot's end and your Echo included, after a step and after a replay. Its
+    golden is the run's text digest, `testdata/prediction-20hz.txt` (`-60hz` at 60 Hz, a line a step):
+    `-update` rewrites it, so review that diff. The wasm build must land on the same run: vitest's setup
+    has the test write it (`-record`, a gitignored build output) and `predictor.test.ts` replays it. Its bad network (`badNetwork`: lost, held
     and bunched Inputs, a full queue dropping frames) checks each replay of several unacked frames
     lands there too once its frame applies, unless the server coasted or dropped a frame first, and
     that a correction is at most a tick of walking per such surprise. The recording keeps those

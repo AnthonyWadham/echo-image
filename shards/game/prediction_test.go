@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"cmp"
 	echoimage "echo_image"
 	"echo_image/shards/game/content"
@@ -204,6 +203,14 @@ type kitSlot struct {
 	ReadyTick float64
 }
 
+// at is line i of lines, or "(none)".
+func at(lines []string, i int) string {
+	if i < len(lines) {
+		return lines[i]
+	}
+	return "(none)"
+}
+
 // overWire is v after a MessagePack round trip, as a client gets it.
 func overWire[T any](t *testing.T, v T) T {
 	t.Helper()
@@ -386,8 +393,8 @@ func record(p *predict.Predictor, sync player.BodySync, targets projectile.Targe
 // drew him: the server ends it the same tick at the same point, and a replay of the frame ends it there
 // too. Effects others put on her surprise it, and come with the next state. Her Echo trails her by a
 // second (test content), so it retraces her path in the run.
-// testdata/prediction-20hz.msgpack (one per tick rate) keeps the run and the bad network's replays, so the
-// client checks that its wasm build lands there too (client/src/game/player/predictor.test.ts).
+// testdata/prediction-20hz.txt (one per tick rate) is the digest of the run and the bad network's replays.
+// -record writes the run, so the client checks its wasm build lands there too (predictor.test.ts).
 func TestPredictionMatchesServer(t *testing.T) {
 	fx := &emitter{}
 	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, map[string]string{
@@ -521,41 +528,42 @@ func TestPredictionMatchesServer(t *testing.T) {
 
 	run = append(run, badNetwork(t, w, p, alice)...)
 
-	// The recording must still predict its own results, so a change to the sim asks for a new one. Its
-	// digest is text, a line a step, so a new recording is a reviewed diff. Each tick rate has its own.
-	name := filepath.Join("testdata", fmt.Sprintf("prediction-%dhz", physics.ServerTickRateHz))
-	path, digestPath := name+".msgpack", name+".txt"
-	digest := func(run []predictionStep) []byte {
-		var b strings.Builder
-		for _, s := range run {
-			b.WriteString(s.digest())
-		}
-		return []byte(b.String())
+	// The run's digest, a line a step, is the golden, so a change to the sim shows as a reviewed diff. Each
+	// tick rate has its own. -record writes the run itself, for the wasm build to match (predictor.mjs).
+	digestPath := filepath.Join("testdata", fmt.Sprintf("prediction-%dhz.txt", physics.ServerTickRateHz))
+	var b strings.Builder
+	for _, s := range run {
+		b.WriteString(s.digest())
 	}
-	if *update {
+	switch {
+	case *recordTo != "":
 		raw, err := msgpack.Marshal(run)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, raw, 0o644); err != nil {
+		if err := os.WriteFile(*recordTo, raw, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(digestPath, digest(run), 0o644); err != nil {
+	case *update:
+		if err := os.WriteFile(digestPath, []byte(b.String()), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		return
+	default:
+		golden, err := os.ReadFile(digestPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, got := strings.SplitAfter(string(golden), "\n"), strings.SplitAfter(b.String(), "\n")
+		for i := range max(len(want), len(got)) {
+			if i >= len(want) || i >= len(got) || want[i] != got[i] {
+				t.Fatalf("%s line %d differs from this run. If the sim changed on purpose, run "+
+					"`go test ./shards/game -run TestPredictionMatchesServer -update` (with -tags rate60 at 60 Hz) "+
+					"and review the diff.\nwant: %.300s\ngot:  %.300s", digestPath, i+1, at(want, i), at(got, i))
+			}
+		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var recorded []predictionStep
-	if err := msgpack.Unmarshal(raw, &recorded); err != nil || len(recorded) == 0 {
-		t.Fatalf("%s holds no run (%v)", path, err)
-	}
-	if text, err := os.ReadFile(digestPath); err != nil || !bytes.Equal(text, digest(recorded)) {
-		t.Fatalf("%s isn't the digest of %s (%v): run with -update to write both", digestPath, path, err)
-	}
+	// Each step, started over from its sync after the wire, lands where it did.
+	recorded := overWire(t, run)
 	p.Forget()
 	for i, s := range recorded {
 		see(t, p, s.Targets)
@@ -568,10 +576,9 @@ func TestPredictionMatchesServer(t *testing.T) {
 		if got.X != s.X || got.Y != s.Y || !slices.Equal(got.Shots, s.Shots) || got.Kit.Tick != s.Kit.Tick ||
 			!slices.Equal(got.Kit.Slots, s.Kit.Slots) || !slices.Equal(got.Ended, s.Ended) ||
 			(got.Echo == nil) != (s.Echo == nil) || got.Echo != nil && *got.Echo != *s.Echo {
-			t.Fatalf("%s step %d: predicted (%v, %v), shots %+v, ended %+v, kit %+v, Echo %+v; recorded (%v, %v), %+v, "+
-				"%+v, %+v, %+v. If the sim changed on purpose, run "+
-				"`go test ./shards/game -run TestPredictionMatchesServer -update` (with -tags rate60 at 60 Hz)",
-				path, i, got.X, got.Y, got.Shots, got.Ended, got.Kit, got.Echo, s.X, s.Y, s.Shots, s.Ended, s.Kit, s.Echo)
+			t.Fatalf("step %d: predicted (%v, %v), shots %+v, ended %+v, kit %+v, Echo %+v; first (%v, %v), %+v, "+
+				"%+v, %+v, %+v", i, got.X, got.Y, got.Shots, got.Ended, got.Kit, got.Echo, s.X, s.Y, s.Shots, s.Ended,
+				s.Kit, s.Echo)
 		}
 	}
 }

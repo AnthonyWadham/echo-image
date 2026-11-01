@@ -3,3 +3,5 @@ dist/
 # Built by scripts/predictor.mjs from shards/game/predictor and the Go toolchain.
 src/engine/wasm/wasm_exec.js
 src/game/player/predictor.wasm
+# Written by TestPredictionMatchesServer -record in vitest's global setup.
+src/game/player/prediction.msgpack

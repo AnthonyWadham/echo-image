@@ -1,8 +1,9 @@
 // Builds the client predictor (shards/game/predictor) to wasm with the Go toolchain the server is built
 // with, and copies that toolchain's wasm_exec.js next to its loader, so the two always match. The dev
-// and build scripts run it first, and vitest runs it as its global setup. It stamps the wasm with this
-// tree's sim version, which a shard built from it sends in body_sync. GOFLAGS=-tags=rate60 builds both
-// at 60 Hz.
+// and build scripts run it first, and vitest runs it as its global setup, which also has the Go test
+// write its prediction run for the wasm to match (predictor.test.ts). It stamps the wasm with this
+// tree's sim version, which a shard built from it sends in body_sync. GOFLAGS=-tags=rate60 builds all
+// three at 60 Hz.
 import { execFileSync } from 'node:child_process'
 import { copyFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -27,5 +28,7 @@ copyFileSync(`${go(['env', 'GOROOT'])}/lib/wasm/wasm_exec.js`, new URL('engine/w
 
 /** vitest's global setup: the build above has run by now, and tests can inject its simVersion. */
 export default function setup(project) {
+  const run = fileURLToPath(new URL('game/player/prediction.msgpack', src))
+  go(['test', './shards/game', '-run', '^TestPredictionMatchesServer$', '-count=1', `-record=${run}`])
   project.provide('simVersion', sim)
 }
