@@ -31,17 +31,17 @@ type bodyRow struct {
 	TargetHistory projectilecomp.TargetHistory
 }
 
-// DevSpawnSystem drops two players on opposing teams (a 1v1) at fixed spawn points at world init.
-// This is dev scaffolding — real spawning will be command-driven (matchmaking / client join). Replace
-// this system when that lands.
+// DevSpawnSystem makes the dev roster's Bodies (content: dev_spawns) at world init, numbered from 1 in
+// order. Players claim them in that order. This is dev scaffolding — real spawning will be
+// command-driven (matchmaking / client join). Replace this system when that lands.
 type DevSpawnSystem struct {
 	Tuning MovementTuning
 }
 
 func (s *DevSpawnSystem) Run(w *cardinal.World) {
-	tuning := s.Tuning
-	spawnBody(w, tuning, tuning.DevChampion, 1, "Player One", team.A, physics2d.Vec2{X: -5, Y: 0})
-	spawnBody(w, tuning, tuning.DevChampion, 2, "Player Two", team.B, physics2d.Vec2{X: 5, Y: 0})
+	for i, d := range s.Tuning.DevSpawns {
+		spawnBody(w, s.Tuning, s.Tuning.DevChampion, uint32(i+1), d.Nickname, d.Team, physics2d.Vec2{X: d.X, Y: d.Y})
+	}
 }
 
 // spawnBody is the one constructor for a player Body; every spawn path uses it, so no Body is

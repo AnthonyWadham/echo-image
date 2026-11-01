@@ -15,6 +15,15 @@ type MovementTuning struct {
 	EchoPathSeconds     float64                `json:"echo_path_seconds"`     // how much Echo path YouState sends
 	Champions           map[string]ChampionDef `json:"champions"`             // by champion ID
 	DevChampion         string                 `json:"dev_champion"`          // the champion DevSpawnSystem's Bodies play
+	DevSpawns           []DevSpawn             `json:"dev_spawns"`            // the Bodies DevSpawnSystem makes
+}
+
+// DevSpawn is a Body DevSpawnSystem makes at world init.
+type DevSpawn struct {
+	Nickname string  `json:"nickname"`
+	Team     uint8   `json:"team"`
+	X        float64 `json:"x"`
+	Y        float64 `json:"y"`
 }
 
 // ChampionDef is a champion's Body.
@@ -55,6 +64,9 @@ func (t MovementTuning) Validate() error {
 	}
 	if _, ok := t.Champions[t.DevChampion]; !ok {
 		return fmt.Errorf("movement_tuning: dev_champion %q is not a champion", t.DevChampion)
+	}
+	if len(t.DevSpawns) == 0 {
+		return fmt.Errorf("movement_tuning: dev_spawns lists no Body, so no player can join")
 	}
 	return nil
 }

@@ -374,35 +374,16 @@ func TestEchoShotHitsLive(t *testing.T) {
 	}
 }
 
-// Shots pass allies: alice's shot flies through carol where she drew her.
+// Shots pass allies: alice's shot flies through carol, her teammate 2 m in front of her, and carol's
+// Echo, where she drew them.
 func TestShotPassesThroughAllies(t *testing.T) {
-	w, alice, _ := duel(t)
+	w := cardinal.NewTestWorld(t, withContent(t, twoVsTwo))
+	alice, _ := claim(t, w)
+	join(t, w, "carol")
 	from := yourBody(t, bodiesFor(t, w, "alice"))
-
-	// carol, alice's teammate, stands 2 units in front of her.
-	type allyBodyRow struct {
-		Team      team.Team
-		Owner     team.Owner
-		Transform physics2d.Transform2D
-		Velocity  physics2d.Velocity2D
-		Body      physics2d.PhysicsBody2D
-		Effects   effectcomp.Effects
-		History   projectilecomp.TargetHistory
-	}
-	carol := w.Create[allyBodyRow]()
-	carol.Set(team.Team{ID: from.Team})
-	carol.Set(team.Owner{Body: carol.ID()})
-	carol.Set(physics2d.Transform2D{Position: physics2d.Vec2{X: from.X + 2, Y: from.Y}})
-	carol.Set(physics.NewBody2D(physics2d.BodyTypeKinematic, physics2d.ColliderShape{
-		ShapeType:    physics2d.ShapeTypeCircle,
-		Radius:       0.5,
-		CategoryBits: uint64(interact.Body),
-		MaskBits:     uint64(interact.Body | interact.Wall | interact.Shot),
-	}))
-
 	flyFor(w, int(math.Ceil(drawLag))+1) // carol's rows reach back to alice's view
 
-	// The shot starts inside alice's own Body and Echo, then crosses carol.
+	// The shot starts inside alice's own Body and Echo, then crosses carol and her Echo.
 	alice.fire(1, 0)
 	w.Tick()
 	_, shot := primary(t)

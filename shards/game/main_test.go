@@ -48,14 +48,14 @@ func tuningOf[T content.File](t *testing.T) T {
 
 // withContent is register with each patch deep-merged into the shipped content file it names, in
 // order, so a test can add a shot type or a champion. Objects merge, and anything else replaces.
-func withContent(t *testing.T, patches ...map[string]string) func(*cardinal.World) {
+func withContent(t testing.TB, patches ...map[string]string) func(*cardinal.World) {
 	t.Helper()
 	files := patched(t, patches...)
 	return func(world *cardinal.World) { registerWith(world, files) }
 }
 
 // patched is the content withContent registers, which a predictor can load too.
-func patched(t *testing.T, patches ...map[string]string) overlay {
+func patched(t testing.TB, patches ...map[string]string) overlay {
 	t.Helper()
 	docs := map[string]map[string]any{}
 	for _, files := range patches {
@@ -249,6 +249,73 @@ func claim(t *testing.T, w *cardinal.TestWorld) (alice, bob *client) {
 		t.Fatal("alice and bob are on the same team")
 	}
 	return alice, bob
+}
+
+// join has player take the next free Body in w, standing still. The dev roster's order sets its team.
+func join(t *testing.T, w *cardinal.TestWorld, player string) *client {
+	t.Helper()
+	c := &client{w: w, id: player, session: 1, back: drawLag}
+	c.move(0, 0)
+	w.Tick()
+	yourBody(t, bodiesFor(t, w, player))
+	return c
+}
+
+// twoVsTwo is a 2v2 dev roster (test content). After claim, carol joins alice's team 2 m in front of
+// her, and dave bob's.
+var twoVsTwo = map[string]string{"player/tuning.json": `{"dev_spawns": [
+	{"team": 0, "x": -5, "y": 0}, {"team": 1, "x": 5, "y": 0}, {"team": 0, "x": -3, "y": 0}, {"team": 1, "x": 3, "y": 0}]}`}
+
+// skirmish is a 3v3 that fights on (test content: no Echo dies). Each step, every player walks up or
+// down and holds fire at the other side.
+func skirmish(tb testing.TB) (step func()) {
+	tb.Helper()
+	w := cardinal.NewTestWorld(tb, withContent(tb, map[string]string{
+		"player/tuning.json": `{"dev_spawns": [{"team": 0, "x": -5, "y": 0}, {"team": 1, "x": 5, "y": 0},
+			{"team": 0, "x": -5, "y": 3}, {"team": 1, "x": 5, "y": 3}, {"team": 0, "x": -5, "y": -3},
+			{"team": 1, "x": 5, "y": -3}]}`,
+		"echo/tuning.json": `{"max_hp": 1e9}`,
+	}))
+	var players []*client
+	for _, id := range []string{"a1", "b1", "a2", "b2", "a3", "b3"} {
+		players = append(players, &client{w: w, id: id, session: 1, back: drawLag})
+		players[len(players)-1].move(0, 0)
+	}
+	w.Tick()
+	n := 0
+	return func() {
+		dy := float64(1 - 2*(n/ticks(1)%2))
+		for i, p := range players {
+			p.send(playercomp.InputFrame{MoveY: dy, AimX: float64(1 - 2*(i%2)), Buttons: 1})
+		}
+		w.Tick()
+		n++
+	}
+}
+
+// BenchmarkTick is a 3v3 tick at this build's rate (-tags rate60 for 60 Hz).
+func BenchmarkTick(b *testing.B) {
+	step := skirmish(b)
+	for range ticks(5) { // shots in flight, Echoes on their trails
+		step()
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		step()
+	}
+}
+
+// A 3v3 tick allocates no more than its ceiling, so a rise in cost shows before it ships. Allocation
+// counts, unlike times, don't depend on the machine. Raise a ceiling only for a known reason.
+func TestTickAllocations(t *testing.T) {
+	step := skirmish(t)
+	for range ticks(5) {
+		step()
+	}
+	ceiling := map[int]float64{20: 4000, 60: 6000}[physics.ServerTickRateHz] // measured 3,223 and 4,899
+	if got := testing.AllocsPerRun(ticks(2), step); got > ceiling {
+		t.Fatalf("a 3v3 tick allocates %.0f times, past its ceiling of %.0f", got, ceiling)
+	}
 }
 
 // echoOf returns the Echo of the player who owns the Body in s, as viewer sees it.

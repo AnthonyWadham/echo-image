@@ -1959,6 +1959,42 @@
      "new": "\tif _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok && false {"
     }
    ]
+  },
+  {
+   "id": "F5-A1",
+   "breaks": "shots stop on allies",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/content/projectile/tuning.json",
+     "old": "    {\"relations\": [\"own\", \"ally\"], \"do\": \"pass\"},",
+     "new": "    {\"relations\": [\"own\"], \"do\": \"pass\"},"
+    }
+   ]
+  },
+  {
+   "id": "F5-S1",
+   "breaks": "the next free Body follows storage order, not the roster's",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\tslices.SortFunc(ix.free, func(a, b cardinal.Entity) int {\n\t\treturn cmp.Compare(a.Get[component.Player]().ID, b.Get[component.Player]().ID)\n\t})\n",
+     "new": "\t_ = slices.SortFunc[[]cardinal.Entity]\n\t_ = cmp.Compare[int]\n"
+    }
+   ]
+  },
+  {
+   "id": "F5-R1",
+   "breaks": "the dev roster spawns only its first Body",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/spawn_system.go",
+     "old": "\tfor i, d := range s.Tuning.DevSpawns {",
+     "new": "\tfor i, d := range s.Tuning.DevSpawns[:1] {"
+    }
+   ]
   }
  ]
 }

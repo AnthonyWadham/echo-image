@@ -7,7 +7,6 @@ import (
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
-	"echo_image/shards/game/internal/team"
 	"math"
 	"testing"
 
@@ -197,24 +196,6 @@ func TestStateOnlyGoesToPlayersWithABody(t *testing.T) {
 	}
 	sentTo[ability.AbilitySync](t, w, "alice")
 	sentTo[projectile.ProjectileSync](t, w, "alice")
-}
-
-// The player sync must not depend on movement internals: a Body without them is still shown.
-func TestBodyWithoutMovementIsStillShown(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
-	type shownRow struct {
-		Player    playercomp.Player
-		Team      team.Team
-		Transform physics2d.Transform2D
-	}
-	e := w.Create[shownRow]()
-	e.Set(playercomp.Player{ID: 9, Persona: "carol", Nickname: "Carol"})
-	w.Tick()
-
-	s := bodiesFor(t, w, "carol")
-	if s.You.Body != uint32(e.ID()) || s.You.InputAck != 0 || s.You.MoveSpeed != 0 {
-		t.Fatalf("You = %+v, want Body %d with zero ack and speed", s.You, e.ID())
-	}
 }
 
 func TestWallStopsBody(t *testing.T) {

@@ -16,8 +16,7 @@ import (
 	"echo_image/shards/game/internal/team"
 )
 
-// syncRow is what players see of a Body. Movement components are read only for the owner's
-// YouState, so a Body without them is still shown.
+// syncRow is what players see of a Body.
 type syncRow struct {
 	Spawn     ref.Spawn
 	Player    component.Player
@@ -112,19 +111,13 @@ func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
 	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }
 
-// you returns a viewer's own data, with the shots their client predicts. A Body without movement
-// components gets zero ack and speed.
+// you returns a viewer's own data, with the shots their client predicts.
 func you(e cardinal.Entity, shots []ShotState) YouState {
-	y := YouState{Body: uint32(e.ID()), Shots: cardinal.SliceOf(shots...)}
-	if e.Has[component.InputQueue]() {
-		q := e.Get[component.InputQueue]()
-		y.InputSession, y.InputAck, y.InputQueued = q.Session, q.Ack(), uint32(q.Pending.Len())
-	}
-	if e.Has[component.MoveSpeed]() {
-		y.MoveSpeed = e.Get[component.MoveSpeed]().Value
-	}
-	if e.Has[component.Champion]() {
-		y.Champion = e.Get[component.Champion]().ID
+	q := e.Get[component.InputQueue]()
+	y := YouState{
+		Body: uint32(e.ID()), Shots: cardinal.SliceOf(shots...),
+		InputSession: q.Session, InputAck: q.Ack(), InputQueued: uint32(q.Pending.Len()),
+		MoveSpeed: e.Get[component.MoveSpeed]().Value, Champion: e.Get[component.Champion]().ID,
 	}
 	if e.Has[abilitycomp.Abilities]() {
 		y.Cooldowns = e.Get[abilitycomp.Abilities]().Cooldowns

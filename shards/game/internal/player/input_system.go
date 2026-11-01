@@ -105,11 +105,12 @@ func advance(w *cardinal.World, bodies cardinal.Search) {
 	}
 }
 
-// bodyIndex finds a player's Body: the one they own, or else the next unclaimed one. Claim on first
+// bodyIndex finds a player's Body: the one they own, or else the unclaimed one with the lowest Player
+// ID, so players claim in the dev roster's order whatever order storage holds them in. Claim on first
 // command is dev-spawn scaffolding; matchmaking will assign owners at spawn.
 type bodyIndex struct {
 	owned map[string]cardinal.Entity
-	free  []cardinal.Entity
+	free  []cardinal.Entity // by Player ID
 }
 
 func indexBodies(bodies cardinal.Search) *bodyIndex {
@@ -121,6 +122,9 @@ func indexBodies(bodies cardinal.Search) *bodyIndex {
 			ix.free = append(ix.free, e)
 		}
 	}
+	slices.SortFunc(ix.free, func(a, b cardinal.Entity) int {
+		return cmp.Compare(a.Get[component.Player]().ID, b.Get[component.Player]().ID)
+	})
 	return ix
 }
 

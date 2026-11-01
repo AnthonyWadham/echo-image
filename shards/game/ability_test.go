@@ -6,7 +6,6 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	playercomp "echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/internal/team"
 	"math"
 	"testing"
 
@@ -86,18 +85,10 @@ func TestHoldingFireShootsOncePerCooldown(t *testing.T) {
 }
 
 func TestCooldownGoesOnlyToAllies(t *testing.T) {
-	w, alice, _ := duel(t)
+	w := cardinal.NewTestWorld(t, withContent(t, twoVsTwo))
+	alice, _ := claim(t, w)
+	join(t, w, "carol") // alice's team
 	aliceBody := yourBody(t, bodiesFor(t, w, "alice"))
-
-	// carol joins alice's team.
-	type allyRow struct {
-		Player    playercomp.Player
-		Team      team.Team
-		Transform physics2d.Transform2D
-	}
-	carol := w.Create[allyRow]()
-	carol.Set(playercomp.Player{ID: 9, Persona: "carol", Nickname: "Carol"})
-	carol.Set(team.Team{ID: aliceBody.Team})
 
 	alice.fire(0, 1)
 	w.Tick()

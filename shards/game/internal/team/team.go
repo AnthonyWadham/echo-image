@@ -37,12 +37,6 @@ func SideOf(e cardinal.Entity) interact.Side {
 	return interact.Side{Owner: uint32(e.Get[Owner]().Body), Team: e.Get[Team]().ID}
 }
 
-// Team ids for the current small-team modes (1v1 / 2v2 / 3v3).
-const (
-	A uint8 = 0
-	B uint8 = 1
-)
-
 // RegisterTypes registers Team and Owner with the world.
 func RegisterTypes(w *cardinal.World) {
 	w.RegisterComponent[Team]()

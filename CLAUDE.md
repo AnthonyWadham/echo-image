@@ -35,6 +35,9 @@ one is the *what*.
 - **Mutation checks:** `go run ./scripts/mutate` breaks each rule in `scripts/mutate/mutants.json` once,
   in a temporary copy (never the working tree), and fails if a test misses one or its old text is gone.
   Add a mutant with each new rule; run it when a rule changes.
+- **Tick cost:** `BenchmarkTick` times a 3v3 tick (`go test -run '^$' -bench Tick ./shards/game`, with
+  `-tags rate60` for 60 Hz). `TestTickAllocations` fails when that tick allocates past its ceiling for
+  the rate. Allocation counts don't depend on the machine; raise a ceiling only for a known reason.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
   `projectile_test.go`, … in `shards/game`). One harness: shared helpers live in `main_test.go`. Never
   a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
@@ -504,6 +507,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Tests change content with `withContent`** (`main_test.go`): it deep-merges JSON patches into the
   shipped files and boots the real `register` from that `fs.FS`; `patched` gives a predictor the same.
   Use it for test-only shot types and champions; never add test content to the shipped files.
+- **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
+  (`dev_spawns` in `content/player/tuning.json`, e.g. `twoVsTwo`) and adds them with `join`. Players
+  claim free Bodies in roster order.
 - **The definition TYPE lives in the feature package that owns it** (e.g. `projectile.ProjectileTuning`),
   **never a central `types/` grab-bag.** Shared sim code keeps the type in its own package
   (`flight.Tuning`), and the feature names it with an alias, or embeds it to add a check
