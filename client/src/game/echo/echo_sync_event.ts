@@ -11,19 +11,15 @@ export interface EchoSync {
   Echoes: EchoState[]
 }
 
-/** echo.EchoState */
+/**
+ * echo.EchoState: what an Echo's row in target_sync lacks. Its row has its owner, team, spot, size, tags
+ * and when it died in the tick.
+ */
 export interface EchoState {
   EntityID: number // uint32: names it in this tick's syncs
-  Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
+  Serial: bigint // uint64: names it across ticks, as its row's
   PlayerID: number // uint32
-  Owner: number // uint32: its Body's EntityID
-  Team: number // uint8
-  X: number
-  Y: number
-  Radius: number // its collider circle: the hurtbox shots meet
-  Tags: bigint // interact.Tags: what its effects make it from the next tick on
   Effects: ShownEffect[] // its effect kinds from the next tick on, for their visuals
-  HP: number
+  HP: number // 0 the tick it dies, when it's sent once more
   MaxHP: number
-  Until: number // the part of the tick it lived: 1, or when it died in it (sent once more, at HP 0)
 }

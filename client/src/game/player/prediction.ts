@@ -2,7 +2,7 @@ import type { Vec2 } from '../../engine/math/vec2'
 import { blend } from '../../engine/render/entity_views'
 import type { Spot } from '../../engine/render/entity_views'
 import type { TargetSync } from '../projectile/target_sync_event'
-import type { BodyState, BodySync } from './body_sync_event'
+import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor } from './predictor'
 
@@ -84,13 +84,13 @@ export class Prediction {
    * Starts over from sync, then replays the frames the server hasn't applied, unless sync acks your
    * session's frames (ours) and your predictor agrees with it: then they're right as they are.
    */
-  reconcile(sync: BodySync, you: BodyState, unacked: readonly InputFrame[], ours = false): void {
+  reconcile(sync: BodySync, unacked: readonly InputFrame[], ours = false): void {
     this.#snap = sync.You.SnapSeconds * sync.You.MoveSpeed
     this.#fade = sync.You.FadeSeconds
-    if (ours && this.#body && this.#predictor.agrees(sync, you)) return
+    if (ours && this.#body && this.#predictor.agrees(sync)) return
     this.replays++
-    this.#predictor.reset(sync, you)
-    let at: Vec2 = { x: you.X, y: you.Y }
+    this.#predictor.reset(sync)
+    let at: Vec2 = { x: sync.You.X, y: sync.You.Y }
     let ended: EndedShot[] | undefined
     for (const f of unacked) {
       const stepped = this.#predictor.step(f)

@@ -48,7 +48,8 @@ export class Hud {
     const lines = [this.#status(status), `States received: ${player.received}`]
     for (const e of echoes.newest ?? []) {
       const hp = `${Math.round(e.HP)}/${Math.round(e.MaxHP)} HP`
-      lines.push(`Echo of P${e.PlayerID} (team ${e.Team}): ${hp}`)
+      const team = player.echoRows.newest?.find((r) => r.Serial === e.Serial)?.Team
+      lines.push(`Echo of P${e.PlayerID} (team ${team ?? '?'}): ${hp}`)
     }
     // Your kit is predicted, so a cast starts its countdown at once.
     const kit = player.kit
@@ -92,7 +93,7 @@ export class Hud {
     const id = this.#playerId
     if (state === 'connected') {
       const me = this.#from.player.me
-      const body = me ? `, playing ${me.Nickname} (Body ${me.EntityID}, team ${me.Team})` : ''
+      const body = me ? `, playing ${me.Nickname} (Body ${me.EntityID}, team ${this.#from.player.team})` : ''
       return `Connected as ${id}${body}`
     }
     if (error?.code === Code.Aborted) {

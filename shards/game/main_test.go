@@ -135,16 +135,24 @@ func bodiesFor(t *testing.T, w *cardinal.TestWorld, playerID string) player.Body
 	return sentTo[player.BodySync](t, w, playerID)
 }
 
+// body is a player's own Body as its body_sync shows it: what its row lacks, and its row from You.
+type body struct {
+	player.BodyState
+	Team   uint8
+	X, Y   float64
+	Radius float64
+}
+
 // yourBody returns the receiving player's own Body.
-func yourBody(t *testing.T, s player.BodySync) player.BodyState {
+func yourBody(t *testing.T, s player.BodySync) body {
 	t.Helper()
 	for _, b := range s.Bodies.All() {
 		if b.EntityID == s.You.Body {
-			return b
+			return body{BodyState: b, Team: s.You.Team, X: s.You.X, Y: s.You.Y, Radius: s.You.Radius}
 		}
 	}
 	t.Fatalf("your Body %d is not in the state", s.You.Body)
-	return player.BodyState{}
+	return body{}
 }
 
 // requireMoved fails unless the Body moved exactly one tick of full-speed input along (dx, dy).
@@ -312,15 +320,40 @@ func TestTickAllocations(t *testing.T) {
 }
 
 // echoOf returns the Echo of the player who owns the Body in s, as viewer sees it.
-func echoOf(t *testing.T, w *cardinal.TestWorld, viewer string, owner player.BodyState) echo.EchoState {
+func echoOf(t *testing.T, w *cardinal.TestWorld, viewer string, owner body) echoSeen {
 	t.Helper()
 	for _, e := range sentTo[echo.EchoSync](t, w, viewer).Echoes.All() {
 		if e.PlayerID == owner.PlayerID {
-			return e
+			r := rowOf(t, w, viewer, e.Serial)
+			return echoSeen{EchoState: e, Owner: r.Owner, Team: r.Team, X: r.X, Y: r.Y, Radius: r.Radius, Tags: r.Tags,
+				Until: r.Until}
 		}
 	}
 	t.Fatalf("no Echo for player %d", owner.PlayerID)
-	return echo.EchoState{}
+	return echoSeen{}
+}
+
+// rowOf is the row viewer's target_sync shows of the Body or Echo with serial.
+func rowOf(t *testing.T, w *cardinal.TestWorld, viewer string, serial uint64) projectile.TargetState {
+	t.Helper()
+	for r := range sentTo[projectile.TargetSync](t, w, viewer).Targets.Values() {
+		if r.Serial == serial {
+			return r
+		}
+	}
+	t.Fatalf("%s's target_sync has no row of serial %d", viewer, serial)
+	return projectile.TargetState{}
+}
+
+// echoSeen is an Echo as a viewer's syncs show it: what its row lacks, and its row.
+type echoSeen struct {
+	echo.EchoState
+	Owner  uint32
+	Team   uint8
+	X, Y   float64
+	Radius float64
+	Tags   interact.Tags
+	Until  float64
 }
 
 // moveFor sends c's direction for n ticks, then stops it.
@@ -410,7 +443,7 @@ func addMapBox(w *cardinal.TestWorld, center, halfExtents physics2d.Vec2, kind i
 }
 
 // radiusOf returns the radius of b's collider circle.
-func radiusOf(w *cardinal.TestWorld, b player.BodyState) float64 {
+func radiusOf(w *cardinal.TestWorld, b body) float64 {
 	return w.Entity(cardinal.EntityID(b.EntityID)).Get[physics2d.PhysicsBody2D]().Shapes.At(0).Radius
 }
 
@@ -431,7 +464,7 @@ func emit[T interface{ Name() string }](e *emitter, ev T) {
 }
 
 // effect queues in for b.
-func (e *emitter) effect(b player.BodyState, in effectcomp.EffectIntent) {
+func (e *emitter) effect(b body, in effectcomp.EffectIntent) {
 	in.Target = b.EntityID
 	emit(e, in)
 }

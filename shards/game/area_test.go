@@ -6,7 +6,6 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
-	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/team"
 	"testing"
 
@@ -16,7 +15,7 @@ import (
 
 // addArea builds an entity of side s at pos holding an area of kind kind, with a 0.5 m circle, acting at
 // once. It's like an Echo.
-func addArea(w *cardinal.TestWorld, kind string, s player.BodyState, pos physics2d.Vec2) cardinal.EntityID {
+func addArea(w *cardinal.TestWorld, kind string, s body, pos physics2d.Vec2) cardinal.EntityID {
 	type holderRow struct {
 		Area      areacomp.Area
 		Team      team.Team

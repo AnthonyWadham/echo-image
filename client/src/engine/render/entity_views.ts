@@ -37,14 +37,15 @@ export interface EntityView {
 
 /**
  * One kind of entity's views, by serial, drawn from its timeline. A view is made when its entity shows
- * up, and removed once it ended (blend) or the server stops reporting it. end, if given, says where a
- * state is drawn when not at its own X, Y: a shot that ended on another entity.
+ * up, and removed once it ended (blend) or the server stops reporting it. place gets the render tick too,
+ * to find the entity's other states. end, if given, says where a state is drawn when not at its own X, Y:
+ * a shot that ended on another entity.
  */
 export class EntityViews<S extends Placed, V extends EntityView> {
   readonly #parent: Object3D
   readonly #timeline: Timeline<readonly S[]>
   readonly #create: (s: S) => V
-  readonly #place: (view: V, s: S, x: number, y: number) => void
+  readonly #place: (view: V, s: S, x: number, y: number, tick: number) => void
   readonly #end: ((s: S) => Spot | undefined) | undefined
   readonly #views = new Map<bigint, V>()
   readonly #seen = new Set<bigint>()
@@ -53,7 +54,7 @@ export class EntityViews<S extends Placed, V extends EntityView> {
     parent: Object3D,
     timeline: Timeline<readonly S[]>,
     create: (s: S) => V,
-    place: (view: V, s: S, x: number, y: number) => void,
+    place: (view: V, s: S, x: number, y: number, tick: number) => void,
     end?: (s: S) => Spot | undefined,
   ) {
     this.#parent = parent
@@ -73,13 +74,13 @@ export class EntityViews<S extends Placed, V extends EntityView> {
   draw(tick: number | undefined): void {
     this.#seen.clear()
     const sample = tick === undefined ? undefined : this.#timeline.sample(tick)
-    if (sample) {
+    if (sample && tick !== undefined) {
       const { from, to, t } = sample
       const before = new Map(from.map((s): [bigint, S] => [s.Serial, s]))
       for (const s of to) {
         const start = s.PrevX === undefined || s.PrevY === undefined ? undefined : { X: s.PrevX, Y: s.PrevY }
         const at = blend(start ?? before.get(s.Serial) ?? s, this.#end?.(s) ?? s, t, s.Until)
-        if (at) this.#place(this.#view(s), s, at.x, at.y)
+        if (at) this.#place(this.#view(s), s, at.x, at.y, tick)
       }
     }
     for (const [serial, view] of this.#views) {

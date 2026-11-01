@@ -48,7 +48,7 @@ export function newProjectileViews(
     draw(tick) {
       others.draw(tick)
       const drawn = player.drawnShots(end)
-      const team = player.me?.Team ?? 0
+      const team = player.team ?? 0
       while (yours.length < drawn.length) {
         const ball = new Mesh(geometry, looks.get(team))
         yours.push(ball)

@@ -6,7 +6,6 @@ import (
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	combatcomp "echo_image/shards/game/internal/combat/component"
-	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
@@ -68,7 +67,7 @@ func TestPredictedEchoMatchesServer(t *testing.T) {
 				f := alice.send(playercomp.InputFrame{MoveX: math.Cos(float64(i)), MoveY: math.Sin(float64(i))})
 				w.Tick()
 				p.Step(predictFrame(f))
-				e, ok := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), bodiesFor(t, w, "alice").You.Body)
+				e, ok := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), bodiesFor(t, w, "alice").You.Body)
 				want := box2d.Vec2{X: e.X, Y: e.Y}
 				if i == 0 {
 					first = want
@@ -128,7 +127,7 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 		w.Tick()
 		requireEnded(t, fmt.Sprintf("step %d", i), ended, w.Emitted[projectilecomp.ShotEnded](), body)
 	}
-	e, _ := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), body)
+	e, _ := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), body)
 	if end := ended[0].End; end.Hit.Target != e.EntityID || math.Abs(end.At.X-end.Hit.Offset.X-e.X) > 1e-9 ||
 		math.Abs(end.At.Y-end.Hit.Offset.Y-e.Y) > 1e-9 {
 		t.Fatalf("her bolt ended %+v, want on her Echo where it is now, %+v", ended[0], e)
@@ -241,10 +240,10 @@ func overWire[T any](t *testing.T, v T) T {
 func predictFrom(t *testing.T, s player.BodySync) predict.State {
 	t.Helper()
 	got := overWire(t, s)
-	b, you := yourBody(t, got), got.You
+	you := got.You
 	state := predict.State{
-		Tick: got.Tick, Body: you.Body, Team: b.Team, Center: box2d.Vec2{X: b.X, Y: b.Y},
-		Radius: b.Radius, MoveSpeed: you.MoveSpeed, Champion: you.Champion,
+		Tick: got.Tick, Body: you.Body, Team: you.Team, Center: box2d.Vec2{X: you.X, Y: you.Y},
+		Radius: you.Radius, MoveSpeed: you.MoveSpeed, Champion: you.Champion,
 		Cooldowns: slices.Collect(you.Cooldowns.Values()), Effects: slices.Collect(you.Effects.Values()),
 		EffectsNext: you.EffectsNext, EchoDelay: you.EchoDelay,
 	}
@@ -274,14 +273,14 @@ func see(t *testing.T, p *predict.Predictor, targets projectile.TargetSync) {
 	p.See(targets.Tick, sights)
 }
 
-// ownEcho is the Echo of Body body in echoes.
-func ownEcho(echoes echo.EchoSync, body uint32) (echo.EchoState, bool) {
-	for e := range echoes.Echoes.Values() {
-		if e.Owner == body {
-			return e, true
+// ownEcho is the row of Body body's Echo in targets.
+func ownEcho(targets projectile.TargetSync, body uint32) (projectile.TargetState, bool) {
+	for r := range targets.Targets.Values() {
+		if r.Kind == interact.Echo && r.Owner == body {
+			return r, true
 		}
 	}
-	return echo.EchoState{}, false
+	return projectile.TargetState{}, false
 }
 
 // predictFrame is f as the predictor takes it.
@@ -335,13 +334,15 @@ func guessOf(p *predict.Predictor) guess {
 
 // requirePredicted fails unless g is the server's state in after and echoes: her Body, its Echo,
 // cooldowns and shots, and her effects unless something else put one on her this tick.
-func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, echoes echo.EchoSync, effects bool) {
+func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, targets projectile.TargetSync,
+	effects bool,
+) {
 	t.Helper()
 	got, want := g.state, predictFrom(t, after)
 	if got.Center != want.Center {
 		t.Fatalf("%s: predicted her Body at %v, the server has %v", at, got.Center, want.Center)
 	}
-	if e, found := ownEcho(echoes, after.You.Body); g.hasEcho != found || found && g.echo != (box2d.Vec2{X: e.X, Y: e.Y}) {
+	if e, found := ownEcho(targets, after.You.Body); g.hasEcho != found || found && g.echo != (box2d.Vec2{X: e.X, Y: e.Y}) {
 		t.Fatalf("%s: predicted her Echo at %v (%v), the server has %+v (%v)", at, g.echo, g.hasEcho, e, found)
 	}
 	if !slices.Equal(got.Cooldowns, want.Cooldowns) {
@@ -415,7 +416,8 @@ func TestDeadEchoIsNotPredicted(t *testing.T) {
 	f := alice.send(playercomp.InputFrame{MoveX: 1})
 	w.Tick()
 	p.Step(predictFrame(f))
-	requirePredicted(t, "the tick after", guessOf(p), bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), true)
+	requirePredicted(t, "the tick after", guessOf(p), bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"),
+		true)
 }
 
 // Random but honest play: each player holds a random move for a while, closes in when far, aims near the
@@ -436,7 +438,7 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 	p := predict.New(rules)
 	me := yourBody(t, bodiesFor(t, w, "alice")).EntityID
 	moves := map[*client][2]float64{}
-	frame := func(c *client, from, to player.BodyState) playercomp.InputFrame {
+	frame := func(c *client, from, to body) playercomp.InputFrame {
 		if rng.IntN(ticks(0.5)) == 0 {
 			moves[c] = [2]float64{rng.Float64()*2 - 1, rng.Float64()*2 - 1}
 		}
@@ -449,7 +451,7 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 	}
 	for i := range 2000 {
 		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
-		mine, mineOK := ownEcho(sentTo[echo.EchoSync](t, w, "alice"), me)
+		mine, mineOK := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), me)
 		a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
 		see(t, p, targets)
 		if s := predictFrom(t, before); !p.Agrees(before.You.InputAck, s) {
@@ -464,7 +466,7 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 			return uint32(d.Target) == mine.EntityID
 		})
 		at := fmt.Sprintf("seed %d, tick %d", s, i)
-		requirePredicted(t, at, guessOf(p), bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), !died)
+		requirePredicted(t, at, guessOf(p), bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"), !died)
 		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), me)
 	}
 }
@@ -580,13 +582,13 @@ func TestPredictionMatchesServer(t *testing.T) {
 		ends = append(ends, ended...)
 		alice.send(f)
 		w.Tick()
-		after, afterEchoes, at := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice"), fmt.Sprintf("step %d", i)
-		requirePredicted(t, at, guessOf(p), after, afterEchoes, !surprised)
+		after, afterRows, at := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"), fmt.Sprintf("step %d", i)
+		requirePredicted(t, at, guessOf(p), after, afterRows, !surprised)
 		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
 		run = append(run, record(p, before, targets, []playercomp.InputFrame{f}, ended))
 		p.Reset(predictFrom(t, before))
 		_, replayed := p.Step(predictFrame(f))
-		requirePredicted(t, at+" replayed", guessOf(p), after, afterEchoes, !surprised)
+		requirePredicted(t, at+" replayed", guessOf(p), after, afterRows, !surprised)
 		requireEnded(t, at+" replayed", replayed, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
 	}
 	if want := []int{0, 3, 7}; !slices.Equal(replays, want) {
@@ -630,7 +632,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		w.Tick()
 		p.Step(predictFrame(f))
 		requirePredicted(t, fmt.Sprintf("replayed frame %d", i+1), guessOf(p), bodiesFor(t, w, "alice"),
-			sentTo[echo.EchoSync](t, w, "alice"), true)
+			sentTo[projectile.TargetSync](t, w, "alice"), true)
 		if shots := len(p.State().Shots); shots != 0 && i < 4 || shots != 1 && i >= 4 {
 			t.Fatalf("replayed frame %d: %d shots predicted, want her bolt from frame 5 only", i+1, shots)
 		}
@@ -828,13 +830,13 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, al
 		}
 		dropped += max(int(applied-ack)-1, 0)
 		// A replay from before a surprise is stale; any other is the server's state once its frame applies.
-		echoes, ends := sentTo[echo.EchoSync](t, w, "alice"), w.Emitted[projectilecomp.ShotEnded]()
+		rows, ends := sentTo[projectile.TargetSync](t, w, "alice"), w.Emitted[projectilecomp.ShotEnded]()
 		waiting := open[:0]
 		for _, r := range open {
 			switch {
 			case uint64(applied-r.ack) != after.Tick-r.from:
 			case applied == r.seq:
-				requirePredicted(t, at, r.guess, after, echoes, true)
+				requirePredicted(t, at, r.guess, after, rows, true)
 				requireEnded(t, at, r.ended, ends, me)
 				exact++
 				if r.seq-r.ack > 1 {

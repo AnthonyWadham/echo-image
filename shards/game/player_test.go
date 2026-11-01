@@ -392,8 +392,8 @@ func TestBodyHasItsChampionsNumbers(t *testing.T) {
 		t.Fatalf("alice's Body has %+v, want her champion's %+v", got, want)
 	}
 	for b := range s.Bodies.Values() { // so clients draw each Body its size
-		if b.Radius != want.Radius {
-			t.Fatalf("BodySync sends Body %d with radius %v, want %v", b.EntityID, b.Radius, want.Radius)
+		if r := rowOf(t, w, "alice", b.Serial); r.Radius != want.Radius {
+			t.Fatalf("TargetSync sends Body %d with radius %v, want %v", b.EntityID, r.Radius, want.Radius)
 		}
 	}
 }

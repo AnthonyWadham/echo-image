@@ -9,6 +9,10 @@ const seqs = (frames: readonly InputFrame[]) => frames.map((f) => f.Seq)
 const seqsTo = (newest: number, n: number) => Array.from({ length: n }, (_, i) => newest - n + 1 + i)
 const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap = 10, InputTarget = 1) => ({
   Body: 1,
+  Team: 0,
+  X: 0,
+  Y: 0,
+  Radius: 0.5,
   InputSession,
   InputAck,
   InputQueued,

@@ -6,7 +6,7 @@ import type { EchoSync } from './echo/echo_sync_event'
 import type { BodySync } from './player/body_sync_event'
 import type { Input } from './player/input_command'
 import type { ProjectileSync } from './projectile/projectile_sync_event'
-import type { TargetSync } from './projectile/target_sync_event'
+import { BodyKind, EchoKind, type TargetSync } from './projectile/target_sync_event'
 
 // Golden payloads from TestWireFixtures (shards/game/main_test.go), built from the same samples.
 // They pin each *_event.ts and input_command.ts type to its Go struct: a Go uint64 decodes as a
@@ -20,6 +20,10 @@ const bodySync: BodySync = {
   SimVersion: 'go1.27.1+0123456789abcdef',
   You: {
     Body: 1,
+    Team: 1,
+    X: 1.5,
+    Y: -2,
+    Radius: 0.5,
     InputSession: 4294967295,
     InputAck: 42,
     InputQueued: 3,
@@ -88,13 +92,9 @@ const bodySync: BodySync = {
     ],
   },
   Bodies: [
+    { EntityID: 1, Serial: 1n, PlayerID: 1, Nickname: 'Player One', Champion: 'starter', Effects: [] },
     {
-      ...{ EntityID: 1, Serial: 1n, PlayerID: 1, Nickname: 'Player One', Champion: 'starter', Team: 0 },
-      ...{ X: 1.5, Y: -2, Radius: 0.5, Tags: 0n, Effects: [] },
-    },
-    {
-      ...{ EntityID: 2, Serial: 9007199254740993n, PlayerID: 2, Nickname: 'Échø ✦', Champion: 'rook', Team: 1 },
-      ...{ X: -0.25, Y: 3.75, Radius: 0.75, Tags: 3n },
+      ...{ EntityID: 2, Serial: 9007199254740993n, PlayerID: 2, Nickname: 'Échø ✦', Champion: 'rook' },
       Effects: [
         { Kind: 'out', End: 18446744073709551615n },
         { Kind: 'stun', End: 13n },
@@ -105,10 +105,8 @@ const bodySync: BodySync = {
 const echoSync: EchoSync = {
   Tick: 7n,
   Echoes: [
-    { EntityID: 3, Serial: 3n, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n,
-      Effects: [{ Kind: 'phase', End: 9007199254740993n }], HP: 62.5, MaxHP: 100, Until: 1 },
-    { EntityID: 4, Serial: 4n, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, Effects: [],
-      HP: 0, MaxHP: 100, Until: 0.625 },
+    { EntityID: 3, Serial: 3n, PlayerID: 1, Effects: [{ Kind: 'phase', End: 9007199254740993n }], HP: 62.5, MaxHP: 100 },
+    { EntityID: 4, Serial: 4n, PlayerID: 2, Effects: [], HP: 0, MaxHP: 100 },
   ],
 }
 const abilitySync: AbilitySync = {
@@ -134,8 +132,8 @@ const projectileSyncEmpty: ProjectileSync = { Tick: 9n, Projectiles: [] }
 const targetSync: TargetSync = {
   Tick: 9007199254740993n,
   Targets: [
-    { EntityID: 0, Serial: 1n, Kind: 2n, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 3n, Until: 1 },
-    { EntityID: 4, Serial: 18446744073709551615n, Kind: 4n, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5,
+    { EntityID: 0, Serial: 1n, Kind: BodyKind, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 3n, Until: 1 },
+    { EntityID: 4, Serial: 18446744073709551615n, Kind: EchoKind, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5,
       Tags: 0n, Until: 0.625 },
   ],
 }

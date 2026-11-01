@@ -70,10 +70,8 @@ test('the wasm build lands on the server bits each tick, ended shots included, a
   expect(new Set(run.map((s) => s.Echo?.X)).size).toBeGreaterThan(1) // her Echo moves
   predictor.forget()
   for (const [i, s] of run.entries()) {
-    const you = s.Sync.Bodies.find((b) => b.EntityID === s.Sync.You.Body)
-    if (!you) throw new Error(`step ${i} has no Body ${s.Sync.You.Body}`)
     predictor.seeTargets(s.Targets)
-    predictor.reset(s.Sync, you)
+    predictor.reset(s.Sync)
     // Until a step, each shot is drawn flying the tick the server flew.
     const synced = s.Sync.You.Shots.map(({ VelX, VelY, Remaining, ...shot }) => shot)
     expect(predictor.shots(), `step ${i} reset`).toStrictEqual(synced)
@@ -82,7 +80,7 @@ test('the wasm build lands on the server bits each tick, ended shots included, a
     expect(predictor.shots(), `step ${i} shots`).toStrictEqual(s.Shots)
     expect(predictor.kit(), `step ${i} kit`).toStrictEqual(s.Kit)
     expect(predictor.echo(), `step ${i} echo`).toStrictEqual(s.Echo ?? undefined)
-    predictor.reset(s.Sync, you)
+    predictor.reset(s.Sync)
     expect(stepAll(s.Frames), `step ${i} replayed`).toStrictEqual(stepped)
     expect(predictor.shots(), `step ${i} replayed shots`).toStrictEqual(s.Shots)
     expect(predictor.echo(), `step ${i} replayed echo`).toStrictEqual(s.Echo ?? undefined)
@@ -91,28 +89,27 @@ test('the wasm build lands on the server bits each tick, ended shots included, a
 
 test('agrees with a body_sync only where its own step left your Body', () => {
   const [s, next] = [run[0]!, run[1]!] // the server applied s's frame, with no surprise
-  const body = (x: Step) => x.Sync.Bodies.find((b) => b.EntityID === x.Sync.You.Body)!
-  for (const [you, agrees] of [
-    [{ ...body(next), X: body(next).X + 1e-9 }, false],
-    [body(next), true],
+  for (const [sync, agrees] of [
+    [{ ...next.Sync, You: { ...next.Sync.You, X: next.Sync.You.X + 1e-9 } }, false],
+    [next.Sync, true],
   ] as const) {
     predictor.forget()
     predictor.seeTargets(s.Targets)
-    predictor.reset(s.Sync, body(s))
+    predictor.reset(s.Sync)
     stepAll(s.Frames)
-    expect(predictor.agrees(next.Sync, you)).toBe(agrees)
+    expect(predictor.agrees(sync)).toBe(agrees)
   }
 })
 
 test("effects keep their stacking through the wasm glue: two sources' per-source hastes add", () => {
   const s = run[0]!
-  const you = s.Sync.Bodies.find((b) => b.EntityID === s.Sync.You.Body)!
+  const you = s.Sync.You
   const haste = (Source: number) => ({
     ...{ Kind: 'haste', Tags: 0n, Pass: 0n, Stat: 1, Value: 5000, VelX: 0, VelY: 0, Source },
     ...{ Start: 0n, End: s.Sync.Tick + 100n, Serial: Source, Stacking: 1 /* status.PerSource */ },
   })
   predictor.forget()
-  predictor.reset({ ...s.Sync, You: { ...s.Sync.You, Effects: [haste(7), haste(8)], EffectsNext: 8 } }, you)
+  predictor.reset({ ...s.Sync, You: { ...s.Sync.You, Effects: [haste(7), haste(8)], EffectsNext: 8 } })
   const { at } = predictor.step({ ...s.Frames[0]!, MoveX: 1, MoveY: 0, Buttons: 0 })
   expect(at.x - you.X).toBeCloseTo(s.Sync.You.MoveSpeed * 2 * s.Sync.TickSeconds, 9)
 })
@@ -120,17 +117,16 @@ test("effects keep their stacking through the wasm glue: two sources' per-source
 test('a shot ends the same after a step as after a reset: from where its last tick found it', () => {
   const last = run.findIndex((s) => s.Ended.length > 0) // her first bolt, out of its range
   const before = run[last - 1]
-  const you = before?.Sync.Bodies.find((b) => b.EntityID === before.Sync.You.Body)
-  if (!before || !you) throw new Error('the run has no shot flying out its range')
+  if (!before) throw new Error('the run has no shot flying out its range')
   predictor.forget()
-  predictor.reset(before.Sync, you)
+  predictor.reset(before.Sync)
   stepAll(before.Frames)
   expect(stepAll(run[last]!.Frames).ended).toStrictEqual(run[last]!.Ended)
 })
 
 test('an Echo is hit where your screen drew it, unless it died before your frame', () => {
   const first = run.find((s) => s.Shots.length > s.Sync.You.Shots.length && s.Sync.Tick >= 2n)
-  const you = first?.Sync.Bodies.find((b) => b.EntityID === first.Sync.You.Body)
+  const you = first?.Sync.You
   const [cast] = first?.Frames ?? []
   if (!first || !you || !cast) throw new Error('the run has no cast')
   // An enemy Echo on your aim, touching your shot as it leaves, in the two syncs before a tick you cast in,
@@ -152,7 +148,7 @@ test('an Echo is hit where your screen drew it, unless it died before your frame
     ] as const) {
       predictor.seeTargets({ Tick: tick, Targets: [{ ...echo, Until: lived }] })
     }
-    predictor.reset(first.Sync, you)
+    predictor.reset(first.Sync)
     const frame = { ...cast, MoveX: 0, MoveY: 0, AimX: 1, AimY: 0, Buttons: 1 }
     const { ended } = predictor.step({ ...frame, ViewTick: Number(older) + 0.25 })
     // Your shot ends on it in its first tick, or flies on.

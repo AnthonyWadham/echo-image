@@ -6,6 +6,7 @@ import type { Stage } from '../../engine/render/stage'
 import type { Timeline } from '../../engine/sync/timeline'
 import type { LocalPlayer } from '../player/local_player'
 import { TeamLooks } from '../team/team_look'
+import type { TargetState } from '../projectile/target_sync_event'
 import type { EchoState } from './echo_sync_event'
 
 // Shared by every view, so a view owns nothing to dispose.
@@ -34,22 +35,23 @@ function echoView(material: Material): EchoView {
   return { root: new Group().add(shape, back, hp), shape, hp }
 }
 
-/** Every Echo, yours where you've predicted it. */
+/** Every Echo, from its rows, with its health from the same tick's echo_sync: yours where you've predicted it. */
 export function newEchoViews(
   stage: Stage,
   echoes: Timeline<EchoState[]>,
   player: LocalPlayer,
-): EntityViews<EchoState, EchoView> {
+): EntityViews<TargetState, EchoView> {
   const looks = new TeamLooks(([r, g, b]) => lit([r * 0.6, g * 0.6, b * 0.6]))
   return new EntityViews(
     stage.scene,
-    echoes,
-    (e) => echoView(looks.get(e.Team)),
-    (view, e, x, y) => {
-      const at = e.Owner === player.you ? player.drawnEcho : undefined
-      view.shape.material = looks.get(e.Team)
+    player.echoRows,
+    (r) => echoView(looks.get(r.Team)),
+    (view, r, x, y, tick) => {
+      const at = r.Owner === player.you ? player.drawnEcho : undefined
+      const e = echoes.sample(tick)?.to.find((s) => s.Serial === r.Serial)
+      view.shape.material = looks.get(r.Team)
       view.root.position.set(at?.x ?? x, at?.y ?? y, 0)
-      view.hp.scale.setX(e.MaxHP > 0 ? Math.min(Math.max(e.HP / e.MaxHP, 0), 1) : 0)
+      view.hp.scale.setX(e && e.MaxHP > 0 ? Math.min(Math.max(e.HP / e.MaxHP, 0), 1) : 0)
     },
   )
 }

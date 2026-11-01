@@ -4,7 +4,6 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
 	"echo_image/shards/game/internal/effect/status"
-	"echo_image/shards/game/internal/interact"
 )
 
 // EchoSync is one player's view of the Echoes this tick. Sent every tick and complete: an Echo
@@ -17,18 +16,13 @@ type EchoSync struct {
 // Name is the event name.
 func (EchoSync) Name() string { return "echo_sync" }
 
-// EchoState is one Echo. Its position, radius, tags and Until are its projectilecomp.TargetHistory row.
+// EchoState is what an Echo's row in projectile.TargetSync lacks: whose it is and its health. Its row has
+// its owner, team, spot, size, tags and when it died in the tick.
 type EchoState struct {
 	EntityID uint32
-	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID
+	Serial   uint64 // its ref.Spawn serial, as its row's
 	PlayerID uint32
-	Owner    uint32 // its Body's EntityID
-	Team     uint8
-	X, Y     float64
-	Radius   float64                      // its collider circle: the hurtbox shots meet
-	Tags     interact.Tags                // what its effects make it from the next tick on, as that tick's rules read them
 	Effects  cardinal.Slice[status.Shown] // its effect kinds from the next tick on, for their visuals
-	HP       float64
+	HP       float64                      // 0 the tick it dies, when it's sent once more
 	MaxHP    float64
-	Until    float64 // the part of the tick it lived: 1, or when it died in it (sent once more, at HP 0)
 }

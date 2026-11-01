@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
+import { BodyKind, EchoKind } from '../projectile/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import { LocalPlayer } from './local_player'
 import type { PredictedEcho, Predictor } from './predictor'
@@ -22,8 +23,8 @@ function predictor(seen: string[] = []): Predictor {
       seen.push('agrees')
       return false
     },
-    reset: (s, you) => {
-      at = { x: you.X, y: you.Y }
+    reset: (s) => {
+      at = { x: s.You.X, y: s.You.Y }
       const e = s.You.EchoPath[0]
       echo = e && { ...e, PrevX: e.X, PrevY: e.Y }
     },
@@ -42,13 +43,17 @@ function predictor(seen: string[] = []): Predictor {
 const newPlayer = (timelines = new Timelines(0.1), seen: string[] = []) =>
   new LocalPlayer(timelines, session, predictor(seen))
 
-/** A body_sync at tick for you as Body 1, by default alone at (tick, 0). */
-const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 }]): BodySync => ({
+/** A body_sync at tick for you as Body 1 at (tick, 0), by default with only your Body's. */
+const bodySync = (tick: number, ack = 0, bodies = [1]): BodySync => ({
   Tick: BigInt(tick),
   TickSeconds: 0.05,
   SimVersion: sim,
   You: {
     Body: 1,
+    Team: 0,
+    X: tick,
+    Y: 0,
+    Radius: 0.5,
     InputSession: session,
     InputAck: ack,
     InputQueued: 1,
@@ -66,9 +71,8 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
     EchoDelay: 0,
     EchoPath: [],
   },
-  Bodies: bodies.map((b) => ({
-    ...{ Serial: BigInt(b.EntityID), PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Champion: 'starter', Team: 0 },
-    ...{ Radius: 0.5, Tags: 0n, Effects: [], ...b },
+  Bodies: bodies.map((id) => ({
+    ...{ EntityID: id, Serial: BigInt(id), PlayerID: id, Nickname: `P${id}`, Champion: 'starter', Effects: [] },
   })),
 })
 
@@ -108,11 +112,11 @@ describe('LocalPlayer', () => {
   test('plays once a body_sync has your Body', () => {
     const player = newPlayer()
     player.setConnected(true, { x: 0, y: 0 })
-    player.onBodySync(bodySync(100, 0, [{ EntityID: 2, X: 0, Y: 0 }]))
+    player.onBodySync(bodySync(100, 0, [2]))
     expect(player.playing).toBe(false)
     player.onBodySync(bodySync(101))
     expect(player.playing).toBe(true)
-    expect(player.me?.X).toBe(101)
+    expect(player.prediction.position).toEqual({ x: 101, y: 0 }) // from You
   })
 
   test("plays only while the shard runs your predictor's sim", () => {
@@ -120,7 +124,7 @@ describe('LocalPlayer', () => {
     player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
     expect(player.otherSim).toBe('another build')
     expect(player.playing).toBe(false)
-    expect(player.me?.X).toBe(100) // its Bodies aren't kept
+    expect(player.bodies.newestTick).toBe(100) // its Bodies aren't kept
     expect(player.inputsToSend(0.05, { ...still, move: { x: 1, y: 0 } })).toEqual([])
     player.onBodySync(bodySync(102))
     expect(player.otherSim).toBeUndefined()
@@ -128,11 +132,12 @@ describe('LocalPlayer', () => {
     expect(player.inputsToSend(0.05, still)).not.toEqual([])
   })
 
-  test('keeps the input health the newest body_sync counts', () => {
+  test('keeps your team and input health from the newest body_sync', () => {
     const player = playing()
     const s = bodySync(101)
     const health = { Coasts: 2, DroppedFrames: 1, OversizedInputs: 0, FlooredViews: 3 }
-    player.onBodySync({ ...s, You: { ...s.You, InputHealth: health } })
+    player.onBodySync({ ...s, You: { ...s.You, Team: 1, InputHealth: health } })
+    expect(player.team).toBe(1)
     expect(player.inputHealth).toEqual(health)
   })
 
@@ -224,10 +229,14 @@ describe('LocalPlayer', () => {
     const player = newPlayer(timelines, seen)
     player.setConnected(true, { x: 0, y: 0 })
     player.onTargetSync({ Tick: 99n, Targets: [] }) // before a body_sync says which sim
-    player.onBodySync(bodySync(100, 0, [{ EntityID: 2, X: 0, Y: 0 }])) // not playing yet
+    player.onBodySync(bodySync(100, 0, [2])) // not playing yet
     expect(timelines.newestTick).toBe(99) // the screen waits for tick 100's target_sync
-    player.onTargetSync({ Tick: 100n, Targets: [] })
+    const row = { EntityID: 2, Serial: 2n, Owner: 2, Team: 1, X: 0, Y: 0, Radius: 0.5, Tags: 0n, Until: 1 }
+    const body = { ...row, Kind: BodyKind }
+    const echo = { ...row, EntityID: 3, Serial: 3n, Kind: EchoKind }
+    player.onTargetSync({ Tick: 100n, Targets: [echo, body] })
     expect(timelines.newestTick).toBe(100)
+    expect([player.bodyRows.newest, player.echoRows.newest]).toEqual([[body], [echo]])
     player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
     player.onTargetSync({ Tick: 101n, Targets: [] })
     player.setConnected(false, { x: 0, y: 0 })

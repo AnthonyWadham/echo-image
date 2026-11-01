@@ -12,7 +12,7 @@ import (
 // same-tick heal saves a target if it covers the overkill.
 func TestHealthStaysBetweenZeroAndMaxHP(t *testing.T) {
 	w, _, _, fx := fxDuel(t)
-	bobs := func() echo.EchoState { return echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))) }
+	bobs := func() echoSeen { return echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))) }
 	e := bobs()
 	target := cardinal.EntityID(e.EntityID)
 
@@ -41,8 +41,8 @@ func TestHealthStaysBetweenZeroAndMaxHP(t *testing.T) {
 	want := map[uint32]float64{e.EntityID: 0.5, mine.EntityID: 1}
 	for other := range sentTo[echo.EchoSync](t, w, "alice").Echoes.Values() {
 		if until, ok := want[other.EntityID]; ok {
-			if other.HP != 0 || other.Until != until {
-				t.Fatalf("dead Echo %d sent at %v HP until %v, want 0 HP until %v", other.EntityID, other.HP, other.Until, until)
+			if row := rowOf(t, w, "alice", other.Serial); other.HP != 0 || row.Until != until {
+				t.Fatalf("dead Echo %d sent at %v HP until %v, want 0 HP until %v", other.EntityID, other.HP, row.Until, until)
 			}
 			delete(want, other.EntityID)
 		}

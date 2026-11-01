@@ -93,7 +93,7 @@ the claim model (problem 3).
 - **What:** `projectile.TargetSync` sends each player every target it may see, each as this tick's row
   (`TargetState`), every tick. Your predictor reads only it to place targets.
 - **How:** `projectile.TargetSyncSystem` runs after `HistorySystem`, with the other syncs, through
-  `netsync`. The client's render clock waits for it like any timeline (`LocalPlayer.targets`), so the
+  `netsync`. The client's render clock waits for it like any timeline (`LocalPlayer.bodyRows`, `echoRows`), so the
   predictor has the rows of every view you draw. It feeds the predictor once a body_sync says the shard
   runs your sim.
 - **Why:** the predictor gets the server's own rows, with no field rebuilt from body_sync and echo_sync,

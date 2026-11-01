@@ -4,7 +4,14 @@ import type { Message } from '../../engine/net/shard_connection'
 
 export const TargetSyncEvent: Message<TargetSync> = { name: 'target_sync' }
 
-/** projectile.TargetSync: shards/game/internal/projectile/target_sync_event.go. Your predictor reads it. */
+/** interact.Body and interact.Echo: the kinds of row. */
+export const BodyKind = 2n
+export const EchoKind = 4n
+
+/**
+ * projectile.TargetSync: shards/game/internal/projectile/target_sync_event.go. Screens draw every Body and
+ * Echo from its rows, and your predictor places them by it.
+ */
 export interface TargetSync {
   Tick: bigint // uint64
   Targets: TargetState[]

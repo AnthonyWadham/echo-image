@@ -1,6 +1,7 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import type { Spot } from '../../engine/render/entity_views'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
+import { BodyKind, EchoKind } from '../projectile/target_sync_event'
 import type { TargetState, TargetSync } from '../projectile/target_sync_event'
 import type { BodyState, BodySync, InputHealth } from './body_sync_event'
 import type { Input } from './input_command'
@@ -21,15 +22,22 @@ export interface Held {
 
 /** You: every Body's recent states, which one is yours, the Input you send, and your Body predicted. */
 export class LocalPlayer {
+  /** What each body_sync shows of every Body beyond its row: who plays it and how it looks. */
   readonly bodies: Timeline<BodyState[]>
-  /** What each target_sync shows. The render clock waits for it, so your predictor has every view's rows. */
-  readonly targets: Timeline<TargetState[]>
+  /**
+   * The Body and Echo rows each target_sync shows, which screens draw them from. The render clock waits
+   * for them, so your predictor has every view's rows.
+   */
+  readonly bodyRows: Timeline<TargetState[]>
+  readonly echoRows: Timeline<TargetState[]>
   readonly input: InputStream
   readonly prediction: Prediction
   /** body_sync events received. */
   received = 0
   /** Your Body's EntityID, from the newest body_sync; undefined before one, since 0 is a Body too. */
   you: number | undefined
+  /** Your team, from the newest body_sync. */
+  team: number | undefined
   /** What went wrong with your input stream, as the newest body_sync counts it. */
   inputHealth: InputHealth | undefined
   tickSeconds = 0
@@ -45,7 +53,8 @@ export class LocalPlayer {
   constructor(timelines: Timelines, session: number, predictor: Predictor) {
     this.#timelines = timelines
     this.bodies = timelines.create<BodyState[]>()
-    this.targets = timelines.create<TargetState[]>()
+    this.bodyRows = timelines.create<TargetState[]>()
+    this.echoRows = timelines.create<TargetState[]>()
     this.input = new InputStream(session)
     this.prediction = new Prediction(predictor)
     this.sim = predictor.version
@@ -62,7 +71,7 @@ export class LocalPlayer {
     return this.#playing
   }
 
-  /** Your Body in the newest body_sync. */
+  /** What the newest body_sync shows of your Body beyond its row. */
   get me(): BodyState | undefined {
     return this.bodies.newest?.find((b) => b.EntityID === this.you)
   }
@@ -117,18 +126,19 @@ export class LocalPlayer {
     this.otherSim = undefined
     this.#timelines.add(this.bodies, s.Tick, s.Bodies)
     this.you = s.You.Body
+    this.team = s.You.Team
     this.inputHealth = s.You.InputHealth
     this.tickSeconds = s.TickSeconds
     this.input.ack(s.You, s.TickSeconds)
-    const me = this.me
-    if (!(this.tickSeconds > 0 && me)) return
+    if (!(this.tickSeconds > 0 && this.me)) return
     this.#playing = true
-    this.prediction.reconcile(s, me, this.input.unacked, s.You.InputSession === this.input.session)
+    this.prediction.reconcile(s, this.input.unacked, s.You.InputSession === this.input.session)
   }
 
-  /** Keeps the targets each target_sync shows, for your shots to meet, once the shard runs your sim. */
+  /** Keeps the rows each target_sync shows, to draw, and for your shots to meet once the shard runs your sim. */
   onTargetSync(s: TargetSync): void {
-    this.#timelines.add(this.targets, s.Tick, s.Targets)
+    this.#timelines.add(this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind))
+    this.#timelines.add(this.echoRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind))
     if (this.#sameSim) this.prediction.seeTargets(s)
   }
 

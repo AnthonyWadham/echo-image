@@ -6,7 +6,6 @@ import (
 
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/effect/status"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/player/component"
 )
 
@@ -29,6 +28,9 @@ func (BodySync) Name() string { return "body_sync" }
 // Input.Session matches InputSession.
 type YouState struct {
 	Body         uint32                        // your Body's EntityID
+	Team         uint8                         // your Body's row, which the predictor starts from: its team,
+	X, Y         float64                       // spot
+	Radius       float64                       // and collider radius
 	InputSession uint32                        // Input.Session the ack belongs to
 	InputAck     uint32                        // Seq of the last applied frame, included in your Body's position
 	InputQueued  uint32                        // frames waiting for later ticks: the client paces its frames by it
@@ -64,17 +66,13 @@ type ShotState struct {
 	Remaining    float64 // distance left before it expires
 }
 
-// BodyState is one player Body. A Body is its own owner. Its position, radius and tags are its
-// projectilecomp.TargetHistory row.
+// BodyState is what a player Body's row in projectile.TargetSync lacks: who plays it and how it looks.
+// Its row has its team, spot, size and tags.
 type BodyState struct {
 	EntityID uint32
-	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID
+	Serial   uint64 // its ref.Spawn serial, as its row's
 	PlayerID uint32
 	Nickname string
-	Champion string // what it looks like: a client keys its visuals by champion ID
-	Team     uint8
-	X, Y     float64
-	Radius   float64                      // its collider circle, set by its champion
-	Tags     interact.Tags                // what its effects make it from the next tick on, as that tick's rules read them
+	Champion string                       // what it looks like: a client keys its visuals by champion ID
 	Effects  cardinal.Slice[status.Shown] // its effect kinds from the next tick on, for their visuals
 }

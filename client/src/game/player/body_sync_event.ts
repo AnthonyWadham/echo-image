@@ -16,6 +16,10 @@ export interface BodySync {
 /** player.YouState: everything your predictor starts from. */
 export interface YouState {
   Body: number // uint32 EntityID
+  Team: number // uint8: your Body's row, which the predictor starts from: its team,
+  X: number // spot
+  Y: number
+  Radius: number // and collider radius
   InputSession: number // uint32
   InputAck: number // uint32
   InputQueued: number // uint32: frames waiting on the server for later ticks, which pace yours
@@ -80,18 +84,13 @@ export interface ShotState {
   Remaining: number // distance left before it expires
 }
 
-/** player.BodyState */
+/** player.BodyState: what a Body's row in target_sync lacks. Its row has its team, spot, size and tags. */
 export interface BodyState {
   EntityID: number // uint32: names it in this tick's syncs
-  Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
+  Serial: bigint // uint64: names it across ticks, as its row's
   PlayerID: number // uint32
   Nickname: string
   Champion: string // what it looks like: visuals key by champion ID
-  Team: number // uint8
-  X: number
-  Y: number
-  Radius: number // its collider circle
-  Tags: bigint // interact.Tags: what its effects make it from the next tick on
   Effects: ShownEffect[] // its effect kinds from the next tick on, for their visuals
 }
 

@@ -325,12 +325,12 @@
   },
   {
    "id": "12-T2",
-   "breaks": "no targets timeline",
+   "breaks": "no Body rows timeline",
    "check": "ts",
    "edits": [
     {
      "file": "client/src/game/player/local_player.ts",
-     "old": "    this.#timelines.add(this.targets, s.Tick, s.Targets)\n",
+     "old": "    this.#timelines.add(this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind))\n",
      "new": ""
     }
    ]
@@ -402,8 +402,8 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "    this.replays++\n    this.#predictor.reset(sync, you)\n",
-     "new": "    this.replays++\n    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n"
+     "old": "    this.replays++\n    this.#predictor.reset(sync)\n",
+     "new": "    this.replays++\n    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync)\n"
     },
     {
      "file": "client/src/game/player/prediction.ts",
@@ -2003,7 +2003,12 @@
    "edits": [
     {
      "file": "shards/game/internal/player/sync_system.go",
-     "old": "\t\t\tEffects:  fx.Shown(next),\n",
+     "old": "\tnext := w.TickHeight() + 1\n\tfor e := range w.Contains[syncRow]().Iter() {\n",
+     "new": "\tfor e := range w.Contains[syncRow]().Iter() {\n"
+    },
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tEffects:  e.Get[effectcomp.Effects]().Shown(next),\n",
      "new": ""
     }
    ]
@@ -2483,7 +2488,7 @@
    "edits": [
     {
      "file": "client/src/game/player/prediction.ts",
-     "old": "    if (ours && this.#body && this.#predictor.agrees(sync, you)) return\n",
+     "old": "    if (ours && this.#body && this.#predictor.agrees(sync)) return\n",
      "new": ""
     }
    ]
@@ -2545,6 +2550,114 @@
      "file": "shards/game/internal/projectile/sync_system.go",
      "old": "\t\tif ev.Predicted {\n\t\t\tpredictor[ev.Serial] = ev.Cause.Caster\n\t\t}\n",
      "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F18-Y1",
+   "breaks": "your row's spot isn't sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "X: pos.X, Y: pos.Y, Radius: radius(e),",
+     "new": "X: 0, Y: pos.Y, Radius: radius(e),"
+    }
+   ]
+  },
+  {
+   "id": "F18-Y2",
+   "breaks": "your row's radius isn't sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "X: pos.X, Y: pos.Y, Radius: radius(e),",
+     "new": "X: pos.X, Y: pos.Y, Radius: radius(e) * 2,"
+    }
+   ]
+  },
+  {
+   "id": "F18-Y3",
+   "breaks": "your row's team isn't sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "Team: e.Get[team.Team]().ID, X: pos.X",
+     "new": "Team: 0, X: pos.X"
+    }
+   ]
+  },
+  {
+   "id": "F18-R1",
+   "breaks": "Body rows hold Echoes, not Bodies",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind)",
+     "new": "this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind)"
+    }
+   ]
+  },
+  {
+   "id": "F18-R2",
+   "breaks": "no Echo rows timeline",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.#timelines.add(this.echoRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind))\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F18-P1",
+   "breaks": "a replay starts from your Body's old spot",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "let at: Vec2 = { x: sync.You.X, y: sync.You.Y }",
+     "new": "let at: Vec2 = { x: this.#body?.to.X ?? sync.You.X, y: sync.You.Y }"
+    }
+   ]
+  },
+  {
+   "id": "F18-W1",
+   "breaks": "the predictor starts on the wrong team",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "      Body,\n      Team,\n",
+     "new": "      Body,\n      Team: 1 - Team,\n"
+    }
+   ]
+  },
+  {
+   "id": "F18-W2",
+   "breaks": "the predictor starts at the wrong spot",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "      X,\n      Y,\n",
+     "new": "      X: Y,\n      Y: X,\n"
+    }
+   ]
+  },
+  {
+   "id": "F18-L1",
+   "breaks": "your team isn't kept",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "this.team = s.You.Team",
+     "new": "this.team = 0"
     }
    ]
   }

@@ -82,7 +82,7 @@ func TestEchoRetracesItsBody(t *testing.T) {
 			w := cardinal.NewTestWorld(t, c.setup)
 			alice, _ := claim(t, w)
 			spawn := yourBody(t, bodiesFor(t, w, "alice"))
-			var path []player.BodyState
+			var path []body
 			for i := range c.delay + 20 {
 				alice.move(math.Cos(float64(i)/7), math.Sin(float64(i)/7)) // a curve
 				w.Tick()

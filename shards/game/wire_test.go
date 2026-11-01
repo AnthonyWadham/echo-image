@@ -44,7 +44,8 @@ func TestWireFixtures(t *testing.T) {
 			TickSeconds: 0.05,
 			SimVersion:  "go1.27.1+0123456789abcdef",
 			You: player.YouState{
-				Body: 1, InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, InputTarget: 4,
+				Body: 1, Team: 1, X: 1.5, Y: -2, Radius: 0.5,
+				InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, InputTarget: 4,
 				MoveSpeed: 5, SnapSeconds: 0.6, FadeSeconds: 0.125, Champion: "starter",
 				InputHealth: playercomp.InputHealth{Coasts: 7, DroppedFrames: 2, OversizedInputs: 1, FlooredViews: 4294967295},
 				Cooldowns: cardinal.SliceOf(
@@ -66,20 +67,16 @@ func TestWireFixtures(t *testing.T) {
 				EchoPath:  cardinal.SliceOf(physics2d.Vec2{X: -3.5, Y: 0.25}, physics2d.Vec2{X: -3.25, Y: 0.5}),
 			},
 			Bodies: cardinal.SliceOf(
-				player.BodyState{EntityID: 1, Serial: 1, PlayerID: 1, Nickname: "Player One", Champion: "starter", Team: 0,
-					X: 1.5, Y: -2, Radius: 0.5},
+				player.BodyState{EntityID: 1, Serial: 1, PlayerID: 1, Nickname: "Player One", Champion: "starter"},
 				player.BodyState{EntityID: 2, Serial: 9007199254740993, PlayerID: 2, Nickname: "Échø ✦", Champion: "rook",
-					Team: 1, X: -0.25, Y: 3.75, Radius: 0.75, Tags: interact.Stunned | interact.CC,
 					Effects: cardinal.SliceOf(status.Shown{Kind: "out", End: 18446744073709551615},
 						status.Shown{Kind: "stun", End: 13})},
 			),
 		}},
 		{"echo_sync", echo.EchoSync{Tick: 7, Echoes: cardinal.SliceOf(
-			echo.EchoState{EntityID: 3, Serial: 3, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5,
-				Tags: interact.Unstoppable, Effects: cardinal.SliceOf(status.Shown{Kind: "phase", End: 9007199254740993}),
-				HP: 62.5, MaxHP: 100, Until: 1},
-			echo.EchoState{EntityID: 4, Serial: 4, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, MaxHP: 100,
-				Until: 0.625},
+			echo.EchoState{EntityID: 3, Serial: 3, PlayerID: 1,
+				Effects: cardinal.SliceOf(status.Shown{Kind: "phase", End: 9007199254740993}), HP: 62.5, MaxHP: 100},
+			echo.EchoState{EntityID: 4, Serial: 4, PlayerID: 2, MaxHP: 100},
 		)}},
 		{"ability_sync", ability.AbilitySync{Tick: 7, Abilities: cardinal.SliceOf(
 			ability.AbilityState{Body: 1, Slot: 0, Ability: "bolt", ReadyTick: 18446744073709551615},

@@ -134,7 +134,7 @@ shards/game/
     netsync/  package netsync     who may receive what: Viewers, Items (audience + seenBy). No events
                                   of its own; each feature sends its own
     predict/  package predict     the client's own Body ahead of the server: Reset from a body_sync,
-                                  See each sync's Bodies and Echoes, Step per frame, new or replayed
+                                  See each target_sync's rows, Step per frame, new or replayed
                                   (cast gate, move, hooks, its shots at the frame's view, its
                                   effects) — no Cardinal import
   predictor/  package main        js/wasm only: predict for the browser, with content.FS embedded
@@ -559,8 +559,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   comes in `ProjectileSync` on the tick it ended, `Ended`, at its end with `Until` (the part of the tick
   it lived), through `netsync.Items.AddGone`. The engine's `EntityViews` draws every entity with
   `blend`: one with `Until` below 1 moves at its own pace to its end, then goes, so it touches what it
-  hit. An Echo killed in a tick comes in `EchoSync` and `TargetSync` the same way: at HP 0, with `Until`
-  from its `Died`, so it goes when the shot reaches it. `flight.AtView` follows the same rule, so your
+  hit. An Echo killed in a tick comes in `TargetSync` the same way, with `Until` from its `Died`, so it
+  goes when the shot reaches it, and in `EchoSync` at HP 0. `flight.AtView` follows the same rule, so your
   predictor drops it then too. Add `Until` to another entity's state when it needs the same.
 - **A shot that ended on a Body or Echo ends on it on every screen.** The hit was judged where the
   shooter's view had the target, but the victim's screen draws their Body ahead, and others draw it
@@ -575,9 +575,13 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **An entity's serial names it across ticks; its EntityID only within one tick.** Cardinal gives a
   freed ID out again at once, so a shot launched the tick after another ended takes its ID. Every
   constructor stamps `ref.Spawn{Serial}` from the world's one counter (`ref.Next`, saved with the world,
-  from 1), and `BodyState`, `EchoState` and `ProjectileState` carry it. `EntityViews` keys views and
-  blends by `Serial`, the predictor keys its sights and bodies by it, and a hit names its target's
-  (`flight.Hit.Serial`). Same-tick links (`You.Body`, `Caster`, `Owner`) stay EntityIDs.
+  from 1), and `TargetState`, `ProjectileState`, `BodyState` and `EchoState` carry it. `EntityViews`
+  keys views and blends by `Serial`, the predictor keys its sights and bodies by it, and a hit names its
+  target's (`flight.Hit.Serial`). Same-tick links (`You.Body`, `Caster`, `Owner`) stay EntityIDs.
+- **Each thing's state is sent once.** A Body's or Echo's row in `TargetSync` is its only spot, size,
+  team, owner, tags and `Until`. `BodyState` and `EchoState` send only what rows lack (player, look,
+  HP), joined to the row by `Serial`. Your own row comes in `You` too (`Team`, `X`, `Y`, `Radius`),
+  which your predictor starts from.
 - **Other screens get content IDs, not only rule bits.** `BodyState.Champion` names a Body's champion,
   and `BodyState.Effects` and `EchoState.Effects` list the kinds active from the next tick on, each
   with its last `End` (`status.Shown`), never their numbers or sources. `ProjectileState.Type` names a
@@ -628,7 +632,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     `echo_path_seconds` (`content/player/tuning.json`) or its delay, and `You.EchoDelay` the delay. The
     predictor walks the path a spot per step (`Predictor.Echo`). Past the delay, your Echo is where it
     predicted your Body that many steps back; past the path but inside the delay, it waits at the
-    path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from `EchoSync`.
+    path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from their rows (`LocalPlayer.echoRows`).
     The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
     (`flight.Row`: kind, side, circle, tags and `Until`) is its one record: `TargetHistory` keeps its
@@ -636,7 +640,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     predictor keeps as many ticks of them as the server keeps rows (`KeptRows`) (`See`), and a body for
     each target that lived all of the newest sync's tick: one that died in it is gone on the server
     before your next frame. The render clock waits for `TargetSync` like any timeline
-    (`LocalPlayer.targets`), and it feeds the predictor only once a body_sync says the shard runs your
+    (`LocalPlayer.bodyRows`, `echoRows`), and it feeds the predictor only once a body_sync says the shard runs your
     sim. Shot code names no target kind but to find your own Echo, which your predictor places itself.
     Each step places them at its `ViewTick`, held by the server's rule (`flight.Tuning.View`), with
     `flight.AtView` (the rule `EntityViews` draws with), and your Body and Echo where they are now, as

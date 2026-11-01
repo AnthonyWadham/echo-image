@@ -562,8 +562,8 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 }
 
 // Each Body and Echo keeps the rows every view rewind_seconds back is drawn from (KeptRows), one per tick,
-// and its newest row is what this tick's syncs show of it: what its screen draws, and the target_sync its
-// predictor places it by, as the server's shots meet it.
+// and its newest row is what this tick's target_sync shows of it: what screens draw, and what predictors
+// place it by, as the server's shots meet it. body_sync and echo_sync send only what rows lack.
 func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 	w, _, bob, fx := fxDuel(t)
 	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 3})
@@ -587,33 +587,26 @@ func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 		bob.move(0, 1) // stunned at first, then he walks
 		w.Tick()
 		bodies, echoes := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice")
-		for b := range bodies.Bodies.Values() {
-			stunned = stunned || b.Tags&interact.Stunned != 0
-			side := interact.Side{Owner: b.EntityID, Team: b.Team}
-			check(fmt.Sprintf("Body %d", b.EntityID), newest(b.EntityID), flight.Row{Tick: bodies.Tick, Kind: interact.Body,
-				Side: side, Center: box2d.Vec2{X: b.X, Y: b.Y}, Radius: b.Radius, Tags: b.Tags, Until: 1}, i >= keep)
-		}
-		for e := range echoes.Echoes.Values() {
-			side := interact.Side{Owner: e.Owner, Team: e.Team}
-			check(fmt.Sprintf("Echo %d", e.EntityID), newest(e.EntityID), flight.Row{Tick: echoes.Tick, Kind: interact.Echo,
-				Side: side, Center: box2d.Vec2{X: e.X, Y: e.Y}, Radius: e.Radius, Tags: e.Tags, Until: e.Until}, i >= keep)
-			if owner := w.Entity(cardinal.EntityID(e.EntityID)).Get[team.Owner]().Body; uint32(owner) != e.Owner {
-				t.Fatalf("Echo %d says its owner is %d, not %d", e.EntityID, e.Owner, owner)
-			}
-		}
 		targets := sentTo[projectile.TargetSync](t, w, "alice")
 		if targets.Tick != bodies.Tick || targets.Targets.Len() != bodies.Bodies.Len()+echoes.Echoes.Len() {
 			t.Fatalf("target_sync %+v, want tick %d's %d Bodies and Echoes", targets, bodies.Tick,
 				bodies.Bodies.Len()+echoes.Echoes.Len())
 		}
 		for s := range targets.Targets.Values() {
-			rows := newest(s.EntityID)
-			r := rows[len(rows)-1]
-			want := projectile.TargetState{EntityID: s.EntityID, Serial: s.Serial, Kind: r.Kind, Owner: r.Side.Owner,
-				Team: r.Side.Team, X: r.Center.X, Y: r.Center.Y, Radius: r.Radius, Tags: r.Tags, Until: r.Until}
-			if s != want || s.Serial != w.Entity(cardinal.EntityID(s.EntityID)).Get[ref.Spawn]().Serial {
-				t.Fatalf("target_sync sent %+v, want its newest row, %+v, and its serial", s, want)
+			stunned = stunned || s.Kind == interact.Body && s.Tags&interact.Stunned != 0
+			e := w.Entity(cardinal.EntityID(s.EntityID))
+			check(fmt.Sprintf("target %d", s.EntityID), newest(s.EntityID), flight.Row{Tick: targets.Tick, Kind: s.Kind,
+				Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y}, Radius: s.Radius,
+				Tags: s.Tags, Until: s.Until}, i >= keep)
+			if s.Serial != e.Get[ref.Spawn]().Serial || s.Owner != uint32(e.Get[team.Owner]().Body) {
+				t.Fatalf("target_sync sent %+v, want its serial and owner", s)
 			}
+		}
+		for b := range bodies.Bodies.Values() { // what the rows lack, of each
+			rowOf(t, w, "alice", b.Serial)
+		}
+		for e := range echoes.Echoes.Values() {
+			rowOf(t, w, "alice", e.Serial)
 		}
 	}
 	if !stunned {

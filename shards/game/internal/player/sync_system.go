@@ -56,20 +56,14 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	var bodies netsync.Items[BodyState]
 	next := w.TickHeight() + 1
 	for e := range w.Contains[syncRow]().Iter() {
-		p, fx := e.Get[component.Player](), e.Get[effectcomp.Effects]()
-		pos := e.Get[physics2d.Transform2D]().Position
+		p := e.Get[component.Player]()
 		bodies.Add(e, netsync.Everyone, BodyState{
 			EntityID: uint32(e.ID()),
 			Serial:   e.Get[ref.Spawn]().Serial,
 			PlayerID: p.ID,
 			Nickname: p.Nickname,
 			Champion: e.Get[component.Champion]().ID,
-			Team:     e.Get[team.Team]().ID,
-			X:        pos.X,
-			Y:        pos.Y,
-			Radius:   radius(e),
-			Tags:     fx.Status(next).Tags,
-			Effects:  fx.Shown(next),
+			Effects:  e.Get[effectcomp.Effects]().Shown(next),
 		})
 	}
 	shots := map[cardinal.EntityID][]ShotState{} // by the caster whose client predicts them
@@ -120,9 +114,10 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 
 // you returns a viewer's own data, with the shots their client predicts.
 func you(e cardinal.Entity, shots []ShotState) YouState {
-	q := e.Get[component.InputQueue]()
+	q, pos := e.Get[component.InputQueue](), e.Get[physics2d.Transform2D]().Position
 	y := YouState{
-		Body: uint32(e.ID()), Shots: cardinal.SliceOf(shots...),
+		Body: uint32(e.ID()), Team: e.Get[team.Team]().ID, X: pos.X, Y: pos.Y, Radius: radius(e),
+		Shots:        cardinal.SliceOf(shots...),
 		InputSession: q.Session, InputAck: q.Ack(), InputQueued: uint32(q.Pending.Len()), InputHealth: q.Health,
 		MoveSpeed: e.Get[component.MoveSpeed]().Value, Champion: e.Get[component.Champion]().ID,
 	}

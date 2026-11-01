@@ -1,7 +1,7 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
 import type { TargetSync } from '../projectile/target_sync_event'
-import type { BodyState, BodySync } from './body_sync_event'
+import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import wasmUrl from './predictor.wasm?url'
 
@@ -58,12 +58,12 @@ export interface Predictor {
   /** How far behind the newest tick to draw others: the content's, which the server's rewind allows. */
   readonly interpolationSeconds: number
   /** Starts over from your Body as a body_sync left it. */
-  reset(sync: BodySync, you: BodyState): void
+  reset(sync: BodySync): void
   /**
    * Whether your Body as a body_sync left it is what stepping your last applied frame left, and every
    * frame since met its view's targets: then they need no reset and replay.
    */
-  agrees(sync: BodySync, you: BodyState): boolean
+  agrees(sync: BodySync): boolean
   /** Keeps the targets a target_sync shows, so your shots meet them where your screen drew them. */
   seeTargets(sync: TargetSync): void
   /** Forgets the targets it saw: after a reconnect or a server restart. */
@@ -109,15 +109,16 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
   if (refused) throw new Error(refused)
   const interpolationSeconds = exports.interpolationSeconds()
   // A uint64 goes as a decimal string, since a number can't hold every one.
-  const stateOf = (sync: BodySync, you: BodyState) => {
-    const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } = sync.You
+  const stateOf = (sync: BodySync) => {
+    const { Body, Team, X, Y, Radius, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } =
+      sync.You
     return {
       Tick: String(sync.Tick),
       Body,
-      Team: you.Team,
-      X: you.X,
-      Y: you.Y,
-      Radius: you.Radius,
+      Team,
+      X,
+      Y,
+      Radius,
       MoveSpeed,
       Champion,
       Cooldowns: Cooldowns.map((c) => ({ ...c, ReadyTick: String(c.ReadyTick) })),
@@ -137,8 +138,8 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
   return {
     version: exports.version,
     interpolationSeconds,
-    reset: (sync, you) => exports.reset(stateOf(sync, you)),
-    agrees: (sync, you) => exports.agrees(stateOf(sync, you), sync.You.InputAck),
+    reset: (sync) => exports.reset(stateOf(sync)),
+    agrees: (sync) => exports.agrees(stateOf(sync), sync.You.InputAck),
     seeTargets: (sync) =>
       exports.seeTargets({
         Tick: String(sync.Tick),
