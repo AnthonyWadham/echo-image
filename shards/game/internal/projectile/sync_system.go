@@ -37,16 +37,21 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Y:         pos.Y,
 			Radius:    p.Radius,
 			Until:     1,
-		})
+		}, w.Entity(p.Cause.Caster)) // its first tick starts at its caster
 	}
 	for ev := range w.SystemEvents[component.ShotEnded]() {
 		hit := ev.End.Hit
-		shots.AddGone(ev.Team, netsync.Everyone, ProjectileState{
+		reveals := []cardinal.Entity{w.Entity(ev.Cause.Caster)}
+		if hit.OnTarget() {
+			reveals = append(reveals, w.Entity(cardinal.EntityID(hit.Target))) // end minus offset is its center
+		}
+		last := netsync.Last{Team: ev.Team, X: ev.End.At.X, Y: ev.End.At.Y}
+		shots.AddGone(last, netsync.Everyone, ProjectileState{
 			EntityID: uint32(ev.Shot), Serial: ev.Serial, Type: ev.Type, Caster: uint32(ev.Cause.Caster),
 			Predicted: ev.Predicted, Team: ev.Team, PrevX: ev.Prev.X, PrevY: ev.Prev.Y, X: ev.End.At.X, Y: ev.End.At.Y,
 			Radius: ev.Radius, Until: ev.End.Until, Ended: true,
 			OnTarget: hit.OnTarget(), TargetSerial: hit.Serial, OffsetX: hit.Offset.X, OffsetY: hit.Offset.Y,
-		})
+		}, reveals...)
 	}
 	lists := shots.Lists(viewers)
 	for _, v := range viewers {

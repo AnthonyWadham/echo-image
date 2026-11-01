@@ -588,8 +588,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Never `Broadcast` game state.** Any client can subscribe to any event name, so a broadcast is
   public. Anything the server sends, a cheater can read.
 - **Hidden info is decided in one place, `netsync.seenBy(entity, team)`** (invisibility, line of
-  sight). Lists are built per team, since allies share vision. That includes what reveals a hidden
-  entity indirectly, e.g. an invisible Body's Echo replaying its path 5s later.
+  sight; today everything is seen). Lists are built per team, since allies share vision. An item goes
+  to a team only if it sees the entity and every entity the state gives away, which `Add` lists (a
+  shot's caster; at its end, its target). A gone one (`AddGone`) is judged by where it last was
+  (`netsync.Last`). seenBy follows `team.Owner` itself: an invisible Body's Echo replays its path.
 - **Cost.** Cardinal writes one stream message per event, so each synced feature adds one message per
   player per tick. Serialization repeats once per player; bandwidth equals a broadcast.
 - **Player IDs are only trustworthy with Argus auth.** DEV auth trusts the `X-Player-ID` header.
