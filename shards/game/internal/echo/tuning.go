@@ -11,9 +11,10 @@ import (
 // champion's Echo has its own delay and area. Durations are in SECONDS and converted to ticks at
 // runtime so the mechanic is tick-rate independent (see CLAUDE.md → Tick-rate independence).
 type EchoTuning struct {
-	MaxHP     float64            `json:"max_hp"`     // Echo starting / max health
-	HitRadius float64            `json:"hit_radius"` // Echo collider radius — its hurtbox, in world units
-	Champions map[string]EchoDef `json:"champions"`  // by champion ID
+	MaxHP       float64            `json:"max_hp"`       // Echo starting / max health
+	HitRadius   float64            `json:"hit_radius"`   // Echo collider radius — its hurtbox, in world units
+	DeathEffect string             `json:"death_effect"` // the effect kind an Echo's death puts on its Body: out
+	Champions   map[string]EchoDef `json:"champions"`    // by champion ID
 }
 
 // EchoDef is a champion's Echo.
@@ -32,8 +33,8 @@ func (d EchoDef) DelayTicks() int {
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t EchoTuning) Validate() error {
-	if t.MaxHP <= 0 || t.HitRadius <= 0 {
-		return fmt.Errorf("echo_tuning: need max_hp > 0 and hit_radius > 0, got %+v", t)
+	if t.MaxHP <= 0 || t.HitRadius <= 0 || t.DeathEffect == "" {
+		return fmt.Errorf("echo_tuning: need max_hp > 0, hit_radius > 0 and a death_effect, got %+v", t)
 	}
 	for id, d := range t.Champions {
 		if d.DelayTicks() < 1 {

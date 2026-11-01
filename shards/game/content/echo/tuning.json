@@ -1,6 +1,7 @@
 {
   "max_hp": 100,
   "hit_radius": 0.5,
+  "death_effect": "out",
   "champions": {
     "starter": {"delay_seconds": 5.0, "area": "anticamp"}
   }

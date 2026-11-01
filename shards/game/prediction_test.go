@@ -393,11 +393,11 @@ func record(p *predict.Predictor, sync player.BodySync, targets projectile.Targe
 var recorded = map[string]string{
 	"player/tuning.json": `{"input_buffer_seconds": 0.5, "input_timeout_seconds": 0.5, "echo_path_seconds": 0.5,
 		"champions": {"starter": {"move_speed": 5.0, "radius": 0.5}}}`,
-	"echo/tuning.json": `{"max_hp": 100, "hit_radius": 0.5,
+	"echo/tuning.json": `{"max_hp": 100, "hit_radius": 0.5, "death_effect": "out",
 		"champions": {"starter": {"delay_seconds": 1, "area": "anticamp"}}}`,
 	"area/tuning.json": `{"kinds": {"anticamp": {"rules": [
 		{"kinds": ["body"], "relations": ["own"], "to": "self", "damage_per_second": 25}]}}}`,
-	"ability/tuning.json": `{"blocked_by": ["stunned"], "kits": {"starter": ["bolt", "dash"]}, "abilities": {
+	"ability/tuning.json": `{"blocked_by": ["stunned", "out"], "kits": {"starter": ["bolt", "dash"]}, "abilities": {
 		"bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
 		"dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
 			"params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}}}`,
@@ -406,7 +406,8 @@ var recorded = map[string]string{
 	"effect/tuning.json": `{"kinds": {
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
 		"stun": {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
-		"slow": {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"}}}`,
+		"slow": {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"},
+		"out": {"tags": ["out"], "stacking": "merge"}}}`,
 }
 
 // The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts

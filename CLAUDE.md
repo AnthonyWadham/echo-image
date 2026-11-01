@@ -93,7 +93,7 @@ shards/game/
       motion/     package motion      how a Body moves each tick: Step (the server's move, and the
                                       predictor's), Unit, Blockers — no Cardinal import
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
-                                  tuning.go, doc.go
+                                  elimination_system.go, tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
     ability/  package ability     casting: equip_system.go (cooldowns on claim) → cast_system.go (the
                                   gate; the one writer of cooldowns) → cast_hook_system.go (runs each
@@ -274,8 +274,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   and `team.Team`), and `Filter{Kinds, Relations, Require, Forbid}` (an empty field matches anything).
   Content names them in JSON lists; an unknown name fails the boot.
 - **The GDD's rules are default content, not code.** A shot type's own `meets` rules are checked first,
-  then `defaults` in `content/projectile/tuning.json` (walls and bounds stop, own and ally pass, Bodies
-  stop, enemy Echoes take the payload). So "some shots pass Bodies" is one rule on that shot type. Order
+  then `defaults` in `content/projectile/tuning.json` (walls and bounds stop, own and ally pass, `out`
+  Bodies pass, Bodies stop, enemy Echoes take the payload). So "some shots pass Bodies" is one rule on that shot type. Order
   is the only priority; the rule index breaks ties between things met at the same point. A rule with a
   payload must name its relations, since a shot type's own rules come before the defaults' own and ally
   pass: friendly fire is written out, never a default.
@@ -304,7 +304,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **A death is timed.** Each `DamageIntent` says when in the tick it lands (`Until`: a shot's
   `flight.End.Until`, 1 for damage over the tick). At 0 or below the target dies: HP 0 and a `Died`
   with the time of the hit that took it there. `combat.DeathSystem` removes it after the syncs, so each
-  sync sends it once more. (Rampage re-emitted a typed event per
+  sync sends it once more.
+- **An Echo's death puts its player out for the round** (GDD §8). `echo.EliminationSystem` gives the
+  owner's Body the Echo tuning's `death_effect` (`out`) for `status.Forever` ticks. The cast gate's
+  `blocked_by` and a default shot rule read the `out` tag, so the player neither casts nor shields. (Rampage re-emitted a typed event per
   collision kind to control ordering; deferral makes that unnecessary.)
 - **Credit vs cause.** An intent's `Credit` is the Body credited with it (kills, lifesteal): the
   `team.Owner` of what dealt it. Its `Cause` is the cast that started it
@@ -453,7 +456,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `ability.EquipSystem`, `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
   which emits `LaunchIntent` before `projectile.LaunchSystem`; every `DamageIntent` and `HealIntent`
   emitter (`projectile.FlightSystem`, `area.AreaSystem`) before `combat.DamageResolveSystem`; and every
-  `EffectIntent` emitter (`ability.CastHookSystem`) before `effect.ResolveSystem`.
+  `EffectIntent` emitter (`ability.CastHookSystem`, and `echo.EliminationSystem`, which reads `Died`
+  after `combat.DamageResolveSystem`) before `effect.ResolveSystem`.
 - **Every receiver sorts its intents by a full key before it acts,** because emit order can change
   after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs).
 - **`player.InputSystem`, `ability.EquipSystem`, `ability.CastSystem`, then `player.MovementSystem`
@@ -666,7 +670,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   in `content/echo/tuning.json`. A new champion is JSON entries, never new code.
 - **The cast gate decides whether a cast happens.** A Body casts from its champion's kit.
   `cast.Gate`, which `ability.CastSystem` and the predictor both run, checks the button, cooldown and
-  aim, and that the Body has no tag in the abilities' `blocked_by` (`stunned`), then starts the cooldown; `CastSystem` emits
+  aim, and that the Body has no tag in the abilities' `blocked_by` (`stunned`, `out`), then starts the cooldown; `CastSystem` emits
   `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
   follows its ability into whichever slot holds it.
 - **What an ability does is its hook.** Every ability row names a hook in `ability/hooks` and gives

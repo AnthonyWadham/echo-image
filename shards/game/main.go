@@ -109,6 +109,10 @@ func registerWith(world *cardinal.World, fsys fs.FS) {
 	// cleared at tick end.
 	world.RegisterSystem(&combat.DamageResolveSystem{})
 
+	// Elimination (Update, after damage resolves, before effects): a player whose Echo died is out for
+	// the round. It reads Died, which DamageResolveSystem emits.
+	world.RegisterSystem(&echo.EliminationSystem{Tuning: c.echoes})
+
 	// Effects (Update, after every EffectIntent emitter and every system that reads status): the one
 	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
 	world.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})

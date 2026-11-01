@@ -1,5 +1,5 @@
 {
-  "blocked_by": ["stunned"],
+  "blocked_by": ["stunned", "out"],
   "kits": {
     "starter": ["bolt", "dash"]
   },

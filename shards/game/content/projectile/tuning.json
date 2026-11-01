@@ -2,6 +2,7 @@
   "defaults": [
     {"kinds": ["wall", "bounds"], "do": "stop"},
     {"relations": ["own", "ally"], "do": "pass"},
+    {"kinds": ["body"], "require": ["out"], "do": "pass"},
     {"kinds": ["body"], "do": "stop"},
     {"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}
   ],

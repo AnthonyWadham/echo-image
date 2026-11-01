@@ -30,6 +30,9 @@ const (
 	Instanced                 // always a new entry
 )
 
+// Forever is the Ticks of an effect that lasts until something removes it: out, until the round ends.
+const Forever = ^uint64(0)
+
 // Entry is one timed effect. It holds its resolved numbers, so the fold needs no catalog.
 type Entry struct {
 	Kind       string
@@ -128,7 +131,7 @@ func (s Status) Speed(base float64) float64 {
 // Add applies e to list from tick for ticks ticks by rule, and returns the new list. The caller sets
 // every field of e but Start, End, Serial and Stacking. What a kind ends or is blocked by is Apply's.
 func Add(list []Entry, next *uint32, e Entry, rule Stacking, tick, ticks uint64) []Entry {
-	e.Start, e.End, e.Stacking = tick, tick+ticks, rule
+	e.Start, e.End, e.Stacking = tick, tick+min(ticks, Forever-tick), rule
 	if slices.ContainsFunc(list, func(o Entry) bool { return o.covers(e, tick) }) {
 		return list
 	}

@@ -71,6 +71,9 @@ func (c catalog) lineUp() error {
 			errs = append(errs, fmt.Errorf("champion %q's Echo has unknown area kind %q", id, def.Area))
 		}
 	}
+	if _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok {
+		errs = append(errs, fmt.Errorf("an Echo's death_effect is unknown effect kind %q", c.echoes.DeathEffect))
+	}
 	for _, id := range slices.Sorted(maps.Keys(c.echoes.Champions)) {
 		if _, ok := c.movement.Champions[id]; !ok {
 			errs = append(errs, fmt.Errorf("Echo %q belongs to no champion", id))

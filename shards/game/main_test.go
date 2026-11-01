@@ -306,6 +306,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 			`Echo "rook" belongs to no champion`},
 		{"unknown Echo area", "echo/tuning.json", `{"champions": {"starter": {"area": "aera"}}}`,
 			`unknown area kind "aera"`},
+		{"unknown death effect", "echo/tuning.json", `{"death_effect": "dead"}`, `unknown effect kind "dead"`},
 		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
 			`unknown shot "blot"`},
 		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},

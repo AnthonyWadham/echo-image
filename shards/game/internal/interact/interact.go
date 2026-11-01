@@ -35,6 +35,7 @@ const (
 	CC          Tags = 1 << 1 // crowd control: Unstoppable blocks it
 	EndsOnCC    Tags = 1 << 2 // removed when CC lands (dashes, channels)
 	Unstoppable Tags = 1 << 3 // CC can't land
+	Out         Tags = 1 << 4 // out of the round, its Echo dead: no casts, and shots pass its Body
 )
 
 // Relation is how a thing relates to the one it meets. Each is a bit, so a filter can list several.
@@ -97,7 +98,7 @@ func First[R Rule](rules []R, k Kind, r Relation, t Tags) (R, int, bool) {
 
 var (
 	kindNames     = map[string]Kind{"wall": Wall, "body": Body, "echo": Echo, "shot": Shot, "bounds": Bounds, "area": Area}
-	tagNames      = map[string]Tags{"stunned": Stunned, "cc": CC, "ends_on_cc": EndsOnCC, "unstoppable": Unstoppable}
+	tagNames      = map[string]Tags{"stunned": Stunned, "cc": CC, "ends_on_cc": EndsOnCC, "unstoppable": Unstoppable, "out": Out}
 	relationNames = map[string]Relation{"own": Own, "ally": Ally, "enemy": Enemy, "neutral": Neutral}
 )
 

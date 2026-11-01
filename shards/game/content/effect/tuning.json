@@ -1,5 +1,6 @@
 {
   "kinds": {
-    "dash": {"tags": ["ends_on_cc"], "stacking": "merge"}
+    "dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
+    "out":  {"tags": ["out"], "stacking": "merge"}
   }
 }

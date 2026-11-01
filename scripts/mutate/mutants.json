@@ -1899,6 +1899,66 @@
      "new": "\t\tcmp.Compare(t.blockable(b.Kind), t.blockable(a.Kind)),"
     }
    ]
+  },
+  {
+   "id": "F1-S1",
+   "breaks": "an Echo's death puts no one out",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/echo/elimination_system.go",
+     "old": "\t\tif !e.Has[component.Echo]() {",
+     "new": "\t\tif e.Has[component.Echo]() {"
+    }
+   ]
+  },
+  {
+   "id": "F1-F1",
+   "breaks": "a forever effect wraps around and is over at once",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/status.go",
+     "old": "tick+min(ticks, Forever-tick)",
+     "new": "tick+ticks"
+    }
+   ]
+  },
+  {
+   "id": "F1-C1",
+   "breaks": "an out Body still casts",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/content/ability/tuning.json",
+     "old": "\"blocked_by\": [\"stunned\", \"out\"]",
+     "new": "\"blocked_by\": [\"stunned\"]"
+    }
+   ]
+  },
+  {
+   "id": "F1-P1",
+   "breaks": "an out Body still shields",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/content/projectile/tuning.json",
+     "old": "    {\"kinds\": [\"body\"], \"require\": [\"out\"], \"do\": \"pass\"},\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F1-V1",
+   "breaks": "an unknown death effect boots",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/catalog.go",
+     "old": "\tif _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok {",
+     "new": "\tif _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok && false {"
+    }
+   ]
   }
  ]
 }

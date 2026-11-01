@@ -2,6 +2,7 @@ package main
 
 import (
 	"echo_image/shards/game/internal/area"
+	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
@@ -159,5 +160,27 @@ func TestChampionWithoutAntiCamp(t *testing.T) {
 	flyFor(w, 5*physics.ServerTickRateHz+5)
 	if e := echoOf(t, w, "alice", alice); e.HP != e.MaxHP {
 		t.Fatalf("HP = %v on its own Body, want %v: this champion's Echo has no anti-camp", e.HP, e.MaxHP)
+	}
+}
+
+// A player whose Echo died is out for the round (GDD §8): they can't cast, and shots pass their Body, so
+// it shields no one.
+func TestEchoDeathPutsItsPlayerOut(t *testing.T) {
+	w, alice, bob, fx := fxDuel(t)
+	a := yourBody(t, bodiesFor(t, w, "alice"))
+	mine := echoOf(t, w, "alice", a)
+	emit(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
+	w.Tick() // her Echo dies; out applies from the next tick
+
+	b := yourBody(t, bodiesFor(t, w, "bob"))
+	alice.fire(1, 0)
+	bob.fire(a.X-b.X, a.Y-b.Y) // at her
+	w.Tick()
+	if got := shots(t, w, "alice"); len(got) != 1 || got[0].Caster != b.EntityID {
+		t.Fatalf("shots %+v, want only bob's: she is out", got)
+	}
+	ended := flyUntilEnded(t, w, "bob", ticks(5))
+	if len(ended) != 1 || ended[0].OnTarget {
+		t.Fatalf("bob's shot ended %+v, want it past her Body", ended)
 	}
 }
