@@ -9,6 +9,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // A target at a view is drawn as the client draws it: its newer row, partway from its older one. One
@@ -52,7 +53,10 @@ func TestAtViewDrawsAsTheClientDoes(t *testing.T) {
 // from: the oldest RewindTicks before it, whose older row is the oldest kept, and the newest at the
 // newest row. A view that isn't a number is judged at the newest.
 func TestViewIsHeldInsideTheRows(t *testing.T) {
-	tuning := Tuning{RewindSeconds: 0.4}
+	tuning := Tuning{Rewind: Rewind{InterpolationSeconds: 0.1, QueueSeconds: 0.05, PingSeconds: 0.25}}
+	if got, want := tuning.RewindTicks(), uint64(timestep.Ticks(0.4)); got != want {
+		t.Fatalf("RewindTicks = %d, want %d: its parts added up", got, want)
+	}
 	tick := uint64(100)
 	oldest := float64(tick - tuning.RewindTicks())
 	newest := float64(tick - 1) // drawn from rows 98 and 99, the newest

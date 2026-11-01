@@ -4,12 +4,6 @@ const MaxDrift = 0.25 // seconds behind its target past which the render clock j
 const EaseSeconds = 0.5 // the render clock closes 63% of its gap to its target in this time
 const MaxSafeTick = BigInt(Number.MAX_SAFE_INTEGER)
 
-/** Seconds behind the newest tick to draw: about two ticks, so the clock seldom reaches it and waits. */
-export const InterpolationDelay = 0.1
-
-/** The farthest back of the newest tick a view is drawn, in seconds: older states are dropped. */
-const KeepSeconds = MaxDrift + InterpolationDelay
-
 /** A Go uint64 tick as a number. Throws past Number.MAX_SAFE_INTEGER, where it loses precision. */
 export function toTick(tick: bigint): number {
   if (tick > MaxSafeTick) throw new RangeError(`tick ${tick} exceeds Number.MAX_SAFE_INTEGER`)
@@ -97,9 +91,18 @@ export class Timeline<T> {
 export class Timelines {
   /** Seconds a tick lasts (body_sync's TickSeconds); until it's known, no state is dropped. */
   tickSeconds = 0
+  /**
+   * Seconds behind the newest tick to draw: the content's interpolation_seconds, which the server's
+   * rewind allows for. About two ticks, so the clock seldom reaches the newest and waits.
+   */
+  readonly interpolationSeconds: number
   readonly #all: Timeline<unknown>[] = []
   readonly #onReset: (() => void)[] = []
   #renderTime = NaN
+
+  constructor(interpolationSeconds: number) {
+    this.interpolationSeconds = interpolationSeconds
+  }
 
   /** A new timeline that starts over with the rest. */
   create<T>(): Timeline<T> {
@@ -110,7 +113,7 @@ export class Timelines {
 
   /**
    * Adds a state at a uint64 tick. A tick going backwards (a server restart) resets them all. Then each
-   * drops what no view can draw again: states over KeepSeconds older than the newest tick every timeline
+   * drops what no view can draw again: states over MaxDrift + interpolationSeconds older than the newest tick every timeline
    * has, but the one a view there pairs with. So each holds the same seconds at any rate, hidden tab
    * included.
    */
@@ -122,7 +125,7 @@ export class Timelines {
     }
     const newest = this.newestTick
     if (newest === undefined || !(this.tickSeconds > 0)) return
-    const oldest = newest - Math.ceil(KeepSeconds / this.tickSeconds) - 1
+    const oldest = newest - Math.ceil((MaxDrift + this.interpolationSeconds) / this.tickSeconds) - 1
     for (const t of this.#all) t.dropBefore(oldest)
   }
 
@@ -144,12 +147,12 @@ export class Timelines {
     return Math.min(...this.#all.map((t) => t.newestTick))
   }
 
-  /** The tick to draw, dt after the last: InterpolationDelay behind newestTick, and never past it. */
+  /** The tick to draw, dt after the last: interpolationSeconds behind newestTick, and never past it. */
   renderTick(dt: number, tickSeconds: number): number | undefined {
     const newest = this.newestTick
     if (newest === undefined || !(tickSeconds > 0)) return undefined
     const at = newest * tickSeconds
-    this.#renderTime = stepRenderTime(this.#renderTime, at - InterpolationDelay, at, dt)
+    this.#renderTime = stepRenderTime(this.#renderTime, at - this.interpolationSeconds, at, dt)
     return this.#renderTime / tickSeconds
   }
 }

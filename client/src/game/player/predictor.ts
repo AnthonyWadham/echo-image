@@ -55,6 +55,8 @@ export interface Stepped {
 export interface Predictor {
   /** The sim it runs: the SimVersion a shard built from the same tree sends. */
   readonly version: string
+  /** How far behind the newest tick to draw others: the content's, which the server's rewind allows. */
+  readonly interpolationSeconds: number
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync, you: BodyState): void
   /** Keeps the targets a target_sync shows, so your shots meet them where your screen drew them. */
@@ -84,16 +86,25 @@ interface Exports {
   shots(): PredictedShot[]
   echo(): PredictedEcho | null
   kit(): PredictedKit
+  useContent(files: Record<string, string>): string | null
+  interpolationSeconds(): number
 }
 
-/** Starts the predictor from wasm bytes, by default the build next to this file. */
-export async function loadPredictor(wasm?: BufferSource): Promise<Predictor> {
+/**
+ * Starts the predictor from wasm bytes, by default the build next to this file. It plays the content
+ * built into it, with content's files (by path, as JSON) in place of its own: a test's.
+ */
+export async function loadPredictor(wasm?: BufferSource, content?: Record<string, string>): Promise<Predictor> {
   await runGo(wasm ?? (await (await fetch(wasmUrl)).arrayBuffer()))
   const globals = globalThis as { echoPredictor?: Exports; echoPredictorError?: string }
   const exports = globals.echoPredictor
   if (!exports) throw new Error(globals.echoPredictorError ?? 'predictor.wasm ran but set no echoPredictor')
+  const refused = content && exports.useContent(content)
+  if (refused) throw new Error(refused)
+  const interpolationSeconds = exports.interpolationSeconds()
   return {
     version: exports.version,
+    interpolationSeconds,
     // A uint64 goes as a decimal string, since a number can't hold every one.
     reset: (sync, you) => {
       const { Body, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } = sync.You

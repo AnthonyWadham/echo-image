@@ -24,14 +24,19 @@ import (
 var simVersion string
 
 func main() {
-	c, err := predict.Load(content.FS)
+	rules, err := predict.Load(content.FS)
 	if err != nil {
 		js.Global().Set("echoPredictorError", err.Error())
 		return
 	}
-	p := predict.New(c)
+	p := predict.New(rules)
 	js.Global().Set("echoPredictor", js.ValueOf(map[string]any{
 		"version": simVersion,
+		// interpolationSeconds is how far behind the newest tick the client draws others: the content's,
+		// so a shot's view is one the server allows.
+		"interpolationSeconds": js.FuncOf(func(js.Value, []js.Value) any {
+			return rules.Shots.Rewind.InterpolationSeconds
+		}),
 		"reset": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			p.Reset(state(args[0]))
 			return nil
@@ -55,6 +60,21 @@ func main() {
 		}),
 		"seeTargets": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			p.See(uint64Of(args[0].Get("Tick")), sights(args[0].Get("Targets")))
+			return nil
+		}),
+		// useContent plays these content files in place of the embedded ones: a test's. It returns why it
+		// can't, or null.
+		"useContent": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			files, names := content.Overlay{}, js.Global().Get("Object").Call("keys", args[0])
+			for i := range names.Length() {
+				name := names.Index(i).String()
+				files[name] = []byte(args[0].Get(name).String())
+			}
+			c, err := predict.Load(files)
+			if err != nil {
+				return err.Error()
+			}
+			rules, p = c, predict.New(c)
 			return nil
 		}),
 		"forget": js.FuncOf(func(js.Value, []js.Value) any {

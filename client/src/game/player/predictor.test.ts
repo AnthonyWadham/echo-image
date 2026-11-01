@@ -24,7 +24,13 @@ interface Step {
   Kit: PredictedKit
   Echo: PredictedEcho | null // null with no Echo
 }
-const run = decodePayload(new Uint8Array(readFileSync(new URL('prediction.msgpack', import.meta.url)))) as Step[]
+// The content files it played in place of the shipped ones, which the wasm build plays too.
+interface Recording {
+  Content: Record<string, string>
+  Steps: Step[]
+}
+const recording = readFileSync(new URL('prediction.msgpack', import.meta.url))
+const { Content: content, Steps: run } = decodePayload(new Uint8Array(recording)) as Recording
 
 declare module 'vitest' {
   export interface ProvidedContext {
@@ -35,7 +41,7 @@ declare module 'vitest' {
 let predictor: Predictor
 beforeAll(async () => {
   // Built by scripts/predictor.mjs, vitest's global setup.
-  predictor = await loadPredictor(readFileSync(new URL('predictor.wasm', import.meta.url)))
+  predictor = await loadPredictor(readFileSync(new URL('predictor.wasm', import.meta.url)), content)
 })
 
 // Steps each frame in turn, and returns where the last left her and every shot the steps ended.
@@ -43,6 +49,11 @@ const stepAll = (frames: InputFrame[]) => {
   const steps = frames.map((f) => predictor.step(f))
   return { at: steps.at(-1)?.at, ended: steps.flatMap((s) => s.ended) }
 }
+
+test("plays the run's content: its render delay too", () => {
+  const projectile = JSON.parse(content['projectile/tuning.json']!) as { rewind: { interpolation_seconds: number } }
+  expect(predictor.interpolationSeconds).toBe(projectile.rewind.interpolation_seconds)
+})
 
 test("runs this tree's sim: the version a shard built from it sends", () => {
   expect(predictor.version).toMatch(/^go[\d.]+\+\d+hz\+[0-9a-f]{16}$/)

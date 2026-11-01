@@ -160,6 +160,13 @@ type predictionStep struct {
 	Echo    *echoPrediction // nil with no Echo
 }
 
+// recording is what -record writes: the run, and the content files it played in place of the shipped
+// ones, so the wasm build plays them too.
+type recording struct {
+	Content map[string]string
+	Steps   []predictionStep
+}
+
 // digest is s as a line of text, so a new recording shows what changed in a reviewed diff.
 func (s predictionStep) digest() string {
 	echo := "none"
@@ -471,7 +478,7 @@ var recorded = map[string]string{
 		"bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
 		"dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
 			"params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}}}`,
-	"projectile/tuning.json": `{"rewind_seconds": 0.4,
+	"projectile/tuning.json": `{"rewind": {"interpolation_seconds": 0.125, "queue_seconds": 0.05, "ping_seconds": 0.225},
 		"shots": {"bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}}}`,
 	"effect/tuning.json": `{"kinds": {
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
@@ -640,7 +647,11 @@ func TestPredictionMatchesServer(t *testing.T) {
 	}
 	switch {
 	case *recordTo != "":
-		raw, err := msgpack.Marshal(run)
+		files := map[string]string{}
+		for name, raw := range patched(t, recorded) {
+			files[name] = string(raw)
+		}
+		raw, err := msgpack.Marshal(recording{Content: files, Steps: run})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -832,14 +843,14 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p *predict.Predictor, alice
 func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	_, bolt := primary(t)
 	bolt.Speed = 0.75 * physics.ServerTickRateHz
-	rules, err := predict.Load(patched(t, map[string]string{
+	rules, err := predict.Load(patched(t, deepRewind, map[string]string{
 		"projectile/tuning.json": fmt.Sprintf(`{"shots": {"bolt": {"speed": %v}}}`, bolt.Speed),
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	step := bolt.Speed * physics.SecondsPerTick
-	rewind := tuningOf[projectile.ProjectileTuning](t).RewindTicks()
+	rewind := rules.Shots.RewindTicks()
 	now := rewind + 4 // her state's tick: for her first frame the server keeps rows from tick 4
 	// The enemy stands on her shot's path, or farther on it, or a tick later 2 units up off it, or dies
 	// halfway through that tick there. A newer one can take its ID, never its serial.

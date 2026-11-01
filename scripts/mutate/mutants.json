@@ -1547,8 +1547,8 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "timestep.Ticks(t.RewindSeconds)",
-     "new": "timestep.TicksAt(t.RewindSeconds, 20)"
+     "old": "timestep.Ticks(t.Rewind.Seconds())",
+     "new": "timestep.TicksAt(t.Rewind.Seconds(), 20)"
     }
    ]
   },
@@ -2089,6 +2089,66 @@
      "file": "client/src/game/player/prediction.ts",
      "old": "this.#fade = sync.You.FadeSeconds",
      "new": "this.#fade = 0.2"
+    }
+   ]
+  },
+  {
+   "id": "F9-S1",
+   "breaks": "the rewind is only its ping",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "func (r Rewind) Seconds() float64 { return r.InterpolationSeconds + r.QueueSeconds + r.PingSeconds }",
+     "new": "func (r Rewind) Seconds() float64 { return r.PingSeconds }"
+    }
+   ]
+  },
+  {
+   "id": "F9-V1",
+   "breaks": "a rewind that favors no ping loads",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "t.RewindTicks() < uint64(timestep.Ticks(r.InterpolationSeconds+r.QueueSeconds))+1",
+     "new": "t.RewindTicks() < 1"
+    }
+   ]
+  },
+  {
+   "id": "F9-C1",
+   "breaks": "the render clock ignores the content's interpolation",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "at - this.interpolationSeconds, at, dt)",
+     "new": "at - 0.1, at, dt)"
+    }
+   ]
+  },
+  {
+   "id": "F9-W1",
+   "breaks": "the wasm reports no interpolation",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\t\treturn rules.Shots.Rewind.InterpolationSeconds\n",
+     "new": "\t\t\treturn 0.1\n"
+    }
+   ]
+  },
+  {
+   "id": "F9-U1",
+   "breaks": "the wasm under test plays the shipped content, not the run's",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "const refused = content && exports.useContent(content)",
+     "new": "const refused = content && null"
     }
    ]
   }

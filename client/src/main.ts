@@ -45,7 +45,7 @@ async function play(playerId: string): Promise<void> {
   })
 
   // One timeline per sync event. They start over together.
-  const timelines = new Timelines()
+  const timelines = new Timelines(predictor.interpolationSeconds)
   const player = new LocalPlayer(timelines, newSession(), predictor)
   const echoes = timelines.create<EchoState[]>()
   const abilities = timelines.create<Cooldown[]>()

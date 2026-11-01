@@ -172,7 +172,9 @@ the claim model (problem 3).
 
 ### 9. Content (unchanged)
 
-- **What:** `rewind_seconds: 0.4` in the projectile tuning. The predictor loads it too.
+- **What:** `rewind` in the projectile tuning, a budget (2026-11-01): `interpolation_seconds` 0.1 +
+  `queue_seconds` 0.05 + `ping_seconds` 0.1, so 0.25 s (it was a flat 0.4 s). The predictor loads it
+  too, and the client's render clock draws `interpolation_seconds` behind.
 - `max_target_speed` is gone (2026-11-01): each target's rows bound how far it moved, so no speed
   limit has to cover every move, and no test copies the dash formula.
 
@@ -183,8 +185,8 @@ the claim model (problem 3).
 
 ## Limits
 
-- **Ping above the window.** A view older than 0.4 s is judged at the oldest row. When your frames
-  run over 0.4 s ahead of your newest sync (a high ping or a deep queue), that row is newer than any
+- **Ping above the window.** A view older than the rewind (0.25 s) is judged at the oldest row. When
+  your frames run over the rewind ahead of your newest sync (a high ping or a deep queue), that row is newer than any
   sync your predictor has, so it can't show those hits ahead: they come with the next body_sync.
 - **Late frames.** A frame applied a tick late moves the server's shot a step from the predicted one.
   The server still judges every tick, so a late frame shifts a hit; it doesn't drop it. Input pacing
@@ -193,9 +195,10 @@ the claim model (problem 3).
   until a body_sync shows it gone, about a round trip later.
 - **A target someone else kills first.** Your screen shows your hit; the server's shot flies on. The
   next body_sync corrects it.
-- **The victim pays.** A hit can land up to 0.4 s after they dodged on their screen.
+- **The victim pays.** A hit can land up to the rewind (0.25 s) after they dodged on their screen.
 - **Cheating.** A client may lag as far back as the window, but its view never goes back, so it can't
-  try each past moment for each shot. It gains at most 0.4 s of rewind, as an honest high ping does.
+  try each past moment for each shot. It gains at most the rewind, as an honest player at the favored
+  ping does.
   The server still runs its own query: the walls now, the blockers at that view.
 
 ## Tests

@@ -21,6 +21,7 @@ function predictor(): Predictor {
   let echo: PredictedEcho | undefined
   return {
     version: 'this build',
+    interpolationSeconds: 0.1,
     reset: (sync, you) => {
       at = { x: you.X, y: you.Y }
       tick = Number(sync.Tick)

@@ -17,6 +17,7 @@ function predictor(seen: string[] = []): Predictor {
   let echo: PredictedEcho | undefined
   return {
     version: sim,
+    interpolationSeconds: 0.1,
     reset: (s, you) => {
       at = { x: you.X, y: you.Y }
       const e = s.You.EchoPath[0]
@@ -34,7 +35,7 @@ function predictor(seen: string[] = []): Predictor {
     kit: () => ({ Tick: 0, Slots: [] }),
   }
 }
-const newPlayer = (timelines = new Timelines(), seen: string[] = []) =>
+const newPlayer = (timelines = new Timelines(0.1), seen: string[] = []) =>
   new LocalPlayer(timelines, session, predictor(seen))
 
 /** A body_sync at tick for you as Body 1, by default alone at (tick, 0). */
@@ -66,7 +67,7 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
 })
 
 /** Connected and playing Body 1, after the join frame (Seq 1). */
-function playing(timelines = new Timelines()): LocalPlayer {
+function playing(timelines = new Timelines(0.1)): LocalPlayer {
   const player = newPlayer(timelines)
   player.setConnected(true, { x: 0, y: 0 })
   player.onBodySync(bodySync(100))
@@ -75,7 +76,7 @@ function playing(timelines = new Timelines()): LocalPlayer {
 
 describe('LocalPlayer', () => {
   test('joins on each connect and starts everything over when the stream drops', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const echoes = timelines.create<string>()
     const player = newPlayer(timelines)
     expect(player.setConnected(true, { x: 1, y: 0 })?.Frames).toEqual([
@@ -202,7 +203,7 @@ describe('LocalPlayer', () => {
 
   test('gives the predictor each target_sync while the shard runs your sim, and forgets them on leaving', () => {
     const seen: string[] = []
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const player = newPlayer(timelines, seen)
     player.setConnected(true, { x: 0, y: 0 })
     player.onTargetSync({ Tick: 99n, Targets: [] }) // before a body_sync says which sim
@@ -237,7 +238,7 @@ describe('LocalPlayer', () => {
   })
 
   test('a tick going backwards in any sync event starts over', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const echoes = timelines.create<string>()
     const player = playing(timelines)
     timelines.add(echoes, 100n, 'e100')

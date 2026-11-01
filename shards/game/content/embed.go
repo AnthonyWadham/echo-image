@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"testing/fstest"
 )
 
 // FS holds every feature's JSON config. The glob matches one directory deep, so a new feature's
@@ -18,6 +19,17 @@ import (
 //
 //go:embed */*.json
 var FS embed.FS
+
+// Overlay is the embedded content with these files, by path, in place of its own: a test's content.
+type Overlay map[string][]byte
+
+// Open opens name from o, or else from FS.
+func (o Overlay) Open(name string) (fs.File, error) {
+	if raw, ok := o[name]; ok {
+		return fstest.MapFS{name: {Data: raw}}.Open(name)
+	}
+	return FS.Open(name)
+}
 
 // File is a content file's Go type.
 type File interface{ JSONFile() string }

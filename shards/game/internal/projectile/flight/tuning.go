@@ -10,13 +10,23 @@ import (
 
 // Tuning is the shot types and their rules, loaded from content/projectile/tuning.json. What a shot
 // does when it meets a thing is a rule: the shot type's own rules first, then the defaults, and the
-// first match wins. A predicted shot meets Bodies and Echoes as its client drew them, up to RewindSeconds
-// before.
+// first match wins. A predicted shot meets Bodies and Echoes as its client drew them, up to Rewind back.
 type Tuning struct {
-	Defaults      []Meet          `json:"defaults"`       // the GDD's rules (§7), under every shot type's own
-	Shots         map[string]Shot `json:"shots"`          // by shot type ID
-	RewindSeconds float64         `json:"rewind_seconds"` // the oldest view a predicted shot is judged at
+	Defaults []Meet          `json:"defaults"` // the GDD's rules (§7), under every shot type's own
+	Shots    map[string]Shot `json:"shots"`    // by shot type ID
+	Rewind   Rewind          `json:"rewind"`   // how far back a predicted shot's view may be
 }
+
+// Rewind is how far back the view a predicted shot is judged at may be: what an honest client's view
+// lags, added up. An older view is judged at the oldest, so a slower link leads its shots a little.
+type Rewind struct {
+	InterpolationSeconds float64 `json:"interpolation_seconds"` // how far behind the newest tick a client draws
+	QueueSeconds         float64 `json:"queue_seconds"`         // how long its frames wait in the server's queue
+	PingSeconds          float64 `json:"ping_seconds"`          // the round trip it favors
+}
+
+// Seconds is the whole rewind.
+func (r Rewind) Seconds() float64 { return r.InterpolationSeconds + r.QueueSeconds + r.PingSeconds }
 
 // Shot is a shot type.
 type Shot struct {
@@ -53,9 +63,9 @@ const targetKinds = interact.Body | interact.Echo
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "projectile/tuning.json" }
 
-// RewindTicks converts RewindSeconds to ticks.
+// RewindTicks converts the rewind to ticks.
 func (t Tuning) RewindTicks() uint64 {
-	return uint64(timestep.Ticks(t.RewindSeconds))
+	return uint64(timestep.Ticks(t.Rewind.Seconds()))
 }
 
 // KeptRows is how many ticks of rows a target keeps: every view View allows is drawn from them.
@@ -63,9 +73,11 @@ func (t Tuning) KeptRows() uint64 { return t.RewindTicks() + 1 }
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t Tuning) Validate() error {
-	if !(t.RewindSeconds > 0) || t.RewindTicks() < 1 {
-		return fmt.Errorf("projectile_tuning: rewind_seconds must be >= 1 tick at %d Hz, got %v", timestep.Rate,
-			t.RewindSeconds)
+	r := t.Rewind
+	if !(r.InterpolationSeconds >= 0 && r.QueueSeconds >= 0) ||
+		t.RewindTicks() < uint64(timestep.Ticks(r.InterpolationSeconds+r.QueueSeconds))+1 {
+		return fmt.Errorf("projectile_tuning: rewind needs interpolation_seconds and queue_seconds >= 0, and "+
+			"ping_seconds of at least a tick at %d Hz, got %+v", timestep.Rate, r)
 	}
 	if err := validMeets("defaults", t.Defaults); err != nil {
 		return err

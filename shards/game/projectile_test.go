@@ -151,7 +151,8 @@ func TestShotDamageCarriesItsCast(t *testing.T) {
 // An enemy Body on the path in front of bob's Echo where alice drew it stops the shot there: bob stood
 // half over his Echo, toward her, and walked off after her view. The Echo takes no damage.
 func TestEnemyBodyBlocksShot(t *testing.T) {
-	w, alice, bob := duel(t)
+	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+	alice, bob := claim(t, w)
 	moveFor(w, bob, -1, 0, ticks(0.1))
 	drawn := yourBody(t, bodiesFor(t, w, "bob"))
 	flyFor(w, ticks(0.4))                         // her view can't go back past her first frame's, tick 0
@@ -191,7 +192,8 @@ func TestBodyOnItsEchoShieldsIt(t *testing.T) {
 // A shot meets bob where alice drew him: he walked off its path after her view, and it still stops on
 // him.
 func TestShotHitsWhereTheViewHadIt(t *testing.T) {
-	w, alice, bob := duel(t)
+	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+	alice, bob := claim(t, w)
 	moveFor(w, bob, 0, -1, ticks(0.5))            // off his Echo
 	alice.back = 0.375 * physics.ServerTickRateHz // her view at step k is from before he leaves, 0.35 s before it
 	from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
@@ -239,7 +241,8 @@ func TestViewNeverGoesBack(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			w, alice, bob := duel(t)
+			w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+			alice, bob := claim(t, w)
 			moveFor(w, bob, 0, -1, ticks(0.5)) // off his Echo
 			alice.back = 0.075 * physics.ServerTickRateHz
 			alice.move(0, 0)
@@ -272,9 +275,9 @@ func TestShotMeetsTargetBetweenRows(t *testing.T) {
 		part float64
 		hits bool
 	}{{0.3, true}, {0.7, false}} {
-		w := cardinal.NewTestWorld(t, withContent(t, map[string]string{"ability/tuning.json": fmt.Sprintf(
+		w := cardinal.NewTestWorld(t, withContent(t, deepRewind, map[string]string{"ability/tuning.json": fmt.Sprintf(
 			`{"abilities": {"dash": {"params": {"distance": %v, "seconds": 0.3}}}}`, 0.3*physics.ServerTickRateHz)}))
-		alice, bob := claim(t, w)
+		alice, bob := claim(t, w)          // her view is up to 0.4 s back
 		moveFor(w, bob, -1, 0, ticks(0.4)) // off his Echo, toward her
 		moveFor(w, bob, 0, -1, ticks(0.2)) // a unit below her shot's path
 		from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))

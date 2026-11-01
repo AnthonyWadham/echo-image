@@ -345,8 +345,13 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   claim from the client:
   - The view is the applied frame's `ViewTick`, moved on by the ticks since on a tick with no new frame
     (`InputQueue.View`), then held to the views the rows kept are drawn from (`flight.Tuning.View`): no
-    older than `rewind_seconds`, no newer than the newest row, the tick before. An older view (a high
-    ping) is judged at the oldest, so it must lead its shots but still hits.
+    older than the rewind, no newer than the newest row, the tick before. An older view (a high ping)
+    is judged at the oldest, so it must lead its shots but still hits.
+  - **The rewind is a budget, not a round number:** what an honest view lags, added up, in
+    `content/projectile/tuning.json`: `interpolation_seconds` (how far behind the newest tick the client
+    draws, which its render clock reads through the predictor, so both read one value), `queue_seconds`
+    and the `ping_seconds` it favors. A cheat can't claim more than an honest player at that ping. The
+    load fails unless the ping adds at least a tick.
   - A view never goes back: a frame's `ViewTick` below the largest one applied, or not a number, is
     taken at that one (`InputQueue.ViewFloor`, from 0, kept across sessions). A client can lag, but
     can't pick an older moment for each shot. An honest view only moves on (the render clock never
@@ -541,8 +546,8 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   v − (⌈v⌉ − 1) of the way through the newer one's tick, so a whole tick is its own end; without both,
   nothing is drawn (`Timeline.sample`, then `blend`). The server and the predictor place targets by the
   same rule (`flight.RowTicks`, `flight.AtView`), and `testdata/view.json` pins the two sides together,
-  to the bit (`TestViewFixture`, `entity_views.test.ts`). The render clock draws `InterpolationDelay`
-  behind the newest tick every timeline has, never past it: in a stall it waits there. It never steps
+  to the bit (`TestViewFixture`, `entity_views.test.ts`). The render clock draws the rewind's
+  `interpolation_seconds` (`Timelines.interpolationSeconds`) behind the newest tick every timeline has, never past it: in a stall it waits there. It never steps
   back, and eases by time, not by frame (`Timelines.renderTick`). So the view a frame sends always has
   both its rows, in the predictor and on the server.
 - **An entity that ends partway through a tick is sent once more, where and when it ended.** A shot
@@ -627,7 +632,7 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     drawn with the same `blend` as everyone's. A replay after each body_sync is the same `Step`, so it
     ends a shot where the step did; a shot the server flew on comes back from `You.Shots`, and the end
     your frame drew for it is dropped (by key, when nothing replays). Views the predictor has no syncs
-    for (frames over `rewind_seconds` ahead of your newest sync: a high ping or a deep queue) pass
+    for (frames over the rewind ahead of your newest sync: a high ping or a deep queue) pass
     Bodies and Echoes, while the server may still hit there.
   - **The predictor embeds `content.FS`** and loads it with `predict.Load`, through the shard's own
     `content.Load`.

@@ -65,7 +65,7 @@ describe('Timeline', () => {
 
 describe('Timelines', () => {
   test('adds at a uint64 tick', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const tl = timelines.create<string>()
     timelines.add(tl, 7n, 's7')
     expect(tl.newest).toBe('s7')
@@ -75,11 +75,11 @@ describe('Timelines', () => {
   test.each([20, 60])(
     'keeps the 0.35 s a view can reach back at %i Hz, behind the newest tick every timeline has',
     (rate) => {
-      const timelines = new Timelines()
+      const timelines = new Timelines(0.1)
       timelines.tickSeconds = 1 / rate
       const a = timelines.create<string>()
       const b = timelines.create<string>()
-      const keep = Math.ceil(0.35 * rate) // MaxDrift + InterpolationDelay
+      const keep = Math.ceil(0.35 * rate) // MaxDrift + interpolationSeconds
       for (let tick = 1; tick <= 3 * rate; tick++) timelines.add(a, BigInt(tick), `a${tick}`)
       expect(a.size).toBe(3 * rate) // b has nothing yet, so no view is drawn and nothing drops
       for (let tick = 1; tick <= 2 * rate; tick++) timelines.add(b, BigInt(tick), `b${tick}`)
@@ -94,7 +94,7 @@ describe('Timelines', () => {
   )
 
   test('a tick going backwards in any timeline starts them all over', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const onReset = vi.fn()
     timelines.onReset(onReset)
     const a = timelines.create<string>()
@@ -109,7 +109,7 @@ describe('Timelines', () => {
   })
 
   test('reset clears every timeline and the render clock', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const tl = timelines.create<string>()
     timelines.add(tl, 100n, 's100')
     expect(timelines.renderTick(0, 0.05)).toBeCloseTo(98)
@@ -121,7 +121,7 @@ describe('Timelines', () => {
   })
 
   test('draws the newest tick every timeline has, minus the interpolation delay', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const a = timelines.create<string>()
     const b = timelines.create<string>()
     expect(timelines.renderTick(0.016, 0.05)).toBeUndefined()
@@ -132,10 +132,14 @@ describe('Timelines', () => {
     expect(timelines.renderTick(0.016, 0)).toBeUndefined()
     // 99 ticks * 0.05 s - 0.1 s is tick 97.
     expect(timelines.renderTick(0.016, 0.05)).toBeCloseTo(97)
+    const later = new Timelines(0.2) // the content's delay, whatever it is
+    const tl = later.create<string>()
+    for (let tick = 95n; tick <= 99n; tick++) later.add(tl, tick, `${tick}`)
+    expect(later.renderTick(0.016, 0.05)).toBeCloseTo(95)
   })
 
   test('waits at the newest tick while no state comes, never stepping back, then jumps ahead', () => {
-    const timelines = new Timelines()
+    const timelines = new Timelines(0.1)
     const tl = timelines.create<string>()
     for (let tick = 90n; tick <= 100n; tick++) timelines.add(tl, tick, `s${tick}`)
     const drawn = [timelines.renderTick(0, 0.05)!]

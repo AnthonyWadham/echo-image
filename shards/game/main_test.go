@@ -16,12 +16,10 @@ import (
 	"echo_image/shards/game/internal/projectile/flight"
 	"encoding/json"
 	"flag"
-	"io/fs"
 	"math"
 	"slices"
 	"strings"
 	"testing"
-	"testing/fstest"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
@@ -55,7 +53,7 @@ func withContent(t testing.TB, patches ...map[string]string) func(*cardinal.Worl
 }
 
 // patched is the content withContent registers, which a predictor can load too.
-func patched(t testing.TB, patches ...map[string]string) overlay {
+func patched(t testing.TB, patches ...map[string]string) content.Overlay {
 	t.Helper()
 	docs := map[string]map[string]any{}
 	for _, files := range patches {
@@ -78,7 +76,7 @@ func patched(t testing.TB, patches ...map[string]string) overlay {
 			merge(docs[file], add)
 		}
 	}
-	files := overlay{}
+	files := content.Overlay{}
 	for file, doc := range docs {
 		var err error
 		if files[file], err = json.Marshal(doc); err != nil {
@@ -87,6 +85,11 @@ func patched(t testing.TB, patches ...map[string]string) overlay {
 	}
 	return files
 }
+
+// deepRewind lets a shot's view go back 0.4 s (test content), for tests that draw bob from well before
+// he moved.
+var deepRewind = map[string]string{"projectile/tuning.json": `{"rewind": {"interpolation_seconds": 0.1,
+	"queue_seconds": 0.05, "ping_seconds": 0.25}}`}
 
 // effectKinds are the effect kinds tests put on things through an emitter. No ability uses them yet, so
 // they stay out of the shipped content.
@@ -105,17 +108,6 @@ func merge(dst, src map[string]any) {
 		}
 		dst[k] = v
 	}
-}
-
-// overlay serves the shipped content, with some files replaced: an fs.FS for the shard and a
-// predictor.
-type overlay map[string][]byte
-
-func (o overlay) Open(name string) (fs.File, error) {
-	if raw, ok := o[name]; ok {
-		return fstest.MapFS{name: {Data: raw}}.Open(name)
-	}
-	return content.FS.Open(name)
 }
 
 // sentTo returns the T the last tick sent to player, failing if any T was broadcast or player didn't
@@ -377,6 +369,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
 			`unknown shot "blot"`},
 		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},
+		{"rewind that favors no ping", "projectile/tuning.json", `{"rewind": {"ping_seconds": 0}}`, "ping_seconds"},
 		{"payload with no relations", "projectile/tuning.json",
 			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
 	} {
