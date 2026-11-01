@@ -1,0 +1,1734 @@
+{
+ "checks": {
+  "go": "go test ./...",
+  "go60": "go test -tags rate60 ./...",
+  "ts": "cd client && bun run test",
+  "ts60": "cd client && GOFLAGS=-tags=rate60 bun run test",
+  "prediction": "go test ./shards/game -run 'TestPrediction|TestPredictor'",
+  "sim60": "go test -tags rate60 .",
+  "prediction-rerecorded": "go test ./shards/game -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; go test ./shards/game -run 'TestPrediction|TestPredictor'",
+  "ts-rerecorded": "go test ./shards/game -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; cd client && bun run test"
+ },
+ "mutants": [
+  {
+   "id": "10-G1",
+   "breaks": "no floor",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tif !(q.Last.ViewTick >= q.ViewFloor) { // NaN too\n\t\t\tq.Last.ViewTick = q.ViewFloor\n\t\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "10-G2",
+   "breaks": "floor never rises",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tq.ViewFloor = q.Last.ViewTick\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "10-G3",
+   "breaks": "new session resets floor",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "LastTick: q.LastTick, ViewFloor: q.ViewFloor}",
+     "new": "LastTick: q.LastTick}"
+    }
+   ]
+  },
+  {
+   "id": "10-G4",
+   "breaks": "NaN kept",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "if !(q.Last.ViewTick >= q.ViewFloor) { // NaN too",
+     "new": "if q.Last.ViewTick < q.ViewFloor {"
+    }
+   ]
+  },
+  {
+   "id": "10-G5",
+   "breaks": "floor of the extrapolated view",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tq.Last, q.LastTick = q.Pending.At(0), tick\n",
+     "new": "\t\tif v, ok := q.View(tick); ok && v > q.ViewFloor {\n\t\t\tq.ViewFloor = v\n\t\t}\n\t\tq.Last, q.LastTick = q.Pending.At(0), tick\n"
+    }
+   ]
+  },
+  {
+   "id": "11-G1",
+   "breaks": "launch not from caster",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "From: c.Pos, Dir: l.Dir",
+     "new": "Dir: l.Dir"
+    }
+   ]
+  },
+  {
+   "id": "11-G2",
+   "breaks": "effect source is owner",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "Source: c.Caster})",
+     "new": "Source: c.Owner})"
+    }
+   ]
+  },
+  {
+   "id": "11-G3",
+   "breaks": "no tick rate",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "\tc.TickRate = timestep.Rate\n",
+     "new": "\t_ = timestep.Rate\n"
+    }
+   ]
+  },
+  {
+   "id": "11-G4",
+   "breaks": "launch keyed without ability",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "Launch{Ability: id, ",
+     "new": "Launch{"
+    }
+   ]
+  },
+  {
+   "id": "11-G5",
+   "breaks": "predictor drops effects",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\ta.effects = append(a.effects, in)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "11-G6",
+   "breaks": "predictor keeps others' effects",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tif in.Target == a.body {",
+     "new": "\tif true {"
+    }
+   ]
+  },
+  {
+   "id": "11-G7",
+   "breaks": "server drops effects",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast_hook_system.go",
+     "old": "{ s.w.EmitSystemEvent(effectcomp.EffectIntent(in)) }",
+     "new": "{ _, _ = in, effectcomp.EffectIntent{} }"
+    }
+   ]
+  },
+  {
+   "id": "11-G8",
+   "breaks": "server launches from zero",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast_hook_system.go",
+     "old": "From: physics2d.Vec2{X: l.From.X, Y: l.From.Y}, ",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "12-G1",
+   "breaks": "row ignores death",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/history_system.go",
+     "old": "\t\t\trow.Until = until\n",
+     "new": "\t\t\t_ = until\n"
+    }
+   ]
+  },
+  {
+   "id": "12-G2",
+   "breaks": "row without kind",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/history_system.go",
+     "old": "\t\tKind:   interact.Kind(shape.CategoryBits),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "12-G3",
+   "breaks": "row without side",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/history_system.go",
+     "old": "\t\tSide:   team.SideOf(e),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "12-G4",
+   "breaks": "sync owner is itself",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/target_sync_system.go",
+     "old": "Kind: r.Kind, Owner: r.Side.Owner,",
+     "new": "Kind: r.Kind, Owner: uint32(e.ID()),"
+    }
+   ]
+  },
+  {
+   "id": "12-G5",
+   "breaks": "server own Echo at view",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\tif s.Kind == interact.Echo && s.Side.Owner == uint32(predictor) {",
+     "new": "\tif s.Kind == interact.Echo && s.Side.Owner == uint32(predictor) && false {"
+    }
+   ]
+  },
+  {
+   "id": "12-G6",
+   "breaks": "predictor own Echo at view",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\tif hasEcho && row.Kind == interact.Echo && row.Side.Owner == s.Body {",
+     "new": "\t\tif false && hasEcho {"
+    }
+   ]
+  },
+  {
+   "id": "12-G7",
+   "breaks": "predictor keeps dying bodies",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\tif s, ok := at[serial]; !ok || s.Until < 1 {",
+     "new": "\t\tif _, ok := at[serial]; !ok {"
+    }
+   ]
+  },
+  {
+   "id": "12-G8",
+   "breaks": "predictor needs only newer sync",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tif !hasOlderSync || !hasNewerSync {",
+     "new": "\tif !hasNewerSync {\n\t\t_ = hasOlderSync"
+    }
+   ]
+  },
+  {
+   "id": "12-G9",
+   "breaks": "map counts as target",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "func (h Hit) OnTarget() bool { return h.Kind&^interact.Map != 0 }",
+     "new": "func (h Hit) OnTarget() bool { return h.Kind != 0 }"
+    }
+   ]
+  },
+  {
+   "id": "12-G10",
+   "breaks": "targets count as map",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "func (h hit) onMap() bool { return h.kind&interact.Map != 0 }",
+     "new": "func (h hit) onMap() bool { return h.kind&interact.Map == 0 }"
+    }
+   ]
+  },
+  {
+   "id": "12-G11",
+   "breaks": "echoes not cast for",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "\t\tmask |= targetKinds\n",
+     "new": "\t\tmask |= interact.Body\n"
+    }
+   ]
+  },
+  {
+   "id": "12-G12",
+   "breaks": "sync skips dying",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/target_sync_system.go",
+     "old": "\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n",
+     "new": "\t\tif !ok || r.Until < 1 {\n\t\t\tcontinue\n\t\t}\n"
+    }
+   ]
+  },
+  {
+   "id": "12-T1",
+   "breaks": "fed before sim known",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    if (this.#sameSim) this.prediction.seeTargets(s)",
+     "new": "    this.prediction.seeTargets(s)"
+    }
+   ]
+  },
+  {
+   "id": "12-T2",
+   "breaks": "no targets timeline",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.#timelines.add(this.targets, s.Tick, s.Targets)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "12-T3",
+   "breaks": "kind not sent as string",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "Kind: String(t.Kind), ",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "13-T1",
+   "breaks": "shots fresh on reconcile",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#shots = shots.map((s) => stay(s, startOf(s), s, flying.get(keyOf(s))))",
+     "new": "this.#shots = shots.map((s) => stay(s, startOf(s), s, undefined))"
+    }
+   ]
+  },
+  {
+   "id": "13-T2",
+   "breaks": "new shot without lead",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "onward(s, startOf(s), s, flying.get(keyOf(s)), lead)",
+     "new": "onward(s, startOf(s), s, flying.get(keyOf(s)))"
+    }
+   ]
+  },
+  {
+   "id": "13-T3",
+   "breaks": "shots never snap",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#shots = shots.map((s) => stay(s, startOf(s), s, flying.get(keyOf(s))))",
+     "new": "this.#shots = shots.map((s) => { const w = flying.get(keyOf(s)); return w ? { now: s, from: w.from, to: w.to } : stay(s, startOf(s), s, w) })"
+    }
+   ]
+  },
+  {
+   "id": "13-T4",
+   "breaks": "ending start not kept",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "from: was && near(was.from, startOf(e)) ? was.from : startOf(e)",
+     "new": "from: startOf(e)"
+    }
+   ]
+  },
+  {
+   "id": "13-T5",
+   "breaks": "ending path kept as flying",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "    this.#predictor.reset(sync, you)\n    let at",
+     "new": "    const oldDrawn = [...this.#shots, ...this.#ending]\n    this.#predictor.reset(sync, you)\n    let at"
+    },
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "const flying = new Map(this.#shots.map((d) => [keyOf(d.now), d]))\n    this.#shots = shots.map",
+     "new": "const flying = new Map(oldDrawn.map((d) => [keyOf(d.now), d]))\n    this.#shots = shots.map"
+    }
+   ]
+  },
+  {
+   "id": "13-T6",
+   "breaks": "echo fresh on reconcile",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#echo = echo && stay(echo, startOf(echo), echo, this.#echo)",
+     "new": "this.#echo = echo && stay(echo, startOf(echo), echo, undefined)"
+    }
+   ]
+  },
+  {
+   "id": "13-T7",
+   "breaks": "no decay",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "const keep = Math.exp(-tickSeconds / FadeSeconds)",
+     "new": "const keep = 1 + 0 * tickSeconds"
+    }
+   ]
+  },
+  {
+   "id": "13-T8",
+   "breaks": "shots restart each step",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "onward(s, startOf(s), s, flying.get(keyOf(s)), lead)",
+     "new": "onward(s, startOf(s), s, undefined, lead)"
+    }
+   ]
+  },
+  {
+   "id": "13-T9",
+   "breaks": "ending restarts in step",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "onward(e, startOf(e), e, flying.get(keyOf(e)), lead)",
+     "new": "onward(e, startOf(e), e, undefined, lead)"
+    }
+   ]
+  },
+  {
+   "id": "13-T10",
+   "breaks": "echo restarts each step",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "this.#echo = echo && onward(echo, startOf(echo), echo, this.#echo)",
+     "new": "this.#echo = echo && onward(echo, startOf(echo), echo, undefined)"
+    }
+   ]
+  },
+  {
+   "id": "13-T11",
+   "breaks": "body never snaps",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/prediction.ts",
+     "old": "    this.#body = stay(at, here, here, body)",
+     "new": "    this.#body = body ? { now: at, from: body.from, to: body.to } : stay(at, here, here, body)"
+    }
+   ]
+  },
+  {
+   "id": "14-K1",
+   "breaks": "keydown not latched",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/input/controls.ts",
+     "old": "      this.#keys.add(e.code)\n      this.#pressed |= this.buttons\n",
+     "new": "      this.#keys.add(e.code)\n"
+    }
+   ]
+  },
+  {
+   "id": "14-K2",
+   "breaks": "pointer not latched",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/input/controls.ts",
+     "old": "      this.#mouseButtons = e.buttons\n      this.#pressed |= this.buttons\n",
+     "new": "      this.#mouseButtons = e.buttons\n"
+    }
+   ]
+  },
+  {
+   "id": "14-K3",
+   "breaks": "latch never cleared",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/input/controls.ts",
+     "old": "    this.#pressed = 0\n    return buttons",
+     "new": "    return buttons"
+    }
+   ]
+  },
+  {
+   "id": "14-K4",
+   "breaks": "latch only, not held",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/input/controls.ts",
+     "old": "    const buttons = this.buttons | this.#pressed",
+     "new": "    const buttons = this.#pressed"
+    }
+   ]
+  },
+  {
+   "id": "14-K5",
+   "breaks": "taken once per animation frame",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    const { move, ground, view } = held\n",
+     "new": "    const { move, ground, view } = held\n    const taken = held.takeButtons()\n"
+    },
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "      const buttons = held.takeButtons()\n",
+     "new": "      const buttons = taken\n"
+    }
+   ]
+  },
+  {
+   "id": "14-K6",
+   "breaks": "kept while not playing",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    if (!this.#playing) held.takeButtons() // so a press made while you can't play casts nothing later\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "17-F1",
+   "breaks": "box from now only",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "\tfor _, row := range kept {\n",
+     "new": "\tfor _, row := range kept[:0] {\n"
+    }
+   ]
+  },
+  {
+   "id": "17-F2",
+   "breaks": "box at now's radius",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "box2d.Max(hi, row.Center), max(radius, row.Radius)",
+     "new": "box2d.Max(hi, row.Center), radius"
+    }
+   ]
+  },
+  {
+   "id": "17-F3",
+   "breaks": "path box without radius",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "\tpad := box2d.Vec2{X: f.Radius, Y: f.Radius}\n\tpath :=",
+     "new": "\tpad := box2d.Vec2{}\n\tpath :="
+    }
+   ]
+  },
+  {
+   "id": "17-F4",
+   "breaks": "bodies only",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "reach.tree.Query(path, uint64(targetKinds),",
+     "new": "reach.tree.Query(path, uint64(interact.Body),"
+    }
+   ]
+  },
+  {
+   "id": "17-F5",
+   "breaks": "box without now",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "\tlo, hi, radius := now.Center, now.Center, now.Radius\n",
+     "new": "\tif len(kept) > 0 {\n\t\tnow = kept[len(kept)-1]\n\t}\n\tlo, hi, radius := now.Center, now.Center, now.Radius\n"
+    }
+   ]
+  },
+  {
+   "id": "17-R1",
+   "breaks": "server adds no rows",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept...)",
+     "new": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept[:0]...)"
+    }
+   ]
+  },
+  {
+   "id": "17-R2",
+   "breaks": "server adds no live spot",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\t\treach.Add(uint32(e.ID()), rowOf(e, tick), kept...)",
+     "new": "\t\tnow := rowOf(e, tick)\n\t\tif len(kept) > 0 {\n\t\t\tnow = kept[len(kept)-1]\n\t\t}\n\t\treach.Add(uint32(e.ID()), now, kept...)"
+    }
+   ]
+  },
+  {
+   "id": "6-G1",
+   "breaks": "AtView floor t",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "t := view - (math.Ceil(view) - 1)",
+     "new": "t := view - math.Floor(view)"
+    }
+   ]
+  },
+  {
+   "id": "6-G2",
+   "breaks": "RowTicks floor",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "b := uint64(math.Ceil(view))",
+     "new": "b := uint64(math.Floor(view)) + 1"
+    }
+   ]
+  },
+  {
+   "id": "6-G3",
+   "breaks": "View newest tick-2",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "newest := max(float64(tick)-1, 1)",
+     "new": "newest := max(float64(tick)-2, 1)"
+    }
+   ]
+  },
+  {
+   "id": "6-G4",
+   "breaks": "KeptRows no +1",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "return t.RewindTicks() + 1",
+     "new": "return t.RewindTicks()"
+    }
+   ]
+  },
+  {
+   "id": "6-G5",
+   "breaks": "history keeps R",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/history_system.go",
+     "old": ".KeptRows())",
+     "new": ".RewindTicks())"
+    }
+   ]
+  },
+  {
+   "id": "6-G6",
+   "breaks": "predictor keeps R",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "keep := p.content.Shots.KeptRows()",
+     "new": "keep := p.content.Shots.RewindTicks()"
+    }
+   ]
+  },
+  {
+   "id": "6-G7",
+   "breaks": "seenAt floor rows",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "a, b := flight.RowTicks(view)",
+     "new": "a, b := flight.RowTicks(math.Nextafter(view, math.Inf(1)))"
+    },
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "import (\n\t\"slices\"",
+     "new": "import (\n\t\"math\"\n\t\"slices\""
+    }
+   ]
+  },
+  {
+   "id": "6-G8",
+   "breaks": "place floor rows",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "a, b := flight.RowTicks(view)",
+     "new": "a, b := flight.RowTicks(math.Nextafter(view, math.Inf(1)))"
+    },
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\"io/fs\"\n",
+     "new": "\t\"io/fs\"\n\t\"math\"\n"
+    }
+   ]
+  },
+  {
+   "id": "6-T1",
+   "breaks": "sample floor",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "const b = Math.ceil(v)",
+     "new": "const b = Math.floor(v) + 1"
+    }
+   ]
+  },
+  {
+   "id": "6-T2",
+   "breaks": "ease per frame",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "(1 - Math.exp(-dt / EaseSeconds))",
+     "new": "0.05"
+    }
+   ]
+  },
+  {
+   "id": "6-T3",
+   "breaks": "may step back",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "return Math.min(Math.max(eased, renderTime), newest)",
+     "new": "return Math.min(eased, newest)"
+    }
+   ]
+  },
+  {
+   "id": "6-T4",
+   "breaks": "no cap",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "return Math.min(Math.max(eased, renderTime), newest)",
+     "new": "return Math.max(eased, renderTime)"
+    }
+   ]
+  },
+  {
+   "id": "6-T5",
+   "breaks": "clock from first timeline",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "return Math.min(...this.#all.map((t) => t.newestTick))",
+     "new": "return this.#all[0]!.newestTick"
+    }
+   ]
+  },
+  {
+   "id": "6-T6",
+   "breaks": "jump both ways",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "target - renderTime > MaxDrift",
+     "new": "Math.abs(target - renderTime) > MaxDrift"
+    }
+   ]
+  },
+  {
+   "id": "6-T7",
+   "breaks": "jump past newest",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "return Math.min(target, newest)",
+     "new": "return target"
+    }
+   ]
+  },
+  {
+   "id": "6-T8",
+   "breaks": "t floor",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/sync/timeline.ts",
+     "old": "t: v - from.tick",
+     "new": "t: v - Math.floor(v)"
+    }
+   ]
+  },
+  {
+   "id": "7-G1",
+   "breaks": "tests hashed",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "strings.HasSuffix(path, \"_test.go\")",
+     "new": "strings.HasSuffix(path, \"_test.go.x\")"
+    }
+   ]
+  },
+  {
+   "id": "7-G2",
+   "breaks": "testdata hashed",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "case d.IsDir() && d.Name() == \"testdata\":\n\t\t\treturn fs.SkipDir\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "7-G3",
+   "breaks": "paths not hashed",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "fmt.Fprintf(h, \"%s %d\\n\", path, len(b))",
+     "new": "fmt.Fprintf(h, \"%d\\n\", len(b))"
+    }
+   ]
+  },
+  {
+   "id": "7-G4",
+   "breaks": "no Go release",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "fmt.Sprintf(\"%s+%dhz+%s\", runtime.Version(), rate,",
+     "new": "fmt.Sprintf(\"%s+%dhz+%s\", \"go\", rate,"
+    },
+    {
+     "file": "sim.go",
+     "old": "\t\"runtime\"\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "7-G5",
+   "breaks": "embed misses files",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "//go:embed go.mod go.sum pkg shards",
+     "new": "//go:embed go.mod pkg shards/game/internal"
+    }
+   ]
+  },
+  {
+   "id": "7-G6",
+   "breaks": "predictor ships source",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\"echo_image/shards/game/content\"",
+     "new": "\t_ \"echo_image\"\n\t\"echo_image/shards/game/content\""
+    }
+   ]
+  },
+  {
+   "id": "7-G7",
+   "breaks": "sync drops version",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tSimVersion:  s.SimVersion,\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "7-G8",
+   "breaks": "main sends other",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "SimVersion: echoimage.SimVersion(physics.ServerTickRateHz)}",
+     "new": "SimVersion: \"dev\"}"
+    },
+    {
+     "file": "shards/game/main.go",
+     "old": "\techoimage \"echo_image\"\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "7-T1",
+   "breaks": "no check",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "this.#sameSim = s.SimVersion === this.sim",
+     "new": "this.#sameSim = s.SimVersion !== undefined"
+    }
+   ]
+  },
+  {
+   "id": "7-T2",
+   "breaks": "inputs not gated",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "if (!this.#connected || this.otherSim !== undefined) return []",
+     "new": "if (!this.#connected) return []"
+    }
+   ]
+  },
+  {
+   "id": "7-T3",
+   "breaks": "not stamped",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/scripts/predictor.mjs",
+     "old": "`-ldflags=-s -w -X main.simVersion=${sim}`",
+     "new": "'-ldflags=-s -w'"
+    }
+   ]
+  },
+  {
+   "id": "7-T4",
+   "breaks": "wrong symbol",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/scripts/predictor.mjs",
+     "old": "-X main.simVersion=",
+     "new": "-X main.simversion="
+    }
+   ]
+  },
+  {
+   "id": "7-T5",
+   "breaks": "keeps other bodies",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.received++\n",
+     "new": "    this.received++\n    this.#timelines.add(this.bodies, s.Tick, s.Bodies)\n"
+    }
+   ]
+  },
+  {
+   "id": "7-T6",
+   "breaks": "still playing",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "      this.otherSim = s.SimVersion\n      this.#playing = false\n",
+     "new": "      this.otherSim = s.SimVersion\n"
+    }
+   ]
+  },
+  {
+   "id": "7-T7",
+   "breaks": "never cleared",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.otherSim = undefined\n    this.#timelines.add",
+     "new": "    this.#timelines.add"
+    }
+   ]
+  },
+  {
+   "id": "7-T8",
+   "breaks": "loader drops version",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "    version: exports.version,",
+     "new": "    version: '',"
+    }
+   ]
+  },
+  {
+   "id": "8-G1",
+   "breaks": "Next never counts",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ref/ref.go",
+     "old": "n := e.Get[serials]().Last + 1",
+     "new": "n := e.Get[serials]().Last"
+    }
+   ]
+  },
+  {
+   "id": "8-G2",
+   "breaks": "shot unstamped",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/launch_system.go",
+     "old": "\te.Set(ref.Spawn{Serial: ref.Next(w)})\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G3",
+   "breaks": "Echo unstamped",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/echo/spawn_system.go",
+     "old": "\te.Set(ref.Spawn{Serial: ref.Next(w)})\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G4",
+   "breaks": "Body unstamped",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/spawn_system.go",
+     "old": "\tb.Set(ref.Spawn{Serial: ref.Next(w)})\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G5",
+   "breaks": "ended serial lost",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "Serial: shot.Get[ref.Spawn]().Serial, ",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G6",
+   "breaks": "flying serial not sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/sync_system.go",
+     "old": "Serial:    e.Get[ref.Spawn]().Serial,",
+     "new": "Serial:    e.Get[ref.Spawn]().Serial * 0,"
+    }
+   ]
+  },
+  {
+   "id": "8-G7",
+   "breaks": "Body serial not sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tSerial:   e.Get[ref.Spawn]().Serial,\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G8",
+   "breaks": "Echo serial not sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/echo/sync_system.go",
+     "old": "\t\t\tSerial:   e.Get[ref.Spawn]().Serial,\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G9",
+   "breaks": "seen serial lost",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "s := flight.Seen{ID: uint32(e.ID()), Serial: e.Get[ref.Spawn]().Serial}",
+     "new": "s := flight.Seen{ID: uint32(e.ID())}"
+    }
+   ]
+  },
+  {
+   "id": "8-G10",
+   "breaks": "live serial lost",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\t\t\tSerial: e.Get[ref.Spawn]().Serial,\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G11",
+   "breaks": "hit drops serial",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "Serial: h.serial, ",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G12",
+   "breaks": "rows paired by ID",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\to, hasOlder := older[serial]\n",
+     "new": "\t\to, hasOlder := Sight{}, false\n\t\tfor _, x := range older {\n\t\t\tif x.ID == n.ID {\n\t\t\t\to, hasOlder = x, true\n\t\t\t}\n\t\t}\n"
+    }
+   ]
+  },
+  {
+   "id": "8-G13",
+   "breaks": "sights keyed by ID",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\tat[s.Serial] = s\n",
+     "new": "\t\tat[uint64(s.ID)] = s\n"
+    }
+   ]
+  },
+  {
+   "id": "8-G14",
+   "breaks": "own Body as a past target",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "if n.ID == s.Body {",
+     "new": "if false && n.ID == s.Body {"
+    }
+   ]
+  },
+  {
+   "id": "8-G15",
+   "breaks": "wasm sights drop serial",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\t\tSerial: uint64Of(v.Get(\"Serial\")),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "8-G16",
+   "breaks": "wasm ended drops serial",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\"TargetSerial\": strconv.FormatUint(e.End.Hit.Serial, 10)",
+     "new": "\"TargetSerial\": \"0\""
+    }
+   ]
+  },
+  {
+   "id": "8-T1",
+   "breaks": "blend from any older",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/render/entity_views.ts",
+     "old": "blend(start ?? before.get(s.Serial) ?? s,",
+     "new": "blend(start ?? from[0] ?? s,"
+    }
+   ]
+  },
+  {
+   "id": "8-T2",
+   "breaks": "view reused",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/render/entity_views.ts",
+     "old": "const found = this.#views.get(s.Serial)",
+     "new": "const found = this.#views.values().next().value"
+    }
+   ]
+  },
+  {
+   "id": "8-T3",
+   "breaks": "end by wrong key",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/projectile/end_on.ts",
+     "old": "targetAt(e.TargetSerial)",
+     "new": "targetAt(0n)"
+    }
+   ]
+  },
+  {
+   "id": "8-T4",
+   "breaks": "ended serial stays string",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "TargetSerial: BigInt(e.TargetSerial)",
+     "new": "TargetSerial: e.TargetSerial as unknown as bigint"
+    }
+   ]
+  },
+  {
+   "id": "8-T5",
+   "breaks": "sights sent without serial",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "({ ...t, Serial: String(t.Serial), Kind:",
+     "new": "({ ...t, Kind:"
+    }
+   ]
+  },
+  {
+   "id": "9-G1",
+   "breaks": "no reject",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
+     "new": "if n := cmd.Payload.Frames.Len(); n > limit && false {"
+    }
+   ]
+  },
+  {
+   "id": "9-G2",
+   "breaks": "reject one late",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
+     "new": "if n := cmd.Payload.Frames.Len(); n > limit+1 {"
+    }
+   ]
+  },
+  {
+   "id": "9-G3",
+   "breaks": "reject honest",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "if n := cmd.Payload.Frames.Len(); n > limit {",
+     "new": "if n := cmd.Payload.Frames.Len(); n >= limit {"
+    }
+   ]
+  },
+  {
+   "id": "9-G4",
+   "breaks": "cap not sent",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\ty.InputCap = uint32(tuning.BufferFrames())\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "9-G5",
+   "breaks": "reject after claim",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tif index == nil {\n\t\t\tindex = indexBodies(bodies)\n\t\t}\n\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tw.Logger().Warn().Str(\"player\", player).Msg(\"input: no free player Body to control\")\n\t\t\tcontinue\n\t\t}\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "\t\tif n := cmd.Payload.Frames.Len(); n > limit {",
+     "new": "\t\tif index == nil {\n\t\t\tindex = indexBodies(bodies)\n\t\t}\n\t\tbody, ok := index.resolve(w, player)\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n\t\tif n := cmd.Payload.Frames.Len(); n > limit {"
+    }
+   ]
+  },
+  {
+   "id": "9-T1",
+   "breaks": "client ignores cap",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "this.#unacked.slice(-Math.min(frames(ResendSeconds), this.#cap))",
+     "new": "this.#unacked.slice(-frames(ResendSeconds))"
+    }
+   ]
+  },
+  {
+   "id": "9-T2",
+   "breaks": "cap only from own session",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "    this.#cap = you.InputCap\n    if (you.InputSession !== this.session) return\n",
+     "new": "    if (you.InputSession !== this.session) return\n    this.#cap = you.InputCap\n"
+    }
+   ]
+  },
+  {
+   "id": "9-T3",
+   "breaks": "cap assumed before told",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "  #cap = 1 //",
+     "new": "  #cap = MaxResend //"
+    }
+   ]
+  },
+  {
+   "id": "X5-N1",
+   "breaks": "applies the newest queued frame",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "q.Last, q.LastTick = q.Pending.At(0), tick",
+     "new": "q.Last, q.LastTick = q.Pending.At(q.Pending.Len()-1), tick"
+    },
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "q.Pending = q.Pending.Sub(1, q.Pending.Len())",
+     "new": "q.Pending = q.Pending.Sub(0, q.Pending.Len()-1)"
+    }
+   ]
+  },
+  {
+   "id": "X5-N2",
+   "breaks": "view held at the sync's tick",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "view = p.content.Shots.View(view, s.Tick)",
+     "new": "view = p.content.Shots.View(view, p.start+1)"
+    }
+   ]
+  },
+  {
+   "id": "X5-N3",
+   "breaks": "queue keeps the oldest",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/input_system.go",
+     "old": "pending = pending[len(pending)-limit:]",
+     "new": "pending = pending[:limit]"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B1",
+   "breaks": "Go replay steps only the newest frame",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "\t\tfor _, f := range s.Frames {\n\t\t\t_, ended = p.Step",
+     "new": "\t\tfor _, f := range s.Frames[len(s.Frames)-1:] {\n\t\t\t_, ended = p.Step"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B2",
+   "breaks": "wasm replay steps only the newest frame",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.test.ts",
+     "old": "frames.map((f) => predictor.step(f)).at(-1)",
+     "new": "frames.slice(-1).map((f) => predictor.step(f)).at(-1)"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B3",
+   "breaks": "records only the newest frame",
+   "check": "prediction-rerecorded",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "record(p, before, targets, unacked, ended))",
+     "new": "record(p, before, targets, unacked[len(unacked)-1:], ended))"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B4",
+   "breaks": "records no ends on the bad network",
+   "check": "prediction-rerecorded",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "record(p, before, targets, unacked, ended))",
+     "new": "record(p, before, targets, unacked, nil))"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B5",
+   "breaks": "bad network left out of the recording",
+   "check": "ts-rerecorded",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "run = append(run, badNetwork(t, w, p, alice)...)",
+     "new": "badNetwork(t, w, p, alice)"
+    }
+   ]
+  },
+  {
+   "id": "X5b-B6",
+   "breaks": "record keeps unacked's array",
+   "check": "prediction-rerecorded",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "Frames: append([]playercomp.InputFrame{}, frames...)",
+     "new": "Frames: frames"
+    }
+   ]
+  },
+  {
+   "id": "X6-G1",
+   "breaks": "version drops the rate",
+   "check": "sim60",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "runtime.Version(), rate, hex",
+     "new": "runtime.Version(), 20, hex"
+    }
+   ]
+  },
+  {
+   "id": "X6-G2",
+   "breaks": "wasm stamped at 20 Hz",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "shards/game/predictor/version/main.go",
+     "old": "SimVersion(timestep.Rate)",
+     "new": "SimVersion(20 + 0*timestep.Rate)"
+    }
+   ]
+  },
+  {
+   "id": "X6-G3",
+   "breaks": "rewind window at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "t.RewindSeconds * float64(timestep.Rate)",
+     "new": "t.RewindSeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G4",
+   "breaks": "cooldowns at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/tuning.go",
+     "old": "d.CooldownSeconds * float64(timestep.Rate)",
+     "new": "d.CooldownSeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G5",
+   "breaks": "Echo delay at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/echo/tuning.go",
+     "old": "d.DelaySeconds * float64(physics.ServerTickRateHz)",
+     "new": "d.DelaySeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G6",
+   "breaks": "input queue at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/tuning.go",
+     "old": "t.InputBufferSeconds * float64(physics.ServerTickRateHz)",
+     "new": "t.InputBufferSeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G7",
+   "breaks": "Echo path at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/tuning.go",
+     "old": "t.EchoPathSeconds * float64(physics.ServerTickRateHz)",
+     "new": "t.EchoPathSeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G8",
+   "breaks": "input timeout at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/tuning.go",
+     "old": "t.InputTimeoutSeconds * float64(physics.ServerTickRateHz)",
+     "new": "t.InputTimeoutSeconds * 20"
+    }
+   ]
+  },
+  {
+   "id": "X6-G9",
+   "breaks": "hook durations at 20 Hz",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/hooks/hooks.go",
+     "old": "return ticks(seconds, c.TickRate)",
+     "new": "return ticks(seconds, 20)"
+    }
+   ]
+  },
+  {
+   "id": "X6-G10",
+   "breaks": "predictor steps 1/20 s",
+   "check": "go60",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "}, st, timestep.Seconds)",
+     "new": "}, st, 0.05)"
+    }
+   ]
+  },
+  {
+   "id": "X6-C1",
+   "breaks": "resends 8 frames",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "Math.min(frames(ResendSeconds), this.#cap)",
+     "new": "Math.min(8, this.#cap)"
+    }
+   ]
+  },
+  {
+   "id": "X6-C2",
+   "breaks": "keeps 128 unacked",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "this.#unacked.length > frames(UnackedSeconds)",
+     "new": "this.#unacked.length > 128"
+    }
+   ]
+  },
+  {
+   "id": "X6-C3",
+   "breaks": "bursts 3 frames",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "frames(MaxStepSeconds) * tickSeconds",
+     "new": "3 * tickSeconds"
+    }
+   ]
+  },
+  {
+   "id": "X6-C4",
+   "breaks": "paces per frame",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "client/src/game/player/input_stream.ts",
+     "old": "you.InputQueued * tickSeconds - this.#queued",
+     "new": "you.InputQueued * 0.05 - this.#queued"
+    }
+   ]
+  },
+  {
+   "id": "X6-C5",
+   "breaks": "reads the 20 Hz recording",
+   "check": "ts60",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.test.ts",
+     "old": "prediction-${hz}hz.msgpack",
+     "new": "prediction-20hz.msgpack"
+    }
+   ]
+  },
+  {
+   "id": "X8-D1",
+   "breaks": "digest drops ends",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "body %v,%v shots %+v ended %+v kit",
+     "new": "body %v,%v shots %+v ended %.0v kit"
+    }
+   ]
+  },
+  {
+   "id": "X8-D2",
+   "breaks": "stale digest line",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/testdata/prediction-20hz.txt",
+     "old": "tick 0 frames [{Seq:2",
+     "new": "tick 0 frames [{Seq:3"
+    }
+   ]
+  },
+  {
+   "id": "X8-D3",
+   "breaks": "digest skips the Echo",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/prediction_test.go",
+     "old": "\t\techo = fmt.Sprintf(\"%+v\", *s.Echo)\n",
+     "new": ""
+    }
+   ]
+  }
+ ]
+}

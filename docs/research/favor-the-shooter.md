@@ -231,7 +231,8 @@ the claim model (problem 3).
   on a target is drawn on it where the screen draws it (`endOn`, `EntityViews`, `Prediction.shots`);
   the render clock waits at the newest tick every timeline has, never steps back, and runs alike at 60
   and 240 Hz; `EntityViews` draws `testdata/view.json`'s targets where Go placed them, to the bit.
-- **Mutation checks:** each new rule broken once fails a test.
+- **Mutation checks:** each new rule broken once fails a test (`go run ./scripts/mutate`, list in
+  `scripts/mutate/mutants.json`).
 
 ## Appendix: where things live
 

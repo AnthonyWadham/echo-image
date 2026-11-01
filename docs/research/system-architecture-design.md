@@ -569,7 +569,8 @@ were checked against the code.
 
 ## 12. What building steps 1-9 changed
 
-Built 2026-10-25. Each step ran the full tests plus mutation checks (a deliberate bug per rule, each caught).
+Built 2026-10-25. Each step ran the full tests plus mutation checks (a deliberate bug per rule, each
+caught). The list now lives in `scripts/mutate/mutants.json` (`go run ./scripts/mutate`).
 
 | Plan | Built | Why |
 |---|---|---|
