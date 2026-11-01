@@ -66,8 +66,10 @@ type BodyState struct {
 	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID
 	PlayerID uint32
 	Nickname string
+	Champion string // what it looks like: a client keys its visuals by champion ID
 	Team     uint8
 	X, Y     float64
-	Radius   float64       // its collider circle, set by its champion
-	Tags     interact.Tags // what its effects make it from the next tick on, as that tick's rules read them
+	Radius   float64                      // its collider circle, set by its champion
+	Tags     interact.Tags                // what its effects make it from the next tick on, as that tick's rules read them
+	Effects  cardinal.Slice[status.Shown] // its effect kinds from the next tick on, for their visuals
 }

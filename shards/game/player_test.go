@@ -3,11 +3,14 @@ package main
 import (
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/echo"
+	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
 	"math"
+	"slices"
 	"testing"
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
@@ -271,5 +274,33 @@ func TestBodyHasItsChampionsNumbers(t *testing.T) {
 		if b.Radius != want.Radius {
 			t.Fatalf("BodySync sends Body %d with radius %v, want %v", b.EntityID, b.Radius, want.Radius)
 		}
+	}
+}
+
+// Other screens see each Body's champion and the kinds of its effects and its Echo's, never their numbers
+// or sources, so a client draws them by ID.
+func TestOthersSeeChampionsAndEffectKinds(t *testing.T) {
+	w, _, _, fx := fxDuel(t)
+	b := yourBody(t, bodiesFor(t, w, "bob"))
+	fx.effect(b, effectcomp.EffectIntent{Kind: "stun", Ticks: 5})
+	emit(fx, effectcomp.EffectIntent{Target: echoOf(t, w, "alice", b).EntityID, Kind: "slow", Ticks: 3, Value: -2000})
+	w.Tick()
+
+	stun := bodiesFor(t, w, "bob").You.Effects.At(0)
+	var seen player.BodyState
+	for s := range bodiesFor(t, w, "alice").Bodies.Values() {
+		if s.EntityID == b.EntityID {
+			seen = s
+		}
+	}
+	champion := tuningOf[player.MovementTuning](t).DevChampion
+	got := slices.Collect(seen.Effects.Values())
+	if seen.Champion != champion || !slices.Equal(got, []status.Shown{{Kind: "stun", End: stun.End}}) {
+		t.Fatalf("alice sees bob's Body as %q with %+v, want %q with a stun until %d", seen.Champion, got, champion,
+			stun.End)
+	}
+	got = slices.Collect(echoOf(t, w, "alice", b).Effects.Values())
+	if !slices.Equal(got, []status.Shown{{Kind: "slow", End: stun.End - 2}}) {
+		t.Fatalf("alice sees bob's Echo with %+v, want a slow until %d", got, stun.End-2)
 	}
 }

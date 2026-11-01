@@ -3,6 +3,7 @@ package echo
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/interact"
 )
 
@@ -24,8 +25,9 @@ type EchoState struct {
 	Owner    uint32 // its Body's EntityID
 	Team     uint8
 	X, Y     float64
-	Radius   float64       // its collider circle: the hurtbox shots meet
-	Tags     interact.Tags // what its effects make it from the next tick on, as that tick's rules read them
+	Radius   float64                      // its collider circle: the hurtbox shots meet
+	Tags     interact.Tags                // what its effects make it from the next tick on, as that tick's rules read them
+	Effects  cardinal.Slice[status.Shown] // its effect kinds from the next tick on, for their visuals
 	HP       float64
 	MaxHP    float64
 	Until    float64 // the part of the tick it lived: 1, or when it died in it (sent once more, at HP 0)

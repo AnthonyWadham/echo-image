@@ -21,3 +21,8 @@ func (Effects) Name() string { return "effects" }
 
 // Status folds the entries active at tick.
 func (e Effects) Status(tick uint64) status.Status { return status.Fold(e.List.Values(), tick) }
+
+// Shown is the kinds active at tick, as other screens see them.
+func (e Effects) Shown(tick uint64) cardinal.Slice[status.Shown] {
+	return cardinal.SliceOf(status.ShownAt(e.List.Values(), tick)...)
+}

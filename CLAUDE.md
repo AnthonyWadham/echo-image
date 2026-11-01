@@ -568,6 +568,11 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   from 1), and `BodyState`, `EchoState` and `ProjectileState` carry it. `EntityViews` keys views and
   blends by `Serial`, the predictor keys its sights and bodies by it, and a hit names its target's
   (`flight.Hit.Serial`). Same-tick links (`You.Body`, `Caster`, `Owner`) stay EntityIDs.
+- **Other screens get content IDs, not only rule bits.** `BodyState.Champion` names a Body's champion,
+  and `BodyState.Effects` and `EchoState.Effects` list the kinds active from the next tick on, each
+  with its last `End` (`status.Shown`), never their numbers or sources. `ProjectileState.Type` names a
+  shot's type. A client keys its visuals by these IDs, so a new champion or effect kind needs no new
+  field or tag.
 - **`netsync` decides who may receive what, never what is sent.** `netsync.Viewers(w)` lists the
   players with a Body. `netsync.Items[S]` collects a feature's per-entity state with an **audience**
   and filters it once per viewer team (`Lists`). It imports only `team` and `player/component`.

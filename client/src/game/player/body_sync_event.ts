@@ -74,9 +74,17 @@ export interface BodyState {
   Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
   PlayerID: number // uint32
   Nickname: string
+  Champion: string // what it looks like: visuals key by champion ID
   Team: number // uint8
   X: number
   Y: number
   Radius: number // its collider circle
   Tags: bigint // interact.Tags: what its effects make it from the next tick on
+  Effects: ShownEffect[] // its effect kinds from the next tick on, for their visuals
+}
+
+/** status.Shown: an effect kind as other screens see it. */
+export interface ShownEffect {
+  Kind: string // visuals key by effect kind
+  End: bigint // uint64 tick: active until then
 }

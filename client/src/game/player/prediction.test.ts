@@ -60,11 +60,13 @@ const you = (x: number): BodyState => ({
   Serial: 1n,
   PlayerID: 1,
   Nickname: 'P1',
+  Champion: 'starter',
   Team: 0,
   X: x,
   Y: 0,
   Radius: 0.5,
   Tags: 0n,
+  Effects: [],
 })
 const sync = (x: number): BodySync => ({
   Tick: 100n,

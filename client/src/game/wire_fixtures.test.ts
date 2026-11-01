@@ -84,20 +84,27 @@ const bodySync: BodySync = {
     ],
   },
   Bodies: [
-    { EntityID: 1, Serial: 1n, PlayerID: 1, Nickname: 'Player One', Team: 0, X: 1.5, Y: -2, Radius: 0.5, Tags: 0n },
     {
-      ...{ EntityID: 2, Serial: 9007199254740993n, PlayerID: 2, Nickname: 'Échø ✦', Team: 1 },
+      ...{ EntityID: 1, Serial: 1n, PlayerID: 1, Nickname: 'Player One', Champion: 'starter', Team: 0 },
+      ...{ X: 1.5, Y: -2, Radius: 0.5, Tags: 0n, Effects: [] },
+    },
+    {
+      ...{ EntityID: 2, Serial: 9007199254740993n, PlayerID: 2, Nickname: 'Échø ✦', Champion: 'rook', Team: 1 },
       ...{ X: -0.25, Y: 3.75, Radius: 0.75, Tags: 3n },
+      Effects: [
+        { Kind: 'out', End: 18446744073709551615n },
+        { Kind: 'stun', End: 13n },
+      ],
     },
   ],
 }
 const echoSync: EchoSync = {
   Tick: 7n,
   Echoes: [
-    { EntityID: 3, Serial: 3n, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n, HP: 62.5,
-      MaxHP: 100, Until: 1 },
-    { EntityID: 4, Serial: 4n, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, HP: 0,
-      MaxHP: 100, Until: 0.625 },
+    { EntityID: 3, Serial: 3n, PlayerID: 1, Owner: 1, Team: 0, X: -4.5, Y: 0.5, Radius: 0.5, Tags: 8n,
+      Effects: [{ Kind: 'phase', End: 9007199254740993n }], HP: 62.5, MaxHP: 100, Until: 1 },
+    { EntityID: 4, Serial: 4n, PlayerID: 2, Owner: 2, Team: 1, X: 3, Y: -1.25, Radius: 0.5, Tags: 0n, Effects: [],
+      HP: 0, MaxHP: 100, Until: 0.625 },
   ],
 }
 const abilitySync: AbilitySync = {

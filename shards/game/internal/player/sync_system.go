@@ -8,7 +8,6 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	echocomp "echo_image/shards/game/internal/echo/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/netsync"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
@@ -21,9 +20,11 @@ import (
 type syncRow struct {
 	Spawn     ref.Spawn
 	Player    component.Player
+	Champion  component.Champion
 	Team      team.Team
 	Transform physics2d.Transform2D
 	Body      physics2d.PhysicsBody2D // for its radius
+	Effects   effectcomp.Effects
 }
 
 // shotRow is a shot in flight, for its predictor's YouState.
@@ -53,19 +54,22 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 		return
 	}
 	var bodies netsync.Items[BodyState]
+	next := w.TickHeight() + 1
 	for e := range w.Contains[syncRow]().Iter() {
-		p := e.Get[component.Player]()
+		p, fx := e.Get[component.Player](), e.Get[effectcomp.Effects]()
 		pos := e.Get[physics2d.Transform2D]().Position
 		bodies.Add(e, netsync.Everyone, BodyState{
 			EntityID: uint32(e.ID()),
 			Serial:   e.Get[ref.Spawn]().Serial,
 			PlayerID: p.ID,
 			Nickname: p.Nickname,
+			Champion: e.Get[component.Champion]().ID,
 			Team:     e.Get[team.Team]().ID,
 			X:        pos.X,
 			Y:        pos.Y,
 			Radius:   radius(e),
-			Tags:     tagsAt(e, w.TickHeight()+1),
+			Tags:     fx.Status(next).Tags,
+			Effects:  fx.Shown(next),
 		})
 	}
 	shots := map[cardinal.EntityID][]ShotState{} // by the caster whose client predicts them
@@ -108,14 +112,6 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Bodies:      lists.For(v),
 		})
 	}
-}
-
-// tagsAt is the tags e's effects give it at tick.
-func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
-	if !e.Has[effectcomp.Effects]() {
-		return 0
-	}
-	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }
 
 // you returns a viewer's own data, with the shots their client predicts.

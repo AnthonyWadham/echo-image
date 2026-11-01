@@ -58,8 +58,8 @@ const bodySync = (tick: number, ack = 0, bodies = [{ EntityID: 1, X: tick, Y: 0 
     EchoPath: [],
   },
   Bodies: bodies.map((b) => ({
-    ...{ Serial: BigInt(b.EntityID), PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Team: 0, Radius: 0.5 },
-    ...{ Tags: 0n, ...b },
+    ...{ Serial: BigInt(b.EntityID), PlayerID: b.EntityID, Nickname: `P${b.EntityID}`, Champion: 'starter', Team: 0 },
+    ...{ Radius: 0.5, Tags: 0n, Effects: [], ...b },
   })),
 })
 

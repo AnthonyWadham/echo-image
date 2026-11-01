@@ -2007,6 +2007,54 @@
      "new": "\t\tif true {"
     }
    ]
+  },
+  {
+   "id": "F20-C1",
+   "breaks": "others don't see a Body's champion",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tChampion: e.Get[component.Champion]().ID,\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F20-B1",
+   "breaks": "others don't see a Body's effect kinds",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tEffects:  fx.Shown(next),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F20-E1",
+   "breaks": "others don't see an Echo's effect kinds",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/echo/sync_system.go",
+     "old": "\t\t\tEffects:  e.Get[effectcomp.Effects]().Shown(next),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "F20-S1",
+   "breaks": "a kind shows until its newest entry ends, not its last",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/status.go",
+     "old": "\t\t\tshown[i].End = max(shown[i].End, e.End)",
+     "new": "\t\t\tshown[i].End = e.End"
+    }
+   ]
   }
  ]
 }

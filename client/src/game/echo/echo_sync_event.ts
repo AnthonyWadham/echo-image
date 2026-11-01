@@ -1,4 +1,5 @@
 import type { Message } from '../../engine/net/shard_connection'
+import type { ShownEffect } from '../player/body_sync_event'
 
 // Mirrors the Go types field for field. ../wire_fixtures.test.ts fails when they drift.
 
@@ -21,6 +22,7 @@ export interface EchoState {
   Y: number
   Radius: number // its collider circle: the hurtbox shots meet
   Tags: bigint // interact.Tags: what its effects make it from the next tick on
+  Effects: ShownEffect[] // its effect kinds from the next tick on, for their visuals
   HP: number
   MaxHP: number
   Until: number // the part of the tick it lived: 1, or when it died in it (sent once more, at HP 0)

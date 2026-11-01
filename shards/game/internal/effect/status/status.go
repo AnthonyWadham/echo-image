@@ -7,6 +7,7 @@ package status
 import (
 	"iter"
 	"slices"
+	"strings"
 
 	"echo_image/shards/game/internal/interact"
 )
@@ -64,6 +65,30 @@ func (e Entry) refreshes(o Entry) bool {
 // covers reports whether active entry e makes o add nothing: as strong, and lasting as long.
 func (e Entry) covers(o Entry, tick uint64) bool {
 	return e.refreshes(o) && e.Active(tick) && e.strength() >= o.strength() && e.End >= o.End
+}
+
+// Shown is an effect kind as other screens see it, active until End. Its numbers and source stay with
+// its holder.
+type Shown struct {
+	Kind string
+	End  uint64
+}
+
+// ShownAt is the kinds active at tick, in kind order, each until its last entry ends.
+func ShownAt(entries iter.Seq[Entry], tick uint64) []Shown {
+	var shown []Shown
+	for e := range entries {
+		if !e.Active(tick) {
+			continue
+		}
+		if i := slices.IndexFunc(shown, func(s Shown) bool { return s.Kind == e.Kind }); i >= 0 {
+			shown[i].End = max(shown[i].End, e.End)
+		} else {
+			shown = append(shown, Shown{Kind: e.Kind, End: e.End})
+		}
+	}
+	slices.SortFunc(shown, func(a, b Shown) int { return strings.Compare(a.Kind, b.Kind) })
+	return shown
 }
 
 // Status is the fold of the entries active at one tick.

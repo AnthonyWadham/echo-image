@@ -39,6 +39,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 		died[d.Target] = d.Until
 	}
 	var echoes netsync.Items[EchoState]
+	next := w.TickHeight() + 1
 	for e := range w.Contains[syncRow]().Iter() {
 		until, dead := died[e.ID()]
 		if !dead {
@@ -55,7 +56,8 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			X:        pos.X,
 			Y:        pos.Y,
 			Radius:   e.Get[physics2d.PhysicsBody2D]().Shapes.At(0).Radius,
-			Tags:     e.Get[effectcomp.Effects]().Status(w.TickHeight() + 1).Tags,
+			Tags:     e.Get[effectcomp.Effects]().Status(next).Tags,
+			Effects:  e.Get[effectcomp.Effects]().Shown(next),
 			HP:       h.HP,
 			MaxHP:    h.MaxHP,
 			Until:    until,

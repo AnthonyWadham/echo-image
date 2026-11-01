@@ -312,7 +312,7 @@ func TestTickAllocations(t *testing.T) {
 	for range ticks(5) {
 		step()
 	}
-	ceiling := map[int]float64{20: 4000, 60: 6000}[physics.ServerTickRateHz] // measured 3,223 and 4,899
+	ceiling := map[int]float64{20: 4000, 60: 6000}[physics.ServerTickRateHz] // measured 3,300 and 4,976
 	if got := testing.AllocsPerRun(ticks(2), step); got > ceiling {
 		t.Fatalf("a 3v3 tick allocates %.0f times, past its ceiling of %.0f", got, ceiling)
 	}

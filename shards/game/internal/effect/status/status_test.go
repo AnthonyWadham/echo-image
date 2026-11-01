@@ -180,3 +180,17 @@ func TestEntryIsSweptWhenOver(t *testing.T) {
 		t.Fatal("an entry is swept once it's over")
 	}
 }
+
+// Other screens see each active kind once, until its last entry ends.
+func TestShownIsEachKindUntilItsLastEnd(t *testing.T) {
+	var next uint32
+	var l []Entry
+	l = Add(l, &next, Entry{Kind: "slow", Value: -4000, Source: 7}, PerSource, 10, 8)
+	l = Add(l, &next, Entry{Kind: "slow", Value: -2000, Source: 8}, PerSource, 10, 5)
+	l = Add(l, &next, Entry{Kind: "dash"}, Merge, 10, 3)
+	l = Add(l, &next, Entry{Kind: "stun"}, Merge, 20, 3) // not yet
+	want := []Shown{{Kind: "dash", End: 13}, {Kind: "slow", End: 18}}
+	if got := ShownAt(slices.Values(l), 12); !slices.Equal(got, want) {
+		t.Fatalf("shown %+v, want %+v", got, want)
+	}
+}
