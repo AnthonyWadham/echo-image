@@ -53,12 +53,9 @@ const (
 	Stop                 // ends at the thing
 )
 
-// meetable is the kinds a shot can meet: the map's, and its targets'.
-const meetable = interact.Map | targetKinds
-
-// targetKinds is the kinds a shot meets by whose they are (their side and tags): Bodies and Echoes,
-// which keep rows (Row), so a predicted shot meets them at its view.
-const targetKinds = interact.Body | interact.Echo
+// meetable is the kinds a shot can meet: every kind of thing, but shots and area queries. A thing is a
+// target, met by whose it is (its side and tags), because it keeps rows (Row), whatever its kind.
+const meetable = ^(interact.Shot | interact.Area)
 
 // JSONFile is the path within the content embed.FS.
 func (Tuning) JSONFile() string { return "projectile/tuning.json" }

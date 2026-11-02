@@ -96,9 +96,10 @@ the claim model (problem 3).
   predictor has the rows of every view you draw. It feeds the predictor once a body_sync says the shard
   runs your sim.
 - **Why:** the predictor gets the server's own rows, with no field rebuilt from body_sync and echo_sync,
-  and one stream to wait for. A new kind of target needs no predictor, glue or shot code: `Fly`,
-  `Across`, `seenAt` and the predictor's `sights` use the kinds the rows name. Only the own-Echo rule names a kind,
-  since your predictor places your Echo itself.
+  and one stream to wait for. A new kind of target needs no predictor, glue or shot code: a thing is a
+  target because it keeps rows, and `Fly`, `Across`, `seenAt` and the predictor's `sights` use the kinds
+  the rows name. Only the own-Echo rule names a kind, since your predictor places your Echo itself. A
+  row is one circle: a target of another shape first gives `Row` a shape (F19).
 - **Cost:** each target's spot is sent twice a tick, in its own sync for drawing and here.
 
 ### 6. The server flies predicted shots at their client's view

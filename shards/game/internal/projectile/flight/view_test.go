@@ -156,6 +156,8 @@ func TestFlyMeetsEachTargetAsTheTickShowsIt(t *testing.T) {
 			still(interact.Body, enemy, onPath(0.5, 0), onPath(0.5, 1)),
 		}, 11},
 		{"past its range in a last tick", 0.3, false, []thing{still(interact.Echo, enemy, onPath(1.2, 0), onPath(1.2, 0))}, 0},
+		{"crosses the path past a last tick's range", 0.3, false,
+			[]thing{{interact.Echo, enemy, onPath(0.6, -2.4), onPath(0.6, 0.6), onPath(0.6, 0.6)}}, 0},
 		// The shot flies 0.75 units in the tick.
 		{"crosses the path as the shot gets there", 20, false,
 			[]thing{{interact.Echo, enemy, onPath(0.5, -1.5), onPath(0.5, 1.5), onPath(0.5, 1.5)}}, 10},

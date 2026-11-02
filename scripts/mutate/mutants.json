@@ -223,7 +223,7 @@
     {
      "file": "shards/game/internal/projectile/flight_system.go",
      "old": "if predicted && (e.ID() == caster || now.Kind == interact.Echo && now.Side.Owner == uint32(caster)) {",
-     "new": "if predicted && e.ID() == caster {"
+     "new": "if predicted && (e.ID() == caster || now.Kind == interact.Echo && false) {"
     }
    ]
   },
@@ -294,7 +294,7 @@
    "edits": [
     {
      "file": "shards/game/internal/projectile/flight/view.go",
-     "old": "reach.tree.Query(path, uint64(targetKinds),",
+     "old": "reach.tree.Query(path, math.MaxUint64,",
      "new": "reach.tree.Query(path, uint64(interact.Body),"
     }
    ]
@@ -594,18 +594,6 @@
      "file": "shards/game/internal/projectile/flight/view.go",
      "old": "\t\tpad := box2d.Vec2{X: f.Radius, Y: f.Radius}\n\t\tpath :=",
      "new": "\t\tpad := box2d.Vec2{}\n\t\tpath :="
-    }
-   ]
-  },
-  {
-   "id": "17-F4",
-   "breaks": "bodies only",
-   "check": "go",
-   "edits": [
-    {
-     "file": "shards/game/internal/projectile/flight/view.go",
-     "old": "reach.tree.Query(path, uint64(targetKinds),",
-     "new": "reach.tree.Query(path, uint64(interact.Body),"
     }
    ]
   },
@@ -2719,7 +2707,7 @@
     {
      "file": "shards/game/internal/projectile/flight_system.go",
      "old": "\t\ts.Move(prev.Center, now.Center)",
-     "new": "\t\ts.Move(now.Center, now.Center)"
+     "new": "\t\t_ = prev\n\t\ts.Move(now.Center, now.Center)"
     }
    ]
   },
@@ -2756,6 +2744,18 @@
      "file": "client/src/engine/sync/timeline.ts",
      "old": "at - this.interpolationSeconds, at - tickSeconds, dt)",
      "new": "at - this.interpolationSeconds, at, dt)"
+    }
+   ]
+  },
+  {
+   "id": "F19-K1",
+   "breaks": "shot rules may name shots",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/tuning.go",
+     "old": "const meetable = ^(interact.Shot | interact.Area)",
+     "new": "const meetable = ^interact.Area"
     }
    ]
   }

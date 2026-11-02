@@ -166,7 +166,7 @@ func (t Tuning) Fly(world *box2d.World, def Shot, f Flight, side interact.Side, 
 		part := seconds / dt
 		pad := box2d.Vec2{X: f.Radius, Y: f.Radius}
 		path := box2d.AABB{LowerBound: box2d.Sub(box2d.Min(f.Pos, to), pad), UpperBound: box2d.Add(box2d.Max(f.Pos, to), pad)}
-		reach.tree.Query(path, uint64(targetKinds), func(_ int, key uint64, _ any) bool {
+		reach.tree.Query(path, math.MaxUint64, func(_ int, key uint64, _ any) bool {
 			if s, ok := sights(key); ok {
 				if h, ok := t.hitOn(def, f, to, part, side, s); ok && (!found || h.before(first)) {
 					first, found = h, true

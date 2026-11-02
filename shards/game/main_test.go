@@ -406,6 +406,8 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"rewind that favors no ping", "projectile/tuning.json", `{"rewind": {"ping_seconds": 0}}`, "ping_seconds"},
 		{"payload with no relations", "projectile/tuning.json",
 			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
+		{"rule for shots meeting shots", "projectile/tuning.json",
+			`{"shots": {"bolt": {"meets": [{"kinds": ["shot"], "do": "stop"}]}}}`, "names a kind a shot never meets"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, err := loadCatalog(patched(t, map[string]string{c.file: c.patch}))

@@ -931,8 +931,9 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		{"gone from the newest", syncs(10, &enemy, &enemy, &enemy, nil), 10.5, false},
 		{"drawn coming down onto the path", syncs(10, &up, &enemy, &enemy), 10.25, true},
 		{"drawn leaving the path", syncs(10, &enemy, &up, &up, &up), 10.25, false},
-		// The server removes it at the end of tick 11, before her frames.
+		// The server removes it at the end of the tick it died in, before her frames.
 		{"dead before her frames, though drawn alive", syncs(10, &enemy, &dying, nil), 10.25, false},
+		{"died in the newest sync's tick", syncs(10, &enemy, &enemy, &dying), 10.25, false},
 		// Judged at the oldest view the server keeps, 5, drawn from syncs 5 and 6: the predictor keeps both.
 		{"drawn before the rows the server keeps", kept, 1.5, true},
 		// Each step of a replay is held at its own tick: her second is judged at 6, where the enemy stood on
