@@ -175,23 +175,29 @@ Sources were gathered by a research agent. Confidence tags: HIGH = primary sourc
     lists the kinds that block it. Channels can't combine two pass effects. See `character-foundation.md`.
   - The kind table is data, so a new kind needs no code.
 - **Validation at bake time and at load**: convex, 3–8 non-collinear points, non-zero bits, spawns not
-  inside or touching a blocking shape, no flush seams between blocking shapes. Any failure is a loud
-  error. With freeform maps, the simplest seam rule is to *reject* two blocking shapes that share a
+  inside or touching a blocking shape, no flush seams between blocking shapes. Landing's preconditions
+  too (F26 in `foundation-review.md`): a flood fill of clear cells from the spawns rejects any clear
+  cell it doesn't reach (a sealed pocket) and any blocked cell farther than `mover.LandReach` from a
+  reached one (a wall too deep to land out of). Any failure is a loud error. With freeform maps, the simplest seam rule is to *reject* two blocking shapes that share a
   collinear edge, and tell the designer to make one shape. Merge them with a polygon union only if
   that rule becomes annoying.
 - **Bounds:** a chain loop wound to block from inside (CW).
 - **Server `arena` feature:**
-  - **The rebuild check is the only path that builds the map.** A PreUpdate system, registered before
-    the physics plugin, compares the built map's `{MapID, Hash}` with the map the shard should run,
-    every tick in O(1). If they differ, it destroys the map entity and builds the new one. This covers
-    first boot, a restart after a map edit and a redeploy. There is no separate Init build.
-  - All permanent geometry lives in **one** static entity with N shapes. Destructibles, if they ever
-    exist, get their own entities.
+  - **The map is content, not state** (F8 in `foundation-review.md`, 2026-11-01; this replaces a map
+    entity and its rebuild check). One Cardinal-free `arena` package loads the baked map from
+    `content.FS` and builds a static `box2d.World` with box2d's public builders (`MakeOffsetBox`,
+    `MakeRot`, `ComputeHull`, `CreateChain`), which the FMA scan already covers; add the package to its
+    shared core. The shard and the predictor build it from the same file, so every wall stop, slide and
+    shot stop is predicted to the bit. The mover, `Land` and a shot's map cast query it; Bodies and
+    Echoes stay out of it, as shots meet them from their rows. It never enters snapshots, and a new map
+    is new content, so a new build with its own `SimVersion`.
+  - A failed landing is then a bug: `motion.Step` reports it, and `MovementSystem` logs it.
+  - Destructibles, if they ever exist, are entities, not arena geometry.
   - `ArenaSync{MapID, Hash}` is sent each tick, so join and reconnect need nothing else.
   - The dev spawn system reads its spawn points from the map.
 - **Movement:**
   - Bodies become `BodyTypeManual`. MovementSystem (PreUpdate, before the plugin) runs the mover
-    against `{Category: Body, Mask: Environment}` and writes Transform2D.
+    against the arena's world and writes Transform2D.
   - It sorts planes and does FMA-free arithmetic. The mover is a pure function with no Cardinal
     import, so a wasm predictor can reuse it later.
 - **Client `game/arena/`:**
@@ -207,13 +213,14 @@ Sources were gathered by a research agent. Confidence tags: HIGH = primary sourc
 ## 7. Steps
 
 1. **Movement collides with walls:** the mover, Manual Bodies, and tests.
-2. **`arena` feature:** map format, validation, rebuild check, one static entity, `ArenaSync`, spawns
-   from the map, one hand-written greybox map. Record the decisions in CLAUDE.md and the GDD.
+2. **`arena` feature:** map format, validation (Land's preconditions included), the arena world the
+   shard and the predictor both build, `ArenaSync`, spawns from the map, one hand-written greybox map,
+   and wall cases in the prediction recording. Server and predictor walls ship in this one step.
+   Record the decisions in CLAUDE.md and the GDD.
 3. **Client:** map view, camera follow and clamp, hash check.
 4. **Tiled converter:** `.tiled-project` with classes, converter, staleness test.
-5. **Later, prediction in wasm:** same map, same mover. The client must build shapes exactly as
-   physics2d does. That code is internal, so it needs a small world-engine export; ask before
-   touching the engine.
+5. **Prediction in wasm** comes with step 2: the predictor builds the same arena world from the same
+   file, with no world-engine export.
 
 ## 8. Doc traps found (not fixed)
 

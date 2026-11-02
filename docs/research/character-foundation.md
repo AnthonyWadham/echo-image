@@ -94,7 +94,8 @@ These were checked against primary sources (docs, engine source, data-mined file
 - If a Body's center is inside a blocker for this tick's mask, move it to the nearest clear spot with a fixed,
   deterministic grid search. The straight way there must not cross the map edge, which is a thin chain loop with
   nothing solid behind it. This covers a phase ending, blinks, and restore lag.
-- Maps may have no sealed pockets and no wall deeper than the landing reach. Map tests check both.
+- Maps may have no sealed pockets and no wall deeper than the landing reach. The arena loader will check both
+  when the first map ships (`map-system-findings.md`, F26); no map ships yet, so no test does.
 
 ### Examples
 

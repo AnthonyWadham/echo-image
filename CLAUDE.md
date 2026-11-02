@@ -689,9 +689,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
     Corrections still come from what the client can't know: a late frame (the server repeats the last
     one, at a view moved on), effects others cause, and a target someone else kills first. Pacing
     keeps late frames rare.
-  - The predictor's world has no map yet. Walls come with the arena, built exactly as the server builds
-    them. Until then a shot the server stops at a wall flies on past it on your screen, until a
-    body_sync shows it gone, about a round trip later.
+  - The predictor's world has no map yet. Walls come with the arena: one Cardinal-free package that the
+    shard and the predictor both build from the same content file (`docs/research/map-system-findings.md`).
+    Until then a shot the server stops at a wall flies on past it on your screen, until a body_sync
+    shows it gone, about a round trip later.
   - The client aims from where the frame moves its Body, since the server casts from there.
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
   (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, and
