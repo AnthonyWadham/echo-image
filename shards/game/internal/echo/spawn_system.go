@@ -49,9 +49,10 @@ type echoRow struct {
 //
 // Claim-triggered (not Init, not presence-reactive) for two reasons:
 //   - No resurrection. A presence check ("Body has no Echo → spawn one") would hand a fresh full-HP Echo
-//     to the invincible Body the tick after DamageResolveSystem destroys the old one, defeating "Echo
-//     death = elimination" (GDD §8). BodyClaimed fires exactly once per Body (Persona is set once and
-//     never cleared), so each Body gets exactly one Echo for the whole match, dead or alive.
+//     to the invincible Body the tick after combat.DeathSystem removes the old one, defeating "Echo
+//     death = out for the round" (GDD §8). BodyClaimed fires exactly once per Body (Persona is set once
+//     and never cleared), so each Body gets exactly one Echo, dead or alive: a match is one round until
+//     rounds exist.
 //   - No pre-death. Spawning at Init gave every dev Body an Echo that then warmed up and self-destructed
 //     to anti-camp DoT while the Body sat unclaimed at spawn — so a client connecting seconds later saw
 //     no Echoes. Tying spawn to the claim means an Echo exists only once a live player drives its Body,

@@ -41,6 +41,8 @@ Each one was checked by reading the code and, where marked *tested*, by running 
   cleanly and rounds corners.
 - **Seams:** when two boxes share an edge, the mover gets stuck before the seam whenever input presses
   into the wall at 85° or more. At smaller angles it slows for one tick. One merged shape never sticks.
+  The current mover passes that seam at 84-89° at both rates (foundation review probe, 2026-11-01), so
+  this reason to reject flush seams no longer holds; decide the seam rule when the arena lands.
   Chain loops with a collinear vertex at the seam behave the same as two boxes, because chains don't
   help the mover.
 - **Deep overlap:** once a circle's centre is on or inside a wall, `CollideMover` returns 0 planes and
@@ -224,11 +226,9 @@ Sources were gathered by a research agent. Confidence tags: HIGH = primary sourc
 
 ## 8. Doc traps found (not fixed)
 
-- `shards/game/internal/player/spawn_system.go:56`: "solid vs. other bodies and walls" is false.
 - physics2d `README.md:121` says Manual uses Box2D "only for contact detection", but Manual bodies get no contacts with static or kinematic bodies.
 - physics2d `component/collider.go:18-20` says Box2D validates convexity and panics. It does neither.
 - `pkg/box2d/oracle_misc_test.go:14-18` says `mover.c` is not ported, but `mover.go` exists.
-- echo_image `CLAUDE.md:374` says the project builds against the published release, but `go.mod` uses `replace => ../world-engine`.
 
 ## 9. Scratch experiments
 

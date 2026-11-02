@@ -160,7 +160,7 @@ pool), and whether a body also blocks *movement*.
 - **Team play consequence** — in 2v2/3v3 you can body-block for an **ally's** Echo, not just your own.
   Screening for a teammate while leading your own Echo to safety is a natural source of team-mode depth. [Draft]
 - **Round format** — likely **best-of-N** (a few rounds per match); the count is undecided. [Draft/Open]
-- **Map design** — arena size, cover/obstacles (`Environment` collision category), sightlines,
+- **Map design** — arena size, cover/obstacles (the `wall` and `bounds` kinds), sightlines,
   symmetry. **Open.**
 - **Progression / ranked / meta** — explicitly **deferred**. Out of scope until core gameplay is proven.
 
@@ -206,11 +206,11 @@ Light mapping only; detailed tech design stays in code + `CLAUDE.md`.
   Echo entity that carries `Health` and the damageable collision category.
 - **Body** ≈ an entity on its own invincible collision category (never a damage target; may still
   block projectiles via physics).
-- **Anti-camp self-damage** maps cleanly onto the existing pipeline: an Echo↔own-Body overlap is just
-  another contact that emits a `DamageIntent` targeting the Echo (source = the owner) — no special
-  case, same `CollisionSystem → DamageResolveSystem` flow.
-- **Collision categories** will likely grow to `Body`, `Echo`, `Projectile`, `Environment` (see
-  `internal/physics`).
+- **Anti-camp self-damage** maps cleanly onto the existing pipeline: the Echo's area finds its own
+  Body overlapping it and emits a `DamageIntent` targeting the Echo — no special case, the same
+  `AreaSystem → DamageResolveSystem` flow shots take (`FlightSystem → DamageResolveSystem`). Every hit
+  is a Box2D query, never a contact event.
+- **Collision categories** are kinds: `wall`, `bounds`, `body`, `echo`, `shot`, `area` (`interact.Kind`).
 - Echo state is authoritative server-side and must live in ECS components (snapshot-safe), including
   the position-history buffer that drives the replay.
 

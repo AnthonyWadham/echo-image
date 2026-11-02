@@ -66,7 +66,7 @@ These were checked against primary sources (docs, engine source, data-mined file
 
   ```go
   st := body.Get[effectcomp.Effects]().Status(tick)
-  mask := physics.MoveBlockers &^ st.Pass // MoveBlockers = interact.Wall | interact.Bounds
+  mask := motion.Blockers &^ st.Pass // Blockers = interact.Wall | interact.Bounds
   filter := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(mask)}
   ```
 
@@ -81,7 +81,8 @@ These were checked against primary sources (docs, engine source, data-mined file
 - A forced move is an effect entry with a velocity and an end tick. The mover runs it every tick, so walls, passes and
   bounds still apply.
 - If any forced move is active, velocity is their sum. Otherwise it is the input times the folded speed.
-- A stun or root stops input and ends your own dash. It does not stop pushes from others.
+- A stun or root stops input. Each effect kind says what it ends as it lands (`ends`, F17): one that ends
+  `ends_on_cc` ends your own dash, and a slow need not. None stops pushes from others.
 - Unstoppable blocks new pushes and crowd control.
 - Coast on the last input frame, not on `Velocity2D`, or a dash leaks into the coast.
 

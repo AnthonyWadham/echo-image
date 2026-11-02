@@ -179,7 +179,7 @@ var Kinds = map[string]Kind{"bolt": {Step: linear, Hit: stop}, "bouncer": {Step:
 | Add Cause to EffectIntent. Stop dropping unknown kinds silently. | `effect/component/effect_intent_event.go:14`, `effect/resolve_system.go:82` |
 | Check every cross-table key at boot (ability ↔ launcher ↔ dash ↔ effect ↔ champion). | `ability/tuning.go:48` |
 | Build one shared overlap query for shots, AoE, pickups and anti-camp. | `projectile/flight_system.go:117`, `combat/anticamp_system.go:61` |
-| No ranging over Go maps inside systems. Add a snapshot→restore→step synctest. | `ability/tuning.go:38`, `effect/tuning.go:33`, `main_test.go` |
+| No ranging over Go maps inside systems. Add a snapshot→restore→step synctest (not built: it needs a restore in Cardinal's TestWorld, F15 in `foundation-review.md`). | `ability/tuning.go:38`, `effect/tuning.go:33`, `main_test.go` |
 | Add cast state for charges, cast time and recast windows (needed by Echo-Swap). | `ability/component/abilities.go:16`, `ability/cast_system.go:40-51` |
 
 ## 5. Open questions for you

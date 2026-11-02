@@ -53,7 +53,7 @@ func spawnBody(w *cardinal.World, tuning MovementTuning, champion string, id uin
 	b := w.Create[bodyRow]()
 	b.Set(ref.Spawn{Serial: ref.Next(w)})
 	// Persona left empty: the Body is unclaimed until the first Input command from a persona claims it
-	// (see MovementSystem). Real matchmaking will assign the persona at spawn instead.
+	// (see InputSystem). Real matchmaking will assign the persona at spawn instead.
 	b.Set(component.Player{ID: id, Nickname: nickname})
 	b.Set(component.Champion{ID: champion})
 	b.Set(team.Team{ID: teamID})

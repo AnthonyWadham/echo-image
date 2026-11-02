@@ -14,7 +14,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "types": ["vite/client", "node"],
-    // The SDK is the local go-ecs checkout, like go.mod's replace. Keep in step with vite.config.ts.
+    // The SDK is the go-ecs checkout beside this repo (unpinned). Keep in step with vite.config.ts.
     "paths": {
       "@argus-labs/sdk": ["../../go-ecs/pkg/sdk-ts/src/index.ts"]
     }

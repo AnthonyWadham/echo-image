@@ -84,7 +84,7 @@ shards/game/
                                   (Rate, Seconds, Ticks) — imports only math
     ref/      package ref         Spawn{Serial} and Next: tells an entity from a newer one with its ID — a
                                   component-only leaf (imports only cardinal)
-    team/     package team        Team and Owner allegiance components + SameTeam, SideOf — a
+    team/     package team        Team and Owner allegiance components + SideOf — a
                                   component-only leaf (imports only cardinal and interact)
     combat/   package combat      damage: damage_system.go (the one writer of Health), death_system.go
                                   (removes what died, after the syncs)
@@ -147,15 +147,15 @@ binary runs.
 
 Current dependency direction (must stay acyclic): a feature's behavior package depends on **physics**,
 the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feature>/component`** leaves
-it reads — never another feature's behavior package (`player → {physics, interact, team, ref, netsync,
-player/component, player/motion, effect/component, effect/status, ability/component, ability/cast,
-projectile/component}`, `ability → {ability/hooks, ability/cast, team, netsync, player/component,
+it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
+team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
+ability/cast, combat/component, echo/component, projectile/component}`, `ability → {ability/hooks, ability/cast, team, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 interact, team, ref, netsync, combat/component, effect/component, player/component,
 projectile/component, projectile/flight}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
-{physics, interact, team, ref, netsync, echo/component, area/component, combat/component,
-player/component, effect/component, projectile/component}`, `effect → {effect/component,
+{physics, physics/timestep, interact, team, ref, netsync, echo/component, area/component,
+combat/component, player/component, effect/component, effect/status, projectile/component}`, `effect → {effect/component,
 effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
@@ -222,7 +222,7 @@ can read another's data without risking an import cycle.
      *behavior* is a real dependency boundary; splitting *behavior* into `systems/`/`events/` dirs is
      the cosmetic layering we still reject (directory rule 2).
    - **A component-only feature skips the sub-package** — the feature package *is* the leaf
-     (`team.Team`; the bits in `physics/categories.go`). Components graduate into `component/` only
+     (`team.Team`; `interact.Kind`, the category bits). Components graduate into `component/` only
      once the feature also owns systems a cross-feature importer would otherwise drag in.
    - **Cross-importing two features' components** takes a one-word import alias (both are `package
      component`): `import playercomp "…/player/component"`. That alias lives in the importing *system*
@@ -250,7 +250,8 @@ can read another's data without risking an import cycle.
 ### Tick-rate independence (fixed-timestep sim)
 The simulation must be **tick-rate agnostic**: changing `TickRate` changes only how finely we sample
 time — never how fast the game plays or how hard anything hits. A build at 60 Hz must be the *same
-game* as one at 20 Hz, just smoother. Every system honors this:
+game* as one at 20 Hz, just smoother: exact on open ground and along straight walls; a Body rounding a
+corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Rates are per-second, scaled by `dt` at the point of use.** `dt = 1 / physics.ServerTickRateHz`
   (`physics/timestep`, which the client predictor shares).
   Never bake a per-*tick* constant. A damage-over-time of 25/s is `25 * dt` this tick, not a hardcoded
@@ -263,17 +264,19 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   sizing all derive from seconds so they hold their wall-clock meaning when the rate changes.
 - **Discrete vs continuous.** A discrete event (a projectile hit, a spawn) applies a fixed amount and is
   already rate-independent. A continuous effect (DoT, regen, movement) must scale by `dt`.
-- **Integer HP vs sub-unit-per-tick.** `dt`-scaled continuous damage is fractional; if `Health.HP`
-  stays an int, a continuous source must accumulate the fraction and apply whole points as it crosses
-  them — never truncate per tick, or a DoT rounds toward zero at high tick rates. (Switching HP/damage
-  to a float or fixed-point removes the accumulator; decide per the combat model.)
+- **Sub-unit-per-tick damage.** `dt`-scaled continuous damage is fractional, and `Health.HP` is a
+  float64, so a continuous source applies its fraction each tick, with no accumulator. Never round it
+  per tick, or a DoT rounds toward zero at high tick rates.
 - **One source of truth for the rate.** Read `physics.ServerTickRateHz` (or a `physics` `dt` helper);
   never hardcode `20`. `main.go` already feeds it to both the Cardinal `WorldOptions.TickRate` and the
   physics2d step. A build tag picks it: `timestep.Rate` is 20, or 60 built with `-tags rate60`
-  (`rate20.go`, `rate60.go`), and the sim version says which.
-- **Tests run at both rates.** They state times in seconds (`ticks(seconds)` in `main_test.go`), and
-  each rate has its own prediction recording. The client converts seconds to frames with body_sync's
-  `TickSeconds` (`InputStream`), and its tests run at 20 and 60 Hz.
+  (`rate20.go`, `rate60.go`), and the sim version says which. `world build` passes no build tags yet,
+  so a deployed shard runs 20 Hz (F23 in `docs/research/foundation-review.md`).
+- **Tests run at both rates.** They state durations in seconds (`ticks(seconds)` in `main_test.go`);
+  raw ticks appear only as a few ticks of margin or a fractional view lag. Each rate has its own
+  prediction recording. The client converts seconds to frames with body_sync's `TickSeconds`
+  (`InputStream`, whose tests loop over both rates); `GOFLAGS=-tags=rate60` reruns the predictor's tests
+  on a 60 Hz wasm, and the rest of the client's tests read no rate.
 
 ### Rules: what happens when X meets Y (`interact`)
 - **Every "X meets Y" is data: a filter plus a response, and the first rule that matches wins.** The
@@ -308,15 +311,15 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **HP stays between 0 and `MaxHP`.** For each target the resolver takes the tick's damage, then its
   heals, and writes HP once, never above `MaxHP`. Overkill counts, so a small heal can't save a target
   from a much bigger hit. Intents are summed in sorted order, so the order they arrive in — or which
-  source emitted first — never changes the result, and there's **no per-type event fan-out**.
+  source emitted first — never changes the result, and there's **no per-type event fan-out**. (Rampage
+  re-emitted a typed event per collision kind to control ordering; deferral makes that unnecessary.)
 - **A death is timed.** Each `DamageIntent` says when in the tick it lands (`Until`: a shot's
   `flight.End.Until`, 1 for damage over the tick). At 0 or below the target dies: HP 0 and a `Died`
   with the time of the hit that took it there. `combat.DeathSystem` removes it after the syncs, so each
   sync sends it once more.
 - **An Echo's death puts its player out for the round** (GDD §8). `echo.EliminationSystem` gives the
   owner's Body the Echo tuning's `death_effect` (`out`) for `status.Forever` ticks. The cast gate's
-  `blocked_by` and a default shot rule read the `out` tag, so the player neither casts nor shields. (Rampage re-emitted a typed event per
-  collision kind to control ordering; deferral makes that unnecessary.)
+  `blocked_by` and a default shot rule read the `out` tag, so the player neither casts nor shields.
 - **Credit vs cause.** An intent's `Credit` is the Body credited with it (kills, lifesteal): the
   `team.Owner` of what dealt it. Its `Cause` is the cast that started it
   (`ability/component.Cause{Caster, Ability, Tick, Seq}`, which `AbilityCast` embeds), carried by
@@ -416,10 +419,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
 - **Team allegiance is NOT a category bit.** "Enemy" is relational (team A's enemies are teams B and
   C, who aren't allies of each other) and teams are assigned dynamically at match start — you can't
   bake that into a fixed bit. Friend/foe is decided **in gameplay code** from `Team`/owner components
-  at collision time — via the shared `team.SameTeam(search, a, b)` helper. Note `SameTeam` is a
-  friendly-fire *suppression* predicate (unknown allegiance ⇒ not allied); enemy *selection*
-  (damage-all-enemies) is **not** just `!SameTeam` — it needs its own predicate so teamless neutral
-  geometry isn't wrongly treated as a target. This is *not* the "reverse type lookup" the classification
+  at collision time: `team.SideOf` reads a thing's side, and a rule matches the `interact.Relation`
+  between two sides (own, ally, enemy, neutral), so teamless neutral geometry is never an ally or an
+  enemy. This is *not* the "reverse type lookup" the classification
   rule forbids — that
   rule is about KIND (use bits); team is genuine game state (read the component).
 - **Owner vs team.** Anti-camp self-damage (Echo overlapping its OWN Body) is an **owner** match
@@ -481,7 +483,9 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   `EffectIntent` emitter (`ability.CastHookSystem`, and `echo.EliminationSystem`, which reads `Died`
   after `combat.DamageResolveSystem`) before `effect.ResolveSystem`.
 - **Every receiver sorts its intents by a full key before it acts,** because emit order can change
-  after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs).
+  after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs). Only one whose
+  every intent touches its own entity, and whose own emits a later receiver sorts, may walk them in
+  emit order (`echo.SpawnSystem`, `ability.EquipSystem`, `ability.CastHookSystem`).
 - **`player.InputSystem`, `ability.EquipSystem`, `ability.CastSystem`, then `player.MovementSystem`
   run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
   just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
@@ -587,7 +591,10 @@ game* as one at 20 Hz, just smoother. Every system honors this:
   constructor stamps `ref.Spawn{Serial}` from the world's one counter (`ref.Next`, saved with the world,
   from 1), and `TargetState`, `ProjectileState`, `BodyState` and `EchoState` carry it. `EntityViews`
   keys views and blends by `Serial`, the predictor keys its sights and bodies by it, and a hit names its
-  target's (`flight.Hit.Serial`). Same-tick links (`You.Body`, `Caster`, `Owner`) stay EntityIDs.
+  target's (`flight.Hit.Serial`). Links (`You.Body`, `Caster`, `Owner`) stay EntityIDs. `You.Body` is
+  same-tick, but a shot's `Cause.Caster` and a thing's `team.Owner` are stored for its life, so a
+  stale one can name a newer entity: F22 in `docs/research/foundation-review.md` (generational IDs
+  in Cardinal, outside this repo).
 - **Each thing's state is sent once.** A Body's or Echo's row in `TargetSync` is its only spot, size,
   team, owner, tags and `Until`. `BodyState` and `EchoState` send only what rows lack (player, look,
   HP), joined to the row by `Serial`. Your own row comes in `You` too (`Team`, `X`, `Y`, `Radius`),

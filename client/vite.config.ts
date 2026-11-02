@@ -2,8 +2,8 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
-// The SDK is the local go-ecs checkout, like go.mod's replace, until a release has the MessagePack
-// fix. Keep in step with tsconfig.json.
+// The SDK is the go-ecs checkout beside this repo (unpinned) until a release has the MessagePack fix.
+// Keep in step with tsconfig.json.
 const sdkDir = fileURLToPath(new URL('../../go-ecs/pkg/sdk-ts', import.meta.url))
 
 export default defineConfig(({ mode }) => ({

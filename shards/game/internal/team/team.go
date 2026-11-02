@@ -42,24 +42,3 @@ func RegisterTypes(w *cardinal.World) {
 	w.RegisterComponent[Team]()
 	w.RegisterComponent[Owner]()
 }
-
-// of returns entity e's team id, or ok=false when e has no Team or no longer exists. Unexported until
-// a feature needs a bare single-entity team read; SameTeam is the entry point.
-func of(w *cardinal.World, e cardinal.EntityID) (id uint8, ok bool) {
-	entity := w.Entity(e)
-	if !entity.Has[Team]() {
-		return 0, false
-	}
-	return entity.Get[Team]().ID, true
-}
-
-// SameTeam reports whether a and b are on the same team. An entity with no Team (environment, neutral
-// geometry) is never "same" as anything, so a missing team can't read as allied and suppress a check.
-func SameTeam(w *cardinal.World, a, b cardinal.EntityID) bool {
-	ta, oka := of(w, a)
-	if !oka {
-		return false // short-circuit: no second lookup when the first entity is teamless
-	}
-	tb, okb := of(w, b)
-	return okb && ta == tb
-}

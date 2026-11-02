@@ -44,7 +44,7 @@ in JSON; plan for 50+ abilities and 20+ shot types a year; items that change sho
 12. **Areas test who is inside when they act.** They never trust Begin/End events.
 13. **Predicted code is Cardinal-free and FMA-free:** `interact`, `mover`, `status`, `hooks`, the cast gate.
 14. **A match resumes only on the build that started it.** A content ID from state that is missing logs an error and
-    is skipped, so a tick never panics.
+    is skipped, so a tick never panics. Not enforced yet: nothing checks the build on restore.
 
 ## 3. The rule layer: what happens when X meets Y
 
@@ -156,7 +156,7 @@ type Owner struct{ Body uint32 }
 | A champion whose Echo collects | Its passive gives its Echo the tag `collector`. The orb adds a rule for Echoes that have it |
 | The Assassin's Echo can't be hurt | Its ability gives its Echo `invulnerable`. The resolver skips the damage from every source |
 | A barrier your own team shoots through | A placed `barrier` has an Owner, so the default "own or ally → pass" lets your shots through and stops enemy shots |
-| A mark-then-burst combo, with no code | Ability A applies `marked`. Ability B's shot has a rule for `marked` targets with a bigger payload |
+| A mark-then-burst combo | Ability A applies `marked`. Ability B's shot has a rule for `marked` targets with a bigger payload. Needs Go first: a `marked` tag (tags are a closed list) and a payload amount per rule (`payload` is a bool today) |
 
 ## 4. The building blocks
 
@@ -269,7 +269,9 @@ type Projectile struct {
 - A lookup through a Ref treats a serial mismatch as "gone".
 - Built 2026-11-01 for syncs, its first user: `ref.Spawn` and `ref.Next` (the counter is saved with the world).
   Every synced state carries `Serial`, and clients and the predictor key what they keep across ticks by it. The
-  `Ref{ID, Serial}` struct comes with the first component that stores a reference to a thing that can die.
+  `Ref{ID, Serial}` struct isn't built, though `Cause.Caster` (an Echo casts and dies) and status `Entry.Source`
+  already store raw IDs of things that can die. F22 in `foundation-review.md` recommends generational IDs in
+  Cardinal instead, so every stored ID is safe; that is a world-engine change.
 
 ### Sync
 - `netsync` is unchanged. A new feature adds its own `SyncSystem` (areas: `AreaSync`).
@@ -391,13 +393,13 @@ player.InputSystem           // frames; BodyClaimed
 ability.EquipSystem          // cooldowns on claim
 ability.CastSystem           // the gate; AbilityCast
 player.MovementSystem        // teleport, then the move, with blocked_by
+echo.ReplaySystem            // record, replay at the current delay, rewind
 physicsPlugin                // step
 // Init
 player.DevSpawnSystem
 // Update
 mode.RoundSystem             // with round play
 echo.SpawnSystem             // on BodyClaimed or SpawnEchoIntent; gives the Echo its areas
-echo.ReplaySystem            // record, replay at the current delay, rewind
 ability.CastHookSystem       // NOW, in DashSystem's place: OnCast → intents
 projectile.LaunchSystem      // every LaunchIntent, sorted; new shots move this tick
 projectile.FlightSystem      // meets rules → DamageIntent, EffectIntent, ShotHit; split children fly next tick
@@ -405,8 +407,11 @@ ability.HitHookSystem        // with its first user
 area.PlaceSystem             // with its first user: AreaIntent → placed things, active next tick
 area.AreaSystem              // NOW (anti-camp): pulses → DamageIntent, HealIntent, EffectIntent, AreaMet
 combat.DamageResolveSystem   // immunity, damage, heals, deaths
+echo.EliminationSystem       // a dead Echo puts its owner out
 effect.ResolveSystem         // every EffectIntent; applies from next tick
-// Sync, last: player, echo, ability, projectile, area, mode
+projectile.HistorySystem     // each target's row this tick
+// Sync, last: player, echo, ability, projectile, target rows (TargetSync), area, mode
+combat.DeathSystem           // removes what died, after the syncs sent it once more
 ```
 
 - `player.DashSystem` and `combat.AntiCampSystem` are gone. Every receiver sits below all its emitters.
@@ -580,7 +585,7 @@ caught). The list now lives in `scripts/mutate/mutants.json` (`go run ./scripts/
 | Hooks read through `Reader` | No `Reader` yet | No hook reads state. It comes with the first that does (`echo_swap`) |
 | The runner turns seconds into ticks | A hook gets `Cast.TickRate` and converts once (`Cast.Ticks`). `Bind` also takes the rate, so params check durations at load | A dash must cover its exact distance in whole ticks |
 | `Area{Rules, Radius, Every, Start, End, ReadyTick}` | `Area{Kind, Start}`. The area is its holder's first shape. `Every`, `End` and `ReadyTick` come with their first users | No second radius to keep in sync with the Echo's. Anti-camp now means "the shapes overlap", as the GDD says; for the starter champion that is the old 1.0 m |
-| An area finds things with one overlap query | `OverlapAABB` plus an exact circle test. A new `area` kind bit, which Bodies and Echoes mask | The plugin has no circle overlap, and Box2D's query filter is two-way |
+| An area finds things with one overlap query | One `OverlapShape` of its circle. A new `area` kind bit, which Bodies and Echoes mask | Box2D's query filter is two-way |
 | Step 3 tests a lance and a ricochet | A shot that passes Bodies, and a rule that reads a tag | A ricochet needs `bounce`, which is step 11. Responses today: `stop` and `pass`. `pass` with a payload fails the load until there is a hit list |
 | `shots.defaults` | Top-level `defaults` next to `shots` | A rule list can't sit in the map of shot types |
 | `barrier` in the shot defaults | Left out | The kind doesn't exist yet |
