@@ -827,5 +827,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   fan-out). Compare against general best practice, not just what rampage did.
 - **Research findings** (not source of truth; this file and the code win) live in `docs/research/`.
   Map system: [`docs/research/map-system-findings.md`](docs/research/map-system-findings.md).
+- **Backlog of ideas and decisions for later:** [`docs/backlog.md`](docs/backlog.md). Read it when
+  asked what to build next, and add to it when asked to save an idea.
 - World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`, for reading. The build
   uses the pinned module (see Build & run): a local `replace` would leave its code out of `SimVersion`.
