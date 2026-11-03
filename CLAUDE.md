@@ -477,7 +477,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
   before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem` and
-  `ability.EquipSystem`, `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
+  `ability.AttachAbilitiesSystem`, `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
   which emits `LaunchIntent` before `projectile.LaunchSystem`; every `DamageIntent` and `HealIntent`
   emitter (`projectile.FlightSystem`, `area.AreaSystem`) before `combat.DamageResolveSystem`; and every
   `EffectIntent` emitter (`ability.CastHookSystem`, and `echo.EliminationSystem`, which reads `Died`
@@ -485,8 +485,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Every receiver sorts its intents by a full key before it acts,** because emit order can change
   after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs). Only one whose
   every intent touches its own entity, and whose own emits a later receiver sorts, may walk them in
-  emit order (`echo.SpawnSystem`, `ability.EquipSystem`, `ability.CastHookSystem`).
-- **`player.InputSystem`, `ability.EquipSystem`, `ability.CastSystem`, then `player.MovementSystem`
+  emit order (`echo.SpawnSystem`, `ability.AttachAbilitiesSystem`, `ability.CastHookSystem`).
+- **`player.InputSystem`, `ability.AttachAbilitiesSystem`, `ability.CastSystem`, then `player.MovementSystem`
   run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
   just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
   depends on this (`TestFrameMovesBodySameTickAsAck`). The predictor steps in the same order: input,

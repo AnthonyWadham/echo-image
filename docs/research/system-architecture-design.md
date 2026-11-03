@@ -390,7 +390,7 @@ var echoSwap = Def[echoSwapParams]{
 ```go
 // PreUpdate
 player.InputSystem           // frames; BodyClaimed
-ability.EquipSystem          // cooldowns on claim
+ability.AttachAbilitiesSystem // Abilities on claim
 ability.CastSystem           // the gate; AbilityCast
 player.MovementSystem        // teleport, then the move, with blocked_by
 echo.ReplaySystem            // record, replay at the current delay, rewind

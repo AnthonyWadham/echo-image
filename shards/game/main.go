@@ -75,7 +75,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	}
 	world.RegisterSystem(&player.InputSystem{Tuning: c.movement, Metrics: inputMetrics},
 		cardinal.WithHook(cardinal.PreUpdate))
-	world.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))
+	world.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&player.MovementSystem{Tuning: c.movement, Physics: physicsPlugin},
 		cardinal.WithHook(cardinal.PreUpdate))

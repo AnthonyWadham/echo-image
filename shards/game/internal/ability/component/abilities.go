@@ -9,9 +9,9 @@ import (
 )
 
 // Abilities is a Body's cooldowns, one per ability ID it has cast, so a cooldown follows its ability
-// into whichever slot holds it. The kit is the Body's champion's, in ability tuning. ability.EquipSystem
-// gives a claimed Body an empty one; after that only ability.CastSystem writes it, with cast.Gate's
-// cooldowns.
+// into whichever slot holds it. The kit is the Body's champion's, in ability tuning.
+// ability.AttachAbilitiesSystem gives a claimed Body an empty one; after that only ability.CastSystem
+// writes it, with cast.Gate's cooldowns.
 type Abilities struct {
 	Cooldowns cardinal.Slice[cast.Cooldown]
 }

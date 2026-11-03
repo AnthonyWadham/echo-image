@@ -19,7 +19,7 @@ type casterRow struct {
 	Effects   effectcomp.Effects
 }
 
-// CastSystem (PreUpdate, after EquipSystem and before player.MovementSystem) casts what each Body's
+// CastSystem (PreUpdate, after AttachAbilitiesSystem and before player.MovementSystem) casts what each Body's
 // frame this tick asks for, by cast.Gate, the gate the client predictor runs too: it starts each
 // cast's cooldown and emits AbilityCast, and does nothing else. It is the only writer of cooldowns.
 // O(B·S) for B Bodies with S slots.

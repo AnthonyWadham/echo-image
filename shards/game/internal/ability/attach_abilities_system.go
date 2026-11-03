@@ -12,12 +12,11 @@ type claimedRow struct {
 	Player playercomp.Player
 }
 
-// EquipSystem (PreUpdate, after player.InputSystem) gives a Body its cooldowns, all ready, the tick it
-// is claimed, as echo.SpawnSystem gives it an Echo. So player never knows about abilities. The kit is
-// the Body's champion's, in tuning.
-type EquipSystem struct{}
+// AttachAbilitiesSystem (PreUpdate, after player.InputSystem) attaches Abilities to a Body the tick it
+// is claimed, so CastSystem can cast for it.
+type AttachAbilitiesSystem struct{}
 
-func (s *EquipSystem) Run(w *cardinal.World) {
+func (s *AttachAbilitiesSystem) Run(w *cardinal.World) {
 	bodies := w.Contains[claimedRow]()
 	for claim := range w.SystemEvents[playercomp.BodyClaimed]() {
 		body, err := bodies.GetByID(claim.Body)
