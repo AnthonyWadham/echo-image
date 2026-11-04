@@ -89,7 +89,7 @@ func TestAcrossShowsTheTickAsItsViewsDraw(t *testing.T) {
 }
 
 // A predicted action is judged at its client's view, held to those whose tick's views are drawn from the
-// rows kept by its tick: the oldest Ticks before it, whose older row is the oldest kept, and the newest a
+// rows kept by its tick: the oldest Ticks before it, judged from the oldest row kept, and the newest a
 // tick before the newest row. A view that isn't a number is judged at the newest.
 func TestViewIsHeldInsideTheRows(t *testing.T) {
 	window := Window{InterpolationSeconds: 0.1, QueueSeconds: 0.05, PingSeconds: 0.25}
@@ -115,8 +115,13 @@ func TestViewIsHeldInsideTheRows(t *testing.T) {
 			t.Errorf("Clamp(%v, %d) = %v, want %v", c.view, tick, got, c.want)
 		}
 	}
-	if a, _ := RowTicks(oldest); a != tick-window.KeptRows() {
-		t.Errorf("the oldest view is drawn from row %d, want the oldest kept, %d", a, tick-window.KeptRows())
+	read := tick
+	Across(oldest, func(b uint64) (Row, bool) {
+		read = min(read, b)
+		return Row{Tick: b, Until: 1}, true
+	})
+	if read != tick-window.KeptRows() { // rows run back from tick - 1
+		t.Errorf("the oldest view is judged from row %d, want the oldest kept, %d", read, tick-window.KeptRows())
 	}
 	if got := window.Clamp(-0.5, 3); got != 1 { // rows start at tick 0
 		t.Errorf("Clamp(-0.5, 3) = %v, want 1", got)

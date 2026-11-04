@@ -26,8 +26,9 @@ func (w Window) Seconds() float64 { return w.InterpolationSeconds + w.QueueSecon
 // Ticks converts the window to ticks.
 func (w Window) Ticks() uint64 { return uint64(timestep.Ticks(w.Seconds())) }
 
-// KeptRows is how many ticks of rows a target keeps: every view Clamp allows is drawn from them.
-func (w Window) KeptRows() uint64 { return w.Ticks() + 1 }
+// KeptRows is how many ticks of rows a target keeps: the oldest view Clamp allows, Ticks back, is
+// judged (Across) from the row Ticks back and newer.
+func (w Window) KeptRows() uint64 { return w.Ticks() }
 
 // Clamp is the view an action a client predicts is judged at on tick: the one its client drew, held to
 // those whose tick's views (Across) are drawn from the rows kept by then, Ticks before tick up to

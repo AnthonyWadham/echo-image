@@ -889,7 +889,7 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	}
 	step := bolt.Speed * physics.SecondsPerTick
 	back := rules.Track.Window.Ticks()
-	now := back + 4 // her state's tick: for her first frame the server keeps rows from tick 4
+	now := back + 4 // her state's tick: for her first frame the server keeps rows from tick 5
 	// The enemy stands on her shot's path, or farther on it, or 2 units up off it, or dies halfway
 	// through a tick there. A newer one can take its ID, never its serial.
 	enemy := predict.Sight{ID: 7, Serial: 70, Row: past.Row{Kind: interact.Body, Side: interact.Side{Owner: 7, Team: 1},
@@ -946,7 +946,8 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		{"new with a dead one's ID", syncs(10, &diedUp, &newer, &newer), 10.25, true},
 	} {
 		p := predict.New(rules)
-		for tick, s := range c.syncs {
+		for _, tick := range slices.Sorted(maps.Keys(c.syncs)) { // in tick order, as they arrive
+			s := c.syncs[tick]
 			var sights []predict.Sight
 			if s != nil {
 				sights = append(sights, *s)

@@ -65,7 +65,7 @@ the claim model (problem 3).
 
 ### 3. Targets keep their recent rows
 
-- **What:** every target (each Body and Echo) carries `TargetHistory`: its last 6 rows at 20 Hz, 16 at
+- **What:** every target (each Body and Echo) carries `TargetHistory`: its last 5 rows at 20 Hz, 15 at
   60 Hz (`Window.KeptRows`), oldest first: those every view 0.25 s back (5 ticks at 20 Hz) is drawn
   from. A row (`past.Row`) is
   its tick, kind, side (owner and team), center, radius, tags and `Until`. It is the target's one

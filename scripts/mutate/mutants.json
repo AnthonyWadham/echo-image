@@ -676,37 +676,37 @@
   },
   {
    "id": "6-G4",
-   "breaks": "KeptRows no +1",
+   "breaks": "KeptRows a row short",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/track/past/window.go",
-     "old": "return w.Ticks() + 1",
-     "new": "return w.Ticks()"
+     "old": "return w.Ticks()",
+     "new": "return w.Ticks() - 1"
     }
    ]
   },
   {
    "id": "6-G5",
-   "breaks": "history keeps R",
+   "breaks": "history keeps R - 1",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/projectile/history_system.go",
      "old": ".KeptRows())",
-     "new": ".Ticks())"
+     "new": ".KeptRows()-1)"
     }
    ]
   },
   {
    "id": "6-G6",
-   "breaks": "predictor keeps R",
+   "breaks": "predictor keeps R - 1",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
      "old": "keep := p.content.Track.Window.KeptRows()",
-     "new": "keep := p.content.Track.Window.Ticks()"
+     "new": "keep := p.content.Track.Window.KeptRows() - 1"
     }
    ]
   },

@@ -45,7 +45,7 @@ every blocker the two critiques raised.
 10. **`viewOf` finds the caster by raw EntityID (F22).** A reused ID judges a shot at another player's view.
 11. **"After every writer" is a comment.** Order lives in registration order and nothing enforces it.
 12. **Teleports will streak (F21), and no rule says whether a shot is favored across one.** Blink and Echo-Swap are planned.
-13. **Docs drift.** favor-the-shooter.md still says 0.4 s and 9 rows; the content says 0.25 s (6 rows at 20 Hz, 16 at 60 Hz).
+13. **Docs drift.** favor-the-shooter.md still says 0.4 s and 9 rows; the content says 0.25 s (5 rows at 20 Hz, 15 at 60 Hz).
 
 ## Changes
 
@@ -134,7 +134,7 @@ type Window struct {
 }
 
 func (w Window) Ticks() uint64                           // timestep.Ticks of the sum
-func (w Window) KeptRows() int                           // Ticks() + 1
+func (w Window) KeptRows() int                           // Ticks(): the oldest view reads the row Ticks back
 func (w Window) Clamp(view float64, tick uint64) float64 // today's flight.Tuning.View, unchanged
 
 type Tuning struct{ Window Window `json:"window"` } // the track content
@@ -448,7 +448,7 @@ timing follows the shooter, by at most the window (0.25 s).
 
 ## Costs
 
-T = tracked things, W = `KeptRows` (6 at 20 Hz, 16 at 60 Hz), P = clients, K = candidates per query.
+T = tracked things, W = `KeptRows` (5 at 20 Hz, 15 at 60 Hz), P = clients, K = candidates per query.
 
 | Piece | Today | Design | Big-O per tick |
 |---|---|---|---|
@@ -537,7 +537,7 @@ moves only if its text moves.
 
 **Docs (with each step):** CLAUDE.md (layout, dependency lists, ordering, client sync, the
 favor-the-shooter bullets, the shared scene pointer as the one leaf-rule bend). favor-the-shooter.md
-(new names; 0.25 s, 6 and 16 rows; this view-vs-now table). foundation-review.md (F18, F19, F21, F22
+(new names; 0.25 s, 5 and 15 rows; this view-vs-now table). foundation-review.md (F18, F19, F21, F22
 status). The options doc's homing helper is renamed from `track`.
 
 **Later, each with its first user (none needs a purge):** `Overlap` and `Pose` (homing, chain, melee,
