@@ -3,7 +3,7 @@ import { White, lit, mix } from '../../engine/render/color'
 import { EntityViews } from '../../engine/render/entity_views'
 import type { Stage } from '../../engine/render/stage'
 import { TeamLooks } from '../team/team_look'
-import type { TargetState } from '../projectile/target_sync_event'
+import type { TargetState } from '../track/target_sync_event'
 import type { LocalPlayer } from './local_player'
 
 const geometry = new SphereGeometry(1, 32, 16) // shared, and scaled to each Body's Radius

@@ -1,13 +1,12 @@
 package projectile
 
 import (
-	"slices"
-
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
+	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	playercomp "echo_image/shards/game/internal/player/component"
@@ -15,6 +14,7 @@ import (
 	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
+	trackcomp "echo_image/shards/game/internal/track/component"
 	"echo_image/shards/game/internal/track/past"
 )
 
@@ -27,7 +27,7 @@ import (
 // so its path starts at the shooter.
 //
 // A shot meets the map now, and each Body and Echo as it moves across the views its tick is drawn over
-// (past.Across), from their TargetHistory: a predicted shot across its caster's frame's view and the
+// (past.Across), from their Track: a predicted shot across its caster's frame's view and the
 // next, as that client drew it, and any other (an Echo's) across this tick, as every screen draws it.
 // That is what the client's predictor flies it against, so a hit on screen is a hit on the server. One
 // Box2D cast and tree query per shot finds what it meets, so the cost is O(P·(log N + K·R)) for P shots,
@@ -110,14 +110,14 @@ func viewOf(w *cardinal.World, window past.Window, p component.Projectile) (floa
 }
 
 // seenAt is target e across the views a shot's tick at view is drawn over (past.Across), from its
-// TargetHistory and its row at tick: how it is now, with its tags now. For a shot its caster's client
+// Track and its row at tick: how it is now, with its tags now. For a shot its caster's client
 // predicts, that caster's own Body and Echo move as its client draws them, from their rows a tick ago to
 // where they are now, its Body all the tick with its tags now. False when it shows nowhere.
 func seenAt(e cardinal.Entity, view float64, tick uint64, caster cardinal.EntityID, predicted bool) (flight.Seen, bool) {
-	if !e.Has[component.TargetHistory]() || !e.Has[ref.Spawn]() {
+	if !e.Has[trackcomp.Track]() || !e.Has[ref.Spawn]() {
 		return flight.Seen{}, false
 	}
-	history, now := e.Get[component.TargetHistory](), rowOf(e, tick)
+	track, now := e.Get[trackcomp.Track](), rowOf(e, tick)
 	now.Tags = tagsAt(e, tick)
 	s := flight.Seen{ID: uint32(e.ID()), Serial: e.Get[ref.Spawn]().Serial}
 	if predicted && e.ID() == caster {
@@ -127,11 +127,11 @@ func seenAt(e cardinal.Entity, view float64, tick uint64, caster cardinal.Entity
 			if b == tick {
 				return now, true
 			}
-			return history.At(b)
+			return track.At(b)
 		})
 	}
 	if predicted && (e.ID() == caster || now.Kind == interact.Echo && now.Side.Owner == uint32(caster)) {
-		prev, ok := history.At(tick - 1)
+		prev, ok := track.At(tick - 1)
 		if !ok {
 			prev = now
 		}
@@ -145,12 +145,44 @@ func seenAt(e cardinal.Entity, view float64, tick uint64, caster cardinal.Entity
 func reachOf(w *cardinal.World) *flight.Reach {
 	reach := flight.NewReach()
 	tick := w.TickHeight()
-	for e := range w.Contains[historyRow]().Iter() {
+	var kept []past.Row
+	for e := range w.Contains[targetRow]().Iter() {
 		if e.Get[physics2d.PhysicsBody2D]().Shapes.Len() == 0 {
 			continue
 		}
-		kept := slices.Collect(e.Get[component.TargetHistory]().Rows.Values())
+		kept = e.Get[trackcomp.Track]().AppendRows(kept[:0], tick)
 		reach.Add(uint64(e.ID()), rowOf(e, tick), kept...)
 	}
 	return reach
+}
+
+// targetRow is a Body or Echo shots meet by its track.
+type targetRow struct {
+	Track     trackcomp.Track
+	Transform physics2d.Transform2D
+	Body      physics2d.PhysicsBody2D
+	Team      team.Team
+	Owner     team.Owner
+}
+
+// rowOf is target e as it is at tick, as track.RecordSystem records it.
+func rowOf(e cardinal.Entity, tick uint64) past.Row {
+	shape := e.Get[physics2d.PhysicsBody2D]().Shapes.At(0)
+	return past.Row{
+		Tick:   tick,
+		Kind:   interact.Kind(shape.CategoryBits),
+		Side:   team.SideOf(e),
+		Center: box2d.Vec2(e.Get[physics2d.Transform2D]().Position),
+		Radius: shape.Radius,
+		Tags:   tagsAt(e, tick+1),
+		Until:  1,
+	}
+}
+
+// tagsAt is the tags e's effects give it at tick.
+func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
+	if !e.Has[effectcomp.Effects]() {
+		return 0
+	}
+	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }

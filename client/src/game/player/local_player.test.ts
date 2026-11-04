@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
-import { BodyKind, EchoKind } from '../projectile/target_sync_event'
+import { BodyKind, EchoKind } from '../track/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import { LocalPlayer } from './local_player'
 import type { PredictedEcho, Predictor } from './predictor'

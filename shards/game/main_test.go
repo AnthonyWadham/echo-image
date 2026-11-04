@@ -14,6 +14,7 @@ import (
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track"
 	"encoding/json"
 	"flag"
 	"math"
@@ -334,15 +335,15 @@ func echoOf(t *testing.T, w *cardinal.TestWorld, viewer string, owner body) echo
 }
 
 // rowOf is the row viewer's target_sync shows of the Body or Echo with serial.
-func rowOf(t *testing.T, w *cardinal.TestWorld, viewer string, serial uint64) projectile.TargetState {
+func rowOf(t *testing.T, w *cardinal.TestWorld, viewer string, serial uint64) track.TargetState {
 	t.Helper()
-	for r := range sentTo[projectile.TargetSync](t, w, viewer).Targets.Values() {
+	for r := range sentTo[track.TargetSync](t, w, viewer).Targets.Values() {
 		if r.Serial == serial {
 			return r
 		}
 	}
 	t.Fatalf("%s's target_sync has no row of serial %d", viewer, serial)
-	return projectile.TargetState{}
+	return track.TargetState{}
 }
 
 // echoSeen is an Echo as a viewer's syncs show it: what its row lacks, and its row.

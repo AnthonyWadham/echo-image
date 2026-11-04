@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { decodePayload } from '@argus-labs/sdk'
 import { beforeAll, expect, inject, test } from 'vitest'
-import type { TargetSync } from '../projectile/target_sync_event'
+import type { TargetSync } from '../track/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import { loadPredictor } from './predictor'

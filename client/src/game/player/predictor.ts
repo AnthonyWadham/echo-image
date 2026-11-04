@@ -1,6 +1,6 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
-import type { TargetSync } from '../projectile/target_sync_event'
+import type { TargetSync } from '../track/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import wasmUrl from './predictor.wasm?url'

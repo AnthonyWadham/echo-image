@@ -17,7 +17,7 @@ import { loadPredictor } from './game/player/predictor'
 import { ProjectileSyncEvent } from './game/projectile/projectile_sync_event'
 import type { ProjectileState } from './game/projectile/projectile_sync_event'
 import { newProjectileViews } from './game/projectile/projectile_view'
-import { TargetSyncEvent } from './game/projectile/target_sync_event'
+import { TargetSyncEvent } from './game/track/target_sync_event'
 import { showHome } from './game/ui/home'
 import { Hud } from './game/ui/hud'
 

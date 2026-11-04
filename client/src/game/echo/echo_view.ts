@@ -6,7 +6,7 @@ import type { Stage } from '../../engine/render/stage'
 import type { Timeline } from '../../engine/sync/timeline'
 import type { LocalPlayer } from '../player/local_player'
 import { TeamLooks } from '../team/team_look'
-import type { TargetState } from '../projectile/target_sync_event'
+import type { TargetState } from '../track/target_sync_event'
 import type { EchoState } from './echo_sync_event'
 
 // Shared by every view, so a view owns nothing to dispose.

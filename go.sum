@@ -43,8 +43,8 @@ github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op h1:1BOWQJweNyvZMl
 github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op/go.mod h1:FQyySiasQQM8735Ddel3MRojmy4dA1IqCeyJ5jmPMbI=
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
-github.com/argus-labs/world-engine v0.22.0-beta h1:9wIbhN/hgkW6NKs/b9MvK3qsbDTH9OdE/koYQ6Zkgs8=
-github.com/argus-labs/world-engine v0.22.0-beta/go.mod h1:eUelIQ73x0u59OB6OmF4XTuOc5hhiO3CXDvLrzdAlUs=
+github.com/argus-labs/world-engine v0.22.3-0.20261104062802-3ab4244504a0 h1:5hUBklAtU9beuaA8wdTolf6Z+Q3vnE5OPnnj/mAXd/U=
+github.com/argus-labs/world-engine v0.22.3-0.20261104062802-3ab4244504a0/go.mod h1:eUelIQ73x0u59OB6OmF4XTuOc5hhiO3CXDvLrzdAlUs=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5/go.mod h1:wHh0iHkYZB8zMSxRWpUBQtwG5a7fFgvEO+odwuTv2gs=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=

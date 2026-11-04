@@ -116,14 +116,16 @@ shards/game/
                                       dash_hook.go), Bind, Out — standard library and timestep only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
                                   flight_system.go (flies each shot, a predicted one at its client's
-                                  view, acts on what it meets), history_system.go (each target's
-                                  recent rows), target_sync_system.go (each tick's rows, for
-                                  predictors), sync_system.go, tuning.go (ProjectileTuning =
-                                  flight.Tuning), doc.go
-      component/  package component   Projectile, LaunchIntent, ShotEnded, TargetHistory — projectile's leaf
+                                  view, acts on what it meets), sync_system.go, tuning.go
+                                  (ProjectileTuning = flight.Tuning), doc.go
+      component/  package component   Projectile, LaunchIntent, ShotEnded — projectile's leaf
       flight/     package flight      one tick of a shot's flight and what it meets first: Tuning (shot
                                       types, the default rules), Launch, and Fly — no Cardinal import
-    track/    package track       lag compensation: tuning.go (TrackTuning = past.Tuning), doc.go
+    track/    package track       lag compensation: record_system.go (each tracked thing's row, once a
+                                  tick), sync_system.go (sends them as TargetSync), tuning.go
+                                  (TrackTuning = past.Tuning), doc.go
+      component/  package component   Track (the ring of a thing's rows; a constructor adds it) —
+                                      track's leaf
       past/       package past        the one record and view rule (Row, RowTicks, AtView, Across) and
                                       the Window a view may lag (Ticks, KeptRows, Clamp) — no Cardinal
                                       import
@@ -151,18 +153,19 @@ Current dependency direction (must stay acyclic): a feature's behavior package d
 the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feature>/component`** leaves
 it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
 team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
-ability/cast, combat/component, echo/component, projectile/component}`, `ability → {ability/hooks, ability/cast, team, netsync, player/component,
+ability/cast, combat/component, echo/component, projectile/component, track/component}`, `ability → {ability/hooks, ability/cast, team, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 interact, team, ref, netsync, combat/component, effect/component, player/component,
-projectile/component, projectile/flight, track/past}`, `area → {physics, interact, team, area/component,
+projectile/component, projectile/flight, track/component, track/past}`, `track → {interact, team, ref,
+netsync, combat/component, effect/component, track/component, track/past}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
 {physics, physics/timestep, interact, team, ref, netsync, echo/component, area/component,
-combat/component, player/component, effect/component, effect/status, projectile/component}`, `effect → {effect/component,
+combat/component, player/component, effect/component, effect/status, track/component}`, `effect → {effect/component,
 effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
 also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
-combat's and projectile's leaves import ability's leaf for `Cause`, and projectile's imports
+combat's and projectile's leaves import ability's leaf for `Cause`, and track's imports
 `track/past` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
@@ -372,7 +375,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     can't pick an older moment for each shot. An honest view only moves on (the render clock never
     steps back), so the predictor has no copy of this rule.
   - The map is now. It is never rewound.
-  - Each Body and Echo is where the views drew it (`TargetHistory`, `past.Across`). `flight.Reach`
+  - Each Body and Echo is where the views drew it (its `Track`, `past.Across`). `flight.Reach`
     finds them: a Box2D tree built each tick, one box per target around its kept rows and where it is
     now, so no speed bound (a dash, blink or landing stays in its box). The caster's own Body and
     Echo move as its client draws them: from their rows a tick ago to where they are now, its Body all
@@ -506,12 +509,12 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   before Cast), and a shot launched this tick moves this tick, its path starting at the shooter.
 - **`effect.ResolveSystem` runs after every system that reads status, just before the syncs.** What it
   adds applies from the next tick, and it drops what is over by then, so a whole tick reads one status.
-- **`projectile.HistorySystem` runs after `effect.ResolveSystem`, before the syncs.** Each Body's and
+- **`track.RecordSystem` runs after `effect.ResolveSystem`, before the syncs.** Each Body's and
   Echo's row is exactly what this tick's syncs show of it, its tags read for the next tick and its
   `Until` from its `Died`, so a predicted shot meets what its client drew. `FlightSystem` runs before
-  it, so a view can use rows up to the tick before (`TestTargetHistoryIsWhatSyncsShow`).
+  it, so a view can use rows up to the tick before (`TestTrackIsWhatSyncsShow`).
 - **Sync systems run last** (`player`, `echo`, `ability`, `projectile`, then
-  `projectile.TargetSyncSystem`), so each sends the tick's final state. Only `combat.DeathSystem` comes
+  `track.SyncSystem`), so each sends the tick's final state. Only `combat.DeathSystem` comes
   after them: it removes what died this tick, once each sync has sent it.
 
 ### Game data / definitions (`content.Load`)
@@ -557,7 +560,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   world-engine #915) and no automatic component sync.
 - **Each feature sends its own sync event** from its own `SyncSystem`, registered last:
   `player.BodySync`, `echo.EchoSync`, `ability.AbilitySync`, `projectile.ProjectileSync` and
-  `projectile.TargetSync`. Each goes to every player with `w.SendTo` every tick and is complete — an
+  `track.TargetSync`. Each goes to every player with `w.SendTo` every tick and is complete — an
   entity missing from it is gone or hidden — so joining or reconnecting needs nothing else. Clients
   interpolate each stream on `Tick * TickSeconds`. A new synced feature adds its own event and
   `SyncSystem`; `netsync` doesn't change.
@@ -654,7 +657,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from their rows (`LocalPlayer.echoRows`).
     The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
-    (`past.Row`: kind, side, circle, tags and `Until`) is its one record: `TargetHistory` keeps its
+    (`past.Row`: kind, side, circle, tags and `Until`) is its one record: its `Track` keeps its
     rows, and `TargetSync` sends each tick's, which is all your predictor reads to place targets. The
     predictor keeps as many ticks of them as the server keeps rows (`Window.KeptRows`) (`See`), and meets only
     targets that lived all of the newest sync's tick: one that died in it is gone on the server before

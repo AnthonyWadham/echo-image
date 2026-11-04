@@ -173,7 +173,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/history_system.go",
+     "file": "shards/game/internal/track/record_system.go",
      "old": "\t\t\trow.Until = until\n",
      "new": "\t\t\t_ = until\n"
     }
@@ -185,7 +185,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/history_system.go",
+     "file": "shards/game/internal/track/record_system.go",
      "old": "\t\tKind:   interact.Kind(shape.CategoryBits),\n",
      "new": ""
     }
@@ -197,7 +197,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/history_system.go",
+     "file": "shards/game/internal/track/record_system.go",
      "old": "\t\tSide:   team.SideOf(e),\n",
      "new": ""
     }
@@ -209,7 +209,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/target_sync_system.go",
+     "file": "shards/game/internal/track/sync_system.go",
      "old": "Kind: r.Kind, Owner: r.Side.Owner,",
      "new": "Kind: r.Kind, Owner: uint32(e.ID()),"
     }
@@ -310,9 +310,45 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/target_sync_system.go",
+     "file": "shards/game/internal/track/sync_system.go",
      "old": "\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n",
      "new": "\t\tif !ok || r.Until < 1 {\n\t\t\tcontinue\n\t\t}\n"
+    }
+   ]
+  },
+  {
+   "id": "LC2-R1",
+   "breaks": "ring slot off by one",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/component/track.go",
+     "old": "\tt.Rows = t.Rows.With(int(r.Tick%uint64(keep)), r)",
+     "new": "\tt.Rows = t.Rows.With(int((r.Tick+1)%uint64(keep)), r)"
+    }
+   ]
+  },
+  {
+   "id": "LC2-R2",
+   "breaks": "a resize drops a row",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/component/track.go",
+     "old": "for tick := r.Tick - min(r.Tick, uint64(keep-1)); tick < r.Tick; tick++ {",
+     "new": "for tick := r.Tick - min(r.Tick, uint64(keep-2)); tick < r.Tick; tick++ {"
+    }
+   ]
+  },
+  {
+   "id": "LC2-R3",
+   "breaks": "empty slots read as tick 0",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/component/track.go",
+     "old": "rows := cardinal.SliceOf(r).Repeat(keep)",
+     "new": "rows := cardinal.SliceOf(past.Row{}).Repeat(keep)"
     }
    ]
   },
@@ -692,7 +728,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/history_system.go",
+     "file": "shards/game/internal/track/record_system.go",
      "old": ".KeptRows())",
      "new": ".KeptRows()-1)"
     }

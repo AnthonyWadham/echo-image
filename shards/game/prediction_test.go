@@ -12,9 +12,9 @@ import (
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/predict"
-	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track"
 	"echo_image/shards/game/internal/track/past"
 	"fmt"
 	"maps"
@@ -68,7 +68,7 @@ func TestPredictedEchoMatchesServer(t *testing.T) {
 				f := alice.send(playercomp.InputFrame{MoveX: math.Cos(float64(i)), MoveY: math.Sin(float64(i))})
 				w.Tick()
 				p.Step(predictFrame(f))
-				e, ok := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), bodiesFor(t, w, "alice").You.Body)
+				e, ok := ownEcho(sentTo[track.TargetSync](t, w, "alice"), bodiesFor(t, w, "alice").You.Body)
 				want := box2d.Vec2{X: e.X, Y: e.Y}
 				if i == 0 {
 					first = want
@@ -113,14 +113,14 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 	p := predict.New(rules)
 	body := yourBody(t, bodiesFor(t, w, "alice")).EntityID
 	var ended []predict.Ended
-	var was projectile.TargetState // her Echo a tick before
+	var was track.TargetState // her Echo a tick before
 	for i := 0; len(ended) == 0; i++ {
 		if i == ticks(0.5) {
 			t.Fatal("her bolt never met her Echo")
 		}
 		before := bodiesFor(t, w, "alice")
-		see(t, p, sentTo[projectile.TargetSync](t, w, "alice"))
-		was, _ = ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), body)
+		see(t, p, sentTo[track.TargetSync](t, w, "alice"))
+		was, _ = ownEcho(sentTo[track.TargetSync](t, w, "alice"), body)
 		p.Reset(predictFrom(t, before))
 		f := playercomp.InputFrame{AimX: -1}
 		if i == 0 {
@@ -132,7 +132,7 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 		w.Tick()
 		requireEnded(t, fmt.Sprintf("step %d", i), ended, w.Emitted[projectilecomp.ShotEnded](), body)
 	}
-	e, _ := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), body)
+	e, _ := ownEcho(sentTo[track.TargetSync](t, w, "alice"), body)
 	end := ended[0].End
 	met := box2d.Vec2{X: was.X + (e.X-was.X)*end.Until, Y: was.Y + (e.Y-was.Y)*end.Until}
 	if end.Hit.Target != e.EntityID || math.Abs(end.At.X-end.Hit.Offset.X-met.X) > 1e-9 ||
@@ -158,7 +158,7 @@ func TestBodySyncSaysWhichSimItRuns(t *testing.T) {
 // one unacked, maybe none), and what the predictor gave after, as predictor.wasm returns it.
 type predictionStep struct {
 	Sync    player.BodySync
-	Targets projectile.TargetSync
+	Targets track.TargetSync
 	Frames  []playercomp.InputFrame
 	X, Y    float64          // your Body
 	Shots   []shotPrediction // your shots, in the predictor's order
@@ -269,7 +269,7 @@ func predictFrom(t *testing.T, s player.BodySync) predict.State {
 }
 
 // see gives p the targets a client's target_sync shows, as predictor.ts does.
-func see(t *testing.T, p *predict.Predictor, targets projectile.TargetSync) {
+func see(t *testing.T, p *predict.Predictor, targets track.TargetSync) {
 	t.Helper()
 	var sights []predict.Sight
 	for s := range overWire(t, targets).Targets.Values() {
@@ -282,13 +282,13 @@ func see(t *testing.T, p *predict.Predictor, targets projectile.TargetSync) {
 }
 
 // ownEcho is the row of Body body's Echo in targets.
-func ownEcho(targets projectile.TargetSync, body uint32) (projectile.TargetState, bool) {
+func ownEcho(targets track.TargetSync, body uint32) (track.TargetState, bool) {
 	for r := range targets.Targets.Values() {
 		if r.Kind == interact.Echo && r.Owner == body {
 			return r, true
 		}
 	}
-	return projectile.TargetState{}, false
+	return track.TargetState{}, false
 }
 
 // predictFrame is f as the predictor takes it.
@@ -342,7 +342,7 @@ func guessOf(p *predict.Predictor) guess {
 
 // requirePredicted fails unless g is the server's state in after and echoes: her Body, its Echo,
 // cooldowns and shots, and her effects unless something else put one on her this tick.
-func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, targets projectile.TargetSync,
+func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, targets track.TargetSync,
 	effects bool,
 ) {
 	t.Helper()
@@ -374,7 +374,7 @@ func requirePredicted(t *testing.T, at string, g guess, after player.BodySync, t
 }
 
 // record is p's state as predictor.wasm returns it, for the recording.
-func record(p *predict.Predictor, sync player.BodySync, targets projectile.TargetSync, frames []playercomp.InputFrame,
+func record(p *predict.Predictor, sync player.BodySync, targets track.TargetSync, frames []playercomp.InputFrame,
 	ended []predict.Ended,
 ) predictionStep {
 	s := p.State()
@@ -424,7 +424,7 @@ func TestDeadEchoIsNotPredicted(t *testing.T) {
 	f := alice.send(playercomp.InputFrame{MoveX: 1})
 	w.Tick()
 	p.Step(predictFrame(f))
-	requirePredicted(t, "the tick after", guessOf(p), bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"),
+	requirePredicted(t, "the tick after", guessOf(p), bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice"),
 		true)
 }
 
@@ -458,8 +458,8 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 			Buttons: uint32(rng.IntN(4))}
 	}
 	for i := range 2000 {
-		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
-		mine, mineOK := ownEcho(sentTo[projectile.TargetSync](t, w, "alice"), me)
+		before, targets := bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice")
+		mine, mineOK := ownEcho(sentTo[track.TargetSync](t, w, "alice"), me)
 		a, b := yourBody(t, before), yourBody(t, bodiesFor(t, w, "bob"))
 		see(t, p, targets)
 		if s := predictFrom(t, before); !p.Agrees(before.You.InputAck, s) {
@@ -474,7 +474,7 @@ func TestRandomPlayIsPredicted(t *testing.T) {
 			return uint32(d.Target) == mine.EntityID
 		})
 		at := fmt.Sprintf("seed %d, tick %d", s, i)
-		requirePredicted(t, at, guessOf(p), bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"), !died)
+		requirePredicted(t, at, guessOf(p), bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice"), !died)
 		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), me)
 	}
 }
@@ -566,7 +566,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		if i >= second-6 {
 			bob.move(0, 1) // up across her second bolt's path
 		}
-		before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
+		before, targets := bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice")
 		see(t, p, targets)
 		if s := predictFrom(t, before); !p.Agrees(before.You.InputAck, s) {
 			p.Reset(s)
@@ -590,7 +590,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		ends = append(ends, ended...)
 		alice.send(f)
 		w.Tick()
-		after, afterRows, at := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice"), fmt.Sprintf("step %d", i)
+		after, afterRows, at := bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice"), fmt.Sprintf("step %d", i)
 		requirePredicted(t, at, guessOf(p), after, afterRows, !surprised)
 		requireEnded(t, at, ended, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
 		run = append(run, record(p, before, targets, []playercomp.InputFrame{f}, ended))
@@ -640,7 +640,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		w.Tick()
 		p.Step(predictFrame(f))
 		requirePredicted(t, fmt.Sprintf("replayed frame %d", i+1), guessOf(p), bodiesFor(t, w, "alice"),
-			sentTo[projectile.TargetSync](t, w, "alice"), true)
+			sentTo[track.TargetSync](t, w, "alice"), true)
 		if shots := len(p.State().Shots); shots != 0 && i < 4 || shots != 1 && i >= 4 {
 			t.Fatalf("replayed frame %d: %d shots predicted, want her bolt from frame 5 only", i+1, shots)
 		}
@@ -731,7 +731,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, alice *client, bolt flight.Shot,
 ) []predictionStep {
 	t.Helper()
-	before, targets := bodiesFor(t, w, "alice"), sentTo[projectile.TargetSync](t, w, "alice")
+	before, targets := bodiesFor(t, w, "alice"), sentTo[track.TargetSync](t, w, "alice")
 	queue, gap := int(before.You.InputCap), strings.Repeat(".", ticks(0.2))
 	head := strings.Repeat(".", ticks(0.3)) + strings.Repeat("h", queue+2) + "." + strings.Repeat("0", queue-1) +
 		strings.Repeat(".", ticks(0.3))
@@ -838,7 +838,7 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, al
 		}
 		dropped += max(int(applied-ack)-1, 0)
 		// A replay from before a surprise is stale; any other is the server's state once its frame applies.
-		rows, ends := sentTo[projectile.TargetSync](t, w, "alice"), w.Emitted[projectilecomp.ShotEnded]()
+		rows, ends := sentTo[track.TargetSync](t, w, "alice"), w.Emitted[projectilecomp.ShotEnded]()
 		waiting := open[:0]
 		for _, r := range open {
 			switch {
@@ -862,7 +862,7 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, al
 			}
 		}
 		open = waiting
-		before, targets = after, sentTo[projectile.TargetSync](t, w, "alice")
+		before, targets = after, sentTo[track.TargetSync](t, w, "alice")
 	}
 	if exact < len(script) || deep == 0 || deepHits == 0 || deepMisses == 0 || coasts < 3 || dropped == 0 ||
 		corrected == 0 || replays < 2 {

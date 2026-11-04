@@ -14,7 +14,7 @@ import (
 
 // Row is a target as one tick's syncs show it: what it is, whose, where, its size, and the tags its
 // effects give it from the next tick on, as that tick's rules read them. It is the one record of a
-// target: TargetHistory keeps its rows, and the target sync sends each tick's.
+// target: its Track keeps its rows, and the target sync sends each tick's.
 type Row struct {
 	Tick   uint64
 	Kind   interact.Kind

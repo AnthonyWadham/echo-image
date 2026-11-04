@@ -3,7 +3,7 @@ module echo_image
 go 1.27.1
 
 require (
-	github.com/argus-labs/world-engine v0.22.0-beta
+	github.com/argus-labs/world-engine v0.22.3-0.20261104062802-3ab4244504a0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0

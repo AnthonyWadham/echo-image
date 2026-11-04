@@ -66,7 +66,7 @@ type ShotState struct {
 	Remaining    float64 // distance left before it expires
 }
 
-// BodyState is what a player Body's row in projectile.TargetSync lacks: who plays it and how it looks.
+// BodyState is what a player Body's row in track.TargetSync lacks: who plays it and how it looks.
 // Its row has its team, spot, size and tags.
 type BodyState struct {
 	EntityID uint32

@@ -6,14 +6,10 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/internal/ref"
-	"echo_image/shards/game/internal/team"
 	"echo_image/shards/game/internal/track"
-	"echo_image/shards/game/internal/track/past"
 	"fmt"
 	"maps"
 	"math"
@@ -113,7 +109,7 @@ func TestKilledEchoLastsUntilTheShotReachesIt(t *testing.T) {
 		!touching(ended[0], got.X, got.Y, got.Radius) {
 		t.Fatalf("bob got his dying Echo %+v and shots ending %+v, want it at 0 HP until the shot touched it", got, ended)
 	}
-	if i := sentTo[projectile.TargetSync](t, w, "bob").Targets.IndexFunc(func(s projectile.TargetState) bool {
+	if i := sentTo[track.TargetSync](t, w, "bob").Targets.IndexFunc(func(s track.TargetState) bool {
 		return s.Serial == got.Serial && s.Until == got.Until
 	}); i < 0 {
 		t.Fatalf("bob's target_sync doesn't show his dying Echo until %v", got.Until)
@@ -560,59 +556,6 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	w.Tick()
 	if got := echoOf(t, w, "alice", body); got.HP != got.MaxHP-shot.Damage {
 		t.Fatalf("bob's Echo HP = %v, want %v: the shot missed where it is now", got.HP, got.MaxHP-shot.Damage)
-	}
-}
-
-// Each Body and Echo keeps the rows every view the track window allows is drawn from (KeptRows), one per tick,
-// and its newest row is what this tick's target_sync shows of it: what screens draw, and what predictors
-// place it by, as the server's shots meet it. body_sync and echo_sync send only what rows lack.
-func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
-	w, _, bob, fx := fxDuel(t)
-	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 3})
-	keep := int(tuningOf[track.TrackTuning](t).Window.KeptRows())
-	stunned := false
-	newest := func(id uint32) []past.Row {
-		return slices.Collect(w.Entity(cardinal.EntityID(id)).Get[projectilecomp.TargetHistory]().Rows.Values())
-	}
-	check := func(what string, rows []past.Row, want past.Row, full bool) {
-		t.Helper()
-		if len(rows) == 0 || len(rows) > keep || full && len(rows) != keep || rows[len(rows)-1] != want {
-			t.Fatalf("%s: %d rows ending %v, want %d ending %+v", what, len(rows), rows[max(len(rows)-1, 0):], keep, want)
-		}
-		for i, r := range rows {
-			if r.Tick != want.Tick-uint64(len(rows)-1-i) {
-				t.Fatalf("%s: row %d is tick %d, want one row per tick up to %d", what, i, r.Tick, want.Tick)
-			}
-		}
-	}
-	for i := range keep + 4 {
-		bob.move(0, 1) // stunned at first, then he walks
-		w.Tick()
-		bodies, echoes := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice")
-		targets := sentTo[projectile.TargetSync](t, w, "alice")
-		if targets.Tick != bodies.Tick || targets.Targets.Len() != bodies.Bodies.Len()+echoes.Echoes.Len() {
-			t.Fatalf("target_sync %+v, want tick %d's %d Bodies and Echoes", targets, bodies.Tick,
-				bodies.Bodies.Len()+echoes.Echoes.Len())
-		}
-		for s := range targets.Targets.Values() {
-			stunned = stunned || s.Kind == interact.Body && s.Tags&interact.Stunned != 0
-			e := w.Entity(cardinal.EntityID(s.EntityID))
-			check(fmt.Sprintf("target %d", s.EntityID), newest(s.EntityID), past.Row{Tick: targets.Tick, Kind: s.Kind,
-				Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y}, Radius: s.Radius,
-				Tags: s.Tags, Until: s.Until}, i >= keep)
-			if s.Serial != e.Get[ref.Spawn]().Serial || s.Owner != uint32(e.Get[team.Owner]().Body) {
-				t.Fatalf("target_sync sent %+v, want its serial and owner", s)
-			}
-		}
-		for b := range bodies.Bodies.Values() { // what the rows lack, of each
-			rowOf(t, w, "alice", b.Serial)
-		}
-		for e := range echoes.Echoes.Values() {
-			rowOf(t, w, "alice", e.Serial)
-		}
-	}
-	if !stunned {
-		t.Fatal("no sync showed bob stunned")
 	}
 }
 

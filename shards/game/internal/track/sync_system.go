@@ -1,33 +1,33 @@
-package projectile
+package track
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
 	"echo_image/shards/game/internal/netsync"
-	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/ref"
+	"echo_image/shards/game/internal/track/component"
 )
 
-// targetSyncRow is a target players may be sent.
-type targetSyncRow struct {
-	Spawn   ref.Spawn
-	History component.TargetHistory
+// syncRow is a tracked thing players may be sent.
+type syncRow struct {
+	Spawn ref.Spawn
+	Track component.Track
 }
 
-// TargetSyncSystem (Update, after HistorySystem) sends each player the targets they may see, each as the
-// row HistorySystem saved this tick, so their predictor places them as FlightSystem does. O(T) to
-// collect, then one send per player.
-type TargetSyncSystem struct{}
+// SyncSystem (Update, after RecordSystem, last of the syncs) sends each player the tracked things they
+// may see, each as the row RecordSystem recorded this tick, so their screen draws it and their predictor
+// places it as the server's judges do. O(T) to collect, then one send per player.
+type SyncSystem struct{}
 
-func (s *TargetSyncSystem) Run(w *cardinal.World) {
+func (s *SyncSystem) Run(w *cardinal.World) {
 	viewers := netsync.Viewers(w)
 	if len(viewers) == 0 {
 		return
 	}
 	tick := w.TickHeight()
 	var targets netsync.Items[TargetState]
-	for e := range w.Contains[targetSyncRow]().Iter() {
-		r, ok := e.Get[component.TargetHistory]().At(tick)
+	for e := range w.Contains[syncRow]().Iter() {
+		r, ok := e.Get[component.Track]().At(tick)
 		if !ok {
 			continue
 		}

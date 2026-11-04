@@ -65,13 +65,13 @@ the claim model (problem 3).
 
 ### 3. Targets keep their recent rows
 
-- **What:** every target (each Body and Echo) carries `TargetHistory`: its last 5 rows at 20 Hz, 15 at
-  60 Hz (`Window.KeptRows`), oldest first: those every view 0.25 s back (5 ticks at 20 Hz) is drawn
-  from. A row (`past.Row`) is
+- **What:** every target (each Body and Echo) carries a `Track`: a ring of its last 5 rows at 20 Hz,
+  15 at 60 Hz (`Window.KeptRows`), one slot per tick: those every view 0.25 s back (5 ticks at 20 Hz)
+  is drawn from. A row (`past.Row`) is
   its tick, kind, side (owner and team), center, radius, tags and `Until`. It is the target's one
   record: the server judges by it, and the target sync sends it.
-- **How:** `projectile.HistorySystem` (Update, after `effect.ResolveSystem`, before the syncs) writes
-  this tick's row, which is exactly what this tick's syncs show, with `Until` from `Died`.
+- **How:** `track.RecordSystem` (Update, after `effect.ResolveSystem`, before the syncs) writes
+  this tick's row in place, which is exactly what this tick's syncs show, with `Until` from `Died`.
 - **Why:** the server must know where a target was when you saw it. A component is snapshot-safe and
   dies with its entity.
 
@@ -90,9 +90,9 @@ the claim model (problem 3).
 
 ### 5. One target sync
 
-- **What:** `projectile.TargetSync` sends each player every target it may see, each as this tick's row
+- **What:** `track.TargetSync` sends each player every target it may see, each as this tick's row
   (`TargetState`), every tick. Your predictor reads only it to place targets.
-- **How:** `projectile.TargetSyncSystem` runs after `HistorySystem`, with the other syncs, through
+- **How:** `track.SyncSystem` runs after `RecordSystem`, with the other syncs, through
   `netsync`. The client's render clock waits for it like any timeline (`LocalPlayer.bodyRows`, `echoRows`), so the
   predictor has the rows of every view you draw. It feeds the predictor once a body_sync says the shard
   runs your sim.
@@ -133,8 +133,7 @@ the claim model (problem 3).
 - **Why:** the server's own query decides every hit, on every tick's path, so no hit hangs on a
   message arriving, and blockers are always checked.
 - **Cost:** per shot per tick, one map cast, one tree query, and up to two pair casts per Body or
-  Echo found. Building the tree is O(T·W) a tick for T targets keeping W rows,
-  as `HistorySystem` already pays.
+  Echo found. Building the tree is O(T·W) a tick for T targets keeping W rows.
 
 ### 7. The predictor flies your shots the same way
 
@@ -219,7 +218,7 @@ the claim model (problem 3).
   after NaN too; a wall in front stops the shot, on no target; Echo shots hit live; allies are passed; a
   shot that stops on your own Echo (test content) meets it where you draw it, now, on the server and in
   your predictor alike. Each target's newest row is what its syncs show, kind, side and death time
-  included, and `TargetSync` sends exactly that row (`TestTargetHistoryIsWhatSyncsShow`,
+  included, and `TargetSync` sends exactly that row (`TestTrackIsWhatSyncsShow`,
   `TestKilledEchoLastsUntilTheShotReachesIt`).
 - **Prediction:** `TestPredictionMatchesServer` checks each step's and each replay's ends against the
   server's `ShotEnded`, bit for bit, with bob walking across alice's second bolt at a fractional view.
@@ -243,14 +242,17 @@ the claim model (problem 3).
 ## Appendix: where things live
 
 - Shot flight and rules: `shards/game/internal/projectile/flight/flight.go` (`Fly`),
-  `shards/game/internal/projectile/flight/view.go` (`Row`, `AtView`, `Across`, `View`, `Fly`),
+  `shards/game/internal/projectile/flight/view.go` (`Fly`),
   `shards/game/internal/projectile/flight/tuning.go`.
 - Shot systems: `shards/game/internal/projectile/flight_system.go`,
-  `shards/game/internal/projectile/launch_system.go`,
-  `shards/game/internal/projectile/history_system.go`,
-  `shards/game/internal/projectile/target_sync_system.go` (`TargetSync` in `target_sync_event.go`).
+  `shards/game/internal/projectile/launch_system.go`.
 - Shot components: `shards/game/internal/projectile/component/` (`Projectile`, `LaunchIntent`,
-  `ShotEnded`, `TargetHistory`).
+  `ShotEnded`).
+- Track: `shards/game/internal/track/past/view.go` (`Row`, `AtView`, `Across`),
+  `shards/game/internal/track/past/window.go` (`Window`, `Clamp`),
+  `shards/game/internal/track/component/track.go` (`Track`),
+  `shards/game/internal/track/record_system.go`,
+  `shards/game/internal/track/sync_system.go` (`TargetSync` in `target_sync_event.go`).
 - Input: `shards/game/internal/player/component/input.go` (`InputFrame`, `InputQueue.View`).
 - Syncs: `shards/game/internal/player/sync_system.go`, `shards/game/internal/projectile/sync_system.go`,
   `shards/game/internal/echo/sync_system.go`.
@@ -259,6 +261,7 @@ the claim model (problem 3).
   `client/src/engine/render/entity_views.ts`, `client/src/game/player/predictor.ts`,
   `client/src/game/player/prediction.ts`, `client/src/game/player/local_player.ts`,
   `client/src/game/player/input_command.ts`, `client/src/game/projectile/projectile_sync_event.ts`,
-  `client/src/game/projectile/target_sync_event.ts`.
+  `client/src/game/track/target_sync_event.ts`.
 - Tests: `shards/game/*_test.go`, `shards/game/internal/projectile/flight/view_test.go`,
+  `shards/game/internal/track/past/view_test.go`, `shards/game/internal/track/component/track_test.go`,
   `shards/game/testdata/`, and the client `*.test.ts` files above.

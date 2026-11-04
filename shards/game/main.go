@@ -20,6 +20,7 @@ import (
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
+	"echo_image/shards/game/internal/track"
 )
 
 func main() {
@@ -55,6 +56,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	echo.RegisterTypes(world)
 	ability.RegisterTypes(world)
 	projectile.RegisterTypes(world)
+	track.RegisterTypes(world)
 	combat.RegisterTypes(world)
 	effect.RegisterTypes(world)
 	area.RegisterTypes(world)
@@ -125,16 +127,16 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
 	world.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})
 
-	// Target history (Update, after everything that moves, kills or tags a Body or Echo, before the
-	// syncs): each saves what this tick's syncs show of it, so a predicted shot meets it at its client's view.
-	world.RegisterSystem(&projectile.HistorySystem{Window: c.track.Window})
+	// Tracks (Update, after everything that moves, kills or tags a Body or Echo, before the syncs): each
+	// records what this tick's syncs show of it, so a predicted shot meets it at its client's view.
+	world.RegisterSystem(&track.RecordSystem{Window: c.track.Window})
 
 	// Client sync (Update): each feature sends each player this tick's final state it may see.
 	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})
 	world.RegisterSystem(&echo.SyncSystem{})
 	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities})
 	world.RegisterSystem(&projectile.SyncSystem{})
-	world.RegisterSystem(&projectile.TargetSyncSystem{})
+	world.RegisterSystem(&track.SyncSystem{})
 
 	// Deaths (Update, last): what died this tick goes, after each sync sent it once more.
 	world.RegisterSystem(&combat.DeathSystem{})

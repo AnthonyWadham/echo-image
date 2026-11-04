@@ -9,7 +9,7 @@ export const BodyKind = 2n
 export const EchoKind = 4n
 
 /**
- * projectile.TargetSync: shards/game/internal/projectile/target_sync_event.go. Screens draw every Body and
+ * track.TargetSync: shards/game/internal/track/target_sync_event.go. Screens draw every Body and
  * Echo from its rows, and your predictor places them by it.
  */
 export interface TargetSync {
@@ -17,7 +17,7 @@ export interface TargetSync {
   Targets: TargetState[]
 }
 
-/** projectile.TargetState: a target's row this tick, the record the server's shots meet it by. */
+/** track.TargetState: a tracked thing's row this tick, the record the server's shots meet it by. */
 export interface TargetState {
   EntityID: number // uint32: names it in this tick's syncs
   Serial: bigint // uint64: names it across ticks, as a newer entity can take its EntityID
