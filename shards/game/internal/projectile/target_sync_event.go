@@ -17,7 +17,7 @@ type TargetSync struct {
 // Name is the event name.
 func (TargetSync) Name() string { return "target_sync" }
 
-// TargetState is one target's row this tick (flight.Row), with its entity and serial.
+// TargetState is one target's row this tick (past.Row), with its entity and serial.
 type TargetState struct {
 	EntityID uint32
 	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID

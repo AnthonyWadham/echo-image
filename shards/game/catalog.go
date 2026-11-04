@@ -14,6 +14,7 @@ import (
 	"echo_image/shards/game/internal/effect"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/projectile"
+	"echo_image/shards/game/internal/track"
 )
 
 // catalog is every content file the shard reads, loaded once at boot. Each system gets the file it
@@ -25,19 +26,21 @@ type catalog struct {
 	shots     projectile.ProjectileTuning
 	effects   effect.EffectTuning
 	areas     area.AreaTuning
+	track     track.TrackTuning
 }
 
 // loadCatalog loads each file from fsys with content.Load, then checks the IDs one file names in
 // another. Any error fails the boot.
 func loadCatalog(fsys fs.FS) (catalog, error) {
 	var c catalog
-	var errs [6]error
+	var errs [7]error
 	c.movement, errs[0] = content.Load[player.MovementTuning](fsys)
 	c.echoes, errs[1] = content.Load[echo.EchoTuning](fsys)
 	c.abilities, errs[2] = content.Load[ability.AbilityTuning](fsys)
 	c.shots, errs[3] = content.Load[projectile.ProjectileTuning](fsys)
 	c.effects, errs[4] = content.Load[effect.EffectTuning](fsys)
 	c.areas, errs[5] = content.Load[area.AreaTuning](fsys)
+	c.track, errs[6] = content.Load[track.TrackTuning](fsys)
 	if err := errors.Join(errs[:]...); err != nil {
 		return c, err
 	}

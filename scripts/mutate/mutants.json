@@ -296,6 +296,11 @@
      "file": "shards/game/internal/projectile/flight/view.go",
      "old": "reach.tree.Query(path, math.MaxUint64,",
      "new": "reach.tree.Query(path, uint64(interact.Body),"
+    },
+    {
+     "file": "shards/game/internal/projectile/flight/view.go",
+     "old": "\t\"math\"\n\n\t\"github.com/argus-labs/world-engine/pkg/box2d\"",
+     "new": "\t\"github.com/argus-labs/world-engine/pkg/box2d\""
     }
    ]
   },
@@ -639,7 +644,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/view.go",
      "old": "t := view - (math.Ceil(view) - 1)",
      "new": "t := view - math.Floor(view)"
     }
@@ -651,7 +656,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/view.go",
      "old": "b := uint64(math.Ceil(view))",
      "new": "b := uint64(math.Floor(view)) + 1"
     }
@@ -663,7 +668,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/window.go",
      "old": "newest := max(float64(tick)-2, 1)",
      "new": "newest := max(float64(tick)-1, 1)"
     }
@@ -675,9 +680,9 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "return t.RewindTicks() + 1",
-     "new": "return t.RewindTicks()"
+     "file": "shards/game/internal/track/past/window.go",
+     "old": "return w.Ticks() + 1",
+     "new": "return w.Ticks()"
     }
    ]
   },
@@ -689,7 +694,7 @@
     {
      "file": "shards/game/internal/projectile/history_system.go",
      "old": ".KeptRows())",
-     "new": ".RewindTicks())"
+     "new": ".Ticks())"
     }
    ]
   },
@@ -700,8 +705,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "keep := p.content.Shots.KeptRows()",
-     "new": "keep := p.content.Shots.RewindTicks()"
+     "old": "keep := p.content.Track.Window.KeptRows()",
+     "new": "keep := p.content.Track.Window.Ticks()"
     }
    ]
   },
@@ -1143,7 +1148,7 @@
     {
      "file": "shards/game/internal/predict/predict.go",
      "old": "\t\t\t\tsight, ok := p.seen[tick][serial]\n\t\t\t\treturn sight.Row, ok\n",
-     "new": "\t\t\t\tfor _, x := range p.seen[tick] {\n\t\t\t\t\tif x.ID == n.ID {\n\t\t\t\t\t\treturn x.Row, true\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\treturn flight.Row{}, false\n"
+     "new": "\t\t\t\tfor _, x := range p.seen[tick] {\n\t\t\t\t\tif x.ID == n.ID {\n\t\t\t\t\t\treturn x.Row, true\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\treturn past.Row{}, false\n"
     }
    ]
   },
@@ -1381,8 +1386,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "view = p.content.Shots.View(view, s.Tick)",
-     "new": "view = p.content.Shots.View(view, p.start+1)"
+     "old": "view = p.content.Track.Window.Clamp(view, s.Tick)",
+     "new": "view = p.content.Track.Window.Clamp(view, p.start+1)"
     }
    ]
   },
@@ -1476,9 +1481,9 @@
    "check": "go60",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "timestep.Ticks(t.Rewind.Seconds())",
-     "new": "timestep.TicksAt(t.Rewind.Seconds(), 20)"
+     "file": "shards/game/internal/track/past/window.go",
+     "old": "timestep.Ticks(w.Seconds())",
+     "new": "timestep.TicksAt(w.Seconds(), 20)"
     }
    ]
   },
@@ -1664,13 +1669,13 @@
   },
   {
    "id": "F31-M1",
-   "breaks": "Equip after Cast: a Body can't cast the tick it's claimed",
+   "breaks": "AttachAbilities after Cast: a Body can't cast the tick it's claimed",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/main.go",
-     "old": "\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n",
-     "new": "\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.EquipSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
+     "old": "\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n",
+     "new": "\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
     }
    ]
   },
@@ -1976,6 +1981,11 @@
      "file": "shards/game/internal/echo/sync_system.go",
      "old": "\t\t\tEffects:  e.Get[effectcomp.Effects]().Shown(next),\n",
      "new": ""
+    },
+    {
+     "file": "shards/game/internal/echo/sync_system.go",
+     "old": "\tnext := w.TickHeight() + 1\n",
+     "new": ""
     }
    ]
   },
@@ -2033,9 +2043,9 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "func (r Rewind) Seconds() float64 { return r.InterpolationSeconds + r.QueueSeconds + r.PingSeconds }",
-     "new": "func (r Rewind) Seconds() float64 { return r.PingSeconds }"
+     "file": "shards/game/internal/track/past/window.go",
+     "old": "func (w Window) Seconds() float64 { return w.InterpolationSeconds + w.QueueSeconds + w.PingSeconds }",
+     "new": "func (w Window) Seconds() float64 { return w.PingSeconds }"
     }
    ]
   },
@@ -2045,9 +2055,9 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/tuning.go",
-     "old": "t.RewindTicks() < uint64(timestep.Ticks(r.InterpolationSeconds+r.QueueSeconds))+1",
-     "new": "t.RewindTicks() < 1"
+     "file": "shards/game/internal/track/past/window.go",
+     "old": "w.Ticks() < uint64(timestep.Ticks(w.InterpolationSeconds+w.QueueSeconds))+1",
+     "new": "w.Ticks() < 1"
     }
    ]
   },
@@ -2070,7 +2080,7 @@
    "edits": [
     {
      "file": "shards/game/predictor/main.go",
-     "old": "\t\t\treturn rules.Shots.Rewind.InterpolationSeconds\n",
+     "old": "\t\t\treturn rules.Track.Window.InterpolationSeconds\n",
      "new": "\t\t\treturn 0.1\n"
     }
    ]
@@ -2094,8 +2104,8 @@
    "edits": [
     {
      "file": "shards/game/internal/player/input_system.go",
-     "old": "\t\t\t\tbody.Set(q.Coast(tick, t.QueueStepFrames(), t.QueueCalmTicks(), t.BufferFrames()))\n",
-     "new": ""
+     "old": "\tfor body := range bodies.Iter() {\n\t\tq := body.Get[component.InputQueue]()\n\t\tif q.Pending.Len() == 0 {\n\t\t\tif q.Last.Seq != 0 && q.LastTick == tick-1 { // it just ran dry\n\t\t\t\tbody.Set(q.Coast(tick, t.QueueStepFrames(), t.QueueCalmTicks(), t.BufferFrames()))\n",
+     "new": "\tfor body := range bodies.Iter() {\n\t\tq := body.Get[component.InputQueue]()\n\t\tif q.Pending.Len() == 0 {\n\t\t\tif q.Last.Seq != 0 && q.LastTick == tick-1 { // it just ran dry\n\t\t\t\t_ = t\n"
     }
    ]
   },
@@ -2621,7 +2631,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/view.go",
      "old": "To: along(older, hasOlder, newer, end-d)}",
      "new": "To: along(older, hasOlder, newer, start-d)}"
     }
@@ -2633,7 +2643,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/view.go",
      "old": "start, end := max(d, 0), min(d+newer.Until, 1)",
      "new": "start, end := max(d, 0), min(d+1, 1)"
     }
@@ -2645,7 +2655,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/flight/view.go",
+     "file": "shards/game/internal/track/past/view.go",
      "old": "\tfor i := range spans {\n\t\tb := first + uint64(i)",
      "new": "\tfor i := range spans[:1] {\n\t\tb := first + uint64(i)"
     }

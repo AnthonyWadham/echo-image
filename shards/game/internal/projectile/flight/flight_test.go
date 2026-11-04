@@ -8,6 +8,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/track/past"
 )
 
 // Fly's End is where the shot's center was and when in the tick, from the sweep: on a hit, on a hit in
@@ -31,13 +32,13 @@ func TestFlyEndsWhereAndWhenTheSweepSays(t *testing.T) {
 		{"its range", 0, 0.3, 0.3, 0.3 / 0.75, 0},
 	} {
 		worldDef := box2d.DefaultWorldDef()
-		echo := Row{Kind: interact.Echo, Side: interact.Side{Owner: 7, Team: 1}, Center: box2d.Vec2{X: c.echo}, Radius: 0.5}
+		echo := past.Row{Kind: interact.Echo, Side: interact.Side{Owner: 7, Team: 1}, Center: box2d.Vec2{X: c.echo}, Radius: 0.5}
 		reach := NewReach()
 		if c.echo != 0 {
 			reach.Add(7, echo)
 		}
 		sights := func(key uint64) (Seen, bool) {
-			return Seen{ID: uint32(key), Spans: [2]Span{{Row: echo, End: 1, To: echo.Center}}}, true
+			return Seen{ID: uint32(key), Spans: [2]past.Span{{Row: echo, End: 1, To: echo.Center}}}, true
 		}
 		f := Flight{Velocity: box2d.Vec2{X: def.Speed}, Radius: def.Radius, Remaining: c.remaining}
 		_, end, over := tuning.Fly(box2d.NewWorld(&worldDef), def, f, interact.Side{Owner: 1}, reach, sights, dt)

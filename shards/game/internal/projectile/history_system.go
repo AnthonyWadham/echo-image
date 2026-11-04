@@ -11,8 +11,8 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/team"
+	"echo_image/shards/game/internal/track/past"
 )
 
 // historyRow is a target that keeps its rows.
@@ -27,13 +27,13 @@ type historyRow struct {
 // HistorySystem (Update, after effect.ResolveSystem, before the syncs) saves this tick's row of every
 // target, which is what this tick's syncs show of it. FlightSystem flies predicted shots against the
 // rows, at the view their client drew, and TargetSyncSystem sends them to the predictors. It keeps those
-// of every view rewind_seconds back (KeptRows). O(T·R) for T targets keeping R rows.
+// of every view the track window allows (KeptRows). O(T·R) for T targets keeping R rows.
 type HistorySystem struct {
-	Tuning ProjectileTuning
+	Window past.Window
 }
 
 func (s *HistorySystem) Run(w *cardinal.World) {
-	keep := int(s.Tuning.KeptRows())
+	keep := int(s.Window.KeptRows())
 	tick := w.TickHeight()
 	died := map[cardinal.EntityID]float64{}
 	for d := range w.SystemEvents[combatcomp.Died]() {
@@ -54,9 +54,9 @@ func (s *HistorySystem) Run(w *cardinal.World) {
 
 // rowOf is target e as it is at tick, living all of it: its first shape's kind and circle at its origin,
 // its side, and the tags its effects give it from the next tick on.
-func rowOf(e cardinal.Entity, tick uint64) flight.Row {
+func rowOf(e cardinal.Entity, tick uint64) past.Row {
 	shape := e.Get[physics2d.PhysicsBody2D]().Shapes.At(0)
-	return flight.Row{
+	return past.Row{
 		Tick:   tick,
 		Kind:   interact.Kind(shape.CategoryBits),
 		Side:   team.SideOf(e),

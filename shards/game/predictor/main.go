@@ -17,6 +17,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/predict"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track/past"
 )
 
 // simVersion is the echoimage.SimVersion of the tree this was built from: predictor.mjs stamps it with
@@ -35,7 +36,7 @@ func main() {
 		// interpolationSeconds is how far behind the newest tick the client draws others: the content's,
 		// so a shot's view is one the server allows.
 		"interpolationSeconds": js.FuncOf(func(js.Value, []js.Value) any {
-			return rules.Shots.Rewind.InterpolationSeconds
+			return rules.Track.Window.InterpolationSeconds
 		}),
 		"reset": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			p.Reset(state(args[0]))
@@ -133,7 +134,7 @@ func sights(list js.Value) []predict.Sight {
 		out = append(out, predict.Sight{
 			ID:     uint32(v.Get("EntityID").Int()),
 			Serial: uint64Of(v.Get("Serial")),
-			Row: flight.Row{
+			Row: past.Row{
 				Kind:   interact.Kind(uint64Of(v.Get("Kind"))),
 				Side:   interact.Side{Owner: uint32(v.Get("Owner").Int()), Team: uint8(v.Get("Team").Int())},
 				Center: box2d.Vec2{X: v.Get("X").Float(), Y: v.Get("Y").Float()},

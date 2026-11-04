@@ -122,8 +122,10 @@ shards/game/
                                   flight.Tuning), doc.go
       component/  package component   Projectile, LaunchIntent, ShotEnded, TargetHistory — projectile's leaf
       flight/     package flight      one tick of a shot's flight and what it meets first: Tuning (shot
-                                      types, the default rules, the rewind window), Launch, and Fly
-                                      with its view rule (Row, AtView, Across, View) — no Cardinal
+                                      types, the default rules), Launch, and Fly — no Cardinal import
+    track/    package track       lag compensation: tuning.go (TrackTuning = past.Tuning), doc.go
+      past/       package past        the one record and view rule (Row, RowTicks, AtView, Across) and
+                                      the Window a view may lag (Ticks, KeptRows, Clamp) — no Cardinal
                                       import
     effect/   package effect      timed effects on any entity: resolve_system.go (the one writer of
                                   Effects), tuning.go (EffectTuning = status.Tuning), doc.go
@@ -152,7 +154,7 @@ team, ref, netsync, player/component, player/motion, effect/component, effect/st
 ability/cast, combat/component, echo/component, projectile/component}`, `ability → {ability/hooks, ability/cast, team, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 interact, team, ref, netsync, combat/component, effect/component, player/component,
-projectile/component, projectile/flight}`, `area → {physics, interact, team, area/component,
+projectile/component, projectile/flight, track/past}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
 {physics, physics/timestep, interact, team, ref, netsync, echo/component, area/component,
 combat/component, player/component, effect/component, effect/status, projectile/component}`, `effect → {effect/component,
@@ -161,12 +163,12 @@ effect/status}`).
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
 also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
 combat's and projectile's leaves import ability's leaf for `Cause`, and projectile's imports
-`projectile/flight` for `Row`), so they're dependency *sinks*
+`track/past` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
 `interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`, and
 `physics/timestep` for hooks); and
-`ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
+`track/past`, `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
 predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
 `player/motion` for `InputFrame.Move`. `content` is a leaf too, standard library only (imported by
 package main, `predict` and the predictor for `FS` and `Load`); feature packages never import it — they
@@ -345,7 +347,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     of T targets keeping W rows.
 - **A shot meets each Body and Echo as it moves through the tick, as screens draw it.** A frame's
   shots fly a tick while its screen's view moves a tick, so a shot judged at view v meets each target
-  across views v to v + 1 (`flight.Across`): a span per pair of rows those views are drawn from,
+  across views v to v + 1 (`past.Across`): a span per pair of rows those views are drawn from,
   sliding as `AtView` places it, gone past its `Until`. The pair cast is in the target's frame as it
   moves (the shot's move less the target's), so a dash across the path meets the shot where the two
   paths cross, at any tick rate. A shot no frame cast (an Echo's) is judged at view T − 1: this tick,
@@ -357,11 +359,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   from the client:
   - The view is the applied frame's `ViewTick`, moved on by the ticks since on a tick with no new frame
     (`InputQueue.View`), then held to those whose tick's views are drawn from the rows kept
-    (`flight.Tuning.View`): no older than the rewind, no newer than two ticks before, whose views run
+    (`past.Window.Clamp`): no older than the window, no newer than two ticks before, whose views run
     to the newest row. An older view (a high ping) is judged at the oldest, so it must lead its shots
     but still hits.
-  - **The rewind is a budget, not a round number:** what an honest view lags, added up, in
-    `content/projectile/tuning.json`: `interpolation_seconds` (how far behind the newest tick the client
+  - **The window is a budget, not a round number:** what an honest view lags, added up, in
+    `content/track/tuning.json` (`window`): `interpolation_seconds` (how far behind the newest tick the client
     draws, which its render clock reads through the predictor, so both read one value), `queue_seconds`
     and the `ping_seconds` it favors. A cheat can't claim more than an honest player at that ping. The
     load fails unless the ping adds at least a tick.
@@ -370,14 +372,14 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     can't pick an older moment for each shot. An honest view only moves on (the render clock never
     steps back), so the predictor has no copy of this rule.
   - The map is now. It is never rewound.
-  - Each Body and Echo is where the views drew it (`TargetHistory`, `flight.Across`). `flight.Reach`
+  - Each Body and Echo is where the views drew it (`TargetHistory`, `past.Across`). `flight.Reach`
     finds them: a Box2D tree built each tick, one box per target around its kept rows and where it is
     now, so no speed bound (a dash, blink or landing stays in its box). The caster's own Body and
     Echo move as its client draws them: from their rows a tick ago to where they are now, its Body all
     the tick with its tags now.
   - The first thing met ends the shot now, and a payload becomes a `DamageIntent`. History is never
     rewritten.
-  - The predictor flies your shots with the same `flight.Fly` and `flight.Across`, from the target
+  - The predictor flies your shots with the same `flight.Fly` and `past.Across`, from the target
     syncs, so it gets the server's bits: no margin.
   - Plan and limits: `docs/research/favor-the-shooter.md`.
 - **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
@@ -562,9 +564,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **One rule draws and judges every view.** View v is drawn from the states at ticks ⌈v⌉ − 1 and ⌈v⌉,
   v − (⌈v⌉ − 1) of the way through the newer one's tick, so a whole tick is its own end; without both,
   nothing is drawn (`Timeline.sample`, then `blend`). The server and the predictor place targets by the
-  same rule (`flight.RowTicks`, `flight.AtView`, and `flight.Across` for a tick of views), and
+  same rule (`past.RowTicks`, `past.AtView`, and `past.Across` for a tick of views), and
   `testdata/view.json` pins the two sides together, to the bit (`TestViewFixture`,
-  `entity_views.test.ts`). The render clock draws the rewind's `interpolation_seconds`
+  `entity_views.test.ts`). The render clock draws the window's `interpolation_seconds`
   (`Timelines.interpolationSeconds`) behind the newest tick every timeline has, never past the tick
   before it: in a stall it waits there. It never steps back, and eases by time, not by frame
   (`Timelines.renderTick`). So the views a frame's shots fly across always have their rows, in the
@@ -574,7 +576,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   it lived), through `netsync.Items.AddGone`. The engine's `EntityViews` draws every entity with
   `blend`: one with `Until` below 1 moves at its own pace to its end, then goes, so it touches what it
   hit. An Echo killed in a tick comes in `TargetSync` the same way, with `Until` from its `Died`, so it
-  goes when the shot reaches it, and in `EchoSync` at HP 0. `flight.AtView` follows the same rule, so your
+  goes when the shot reaches it, and in `EchoSync` at HP 0. `past.AtView` follows the same rule, so your
   predictor drops it then too. Add `Until` to another entity's state when it needs the same.
 - **A shot that ended on a Body or Echo ends on it on every screen.** The hit was judged where the
   shooter's view had the target, but the victim's screen draws their Body ahead, and others draw it
@@ -652,21 +654,21 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from their rows (`LocalPlayer.echoRows`).
     The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
-    (`flight.Row`: kind, side, circle, tags and `Until`) is its one record: `TargetHistory` keeps its
+    (`past.Row`: kind, side, circle, tags and `Until`) is its one record: `TargetHistory` keeps its
     rows, and `TargetSync` sends each tick's, which is all your predictor reads to place targets. The
-    predictor keeps as many ticks of them as the server keeps rows (`KeptRows`) (`See`), and meets only
+    predictor keeps as many ticks of them as the server keeps rows (`Window.KeptRows`) (`See`), and meets only
     targets that lived all of the newest sync's tick: one that died in it is gone on the server before
     your next frame. The render clock waits for `TargetSync` like any timeline
     (`LocalPlayer.bodyRows`, `echoRows`), and it feeds the predictor only once a body_sync says the shard runs your
     sim. Shot code names no target kind but to find your own Echo, which your predictor places itself.
-    Each step meets them across its `ViewTick` and the next (`flight.Across`, from the rule
-    `EntityViews` draws with), held by the server's rule (`flight.Tuning.View`), and your Body and Echo
+    Each step meets them across its `ViewTick` and the next (`past.Across`, from the rule
+    `EntityViews` draws with), held by the server's rule (`past.Window.Clamp`), and your Body and Echo
     moving from where they were a step ago to where they are now, as your screen draws them (your Echo
     with its rows' tags). A shot that stops on one ends there, as it will on the server. `Step` returns the shots that ended (`predict.Ended`, with their `flight.End`),
     drawn with the same `blend` as everyone's. A replay after each body_sync is the same `Step`, so it
     ends a shot where the step did; a shot the server flew on comes back from `You.Shots`, and the end
     your frame drew for it is dropped (by key, when nothing replays). Views the predictor has no syncs
-    for (frames over the rewind ahead of your newest sync: a high ping or a deep queue) pass
+    for (frames over the window ahead of your newest sync: a high ping or a deep queue) pass
     Bodies and Echoes, while the server may still hit there.
   - **The predictor embeds `content.FS`** and loads it with `predict.Load`, through the shard's own
     `content.Load`.

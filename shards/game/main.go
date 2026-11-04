@@ -106,7 +106,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// it meets by its rules. A shot launched this tick moves this tick, so its path starts at the
 	// shooter.
 	world.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})
-	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Physics: physicsPlugin})
+	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Window: c.track.Window, Physics: physicsPlugin})
 
 	// Areas (Update): each area acts on the things overlapping its holder, by its rules. An Echo's
 	// anti-camp is one.
@@ -127,7 +127,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 
 	// Target history (Update, after everything that moves, kills or tags a Body or Echo, before the
 	// syncs): each saves what this tick's syncs show of it, so a predicted shot meets it at its client's view.
-	world.RegisterSystem(&projectile.HistorySystem{Tuning: c.shots})
+	world.RegisterSystem(&projectile.HistorySystem{Window: c.track.Window})
 
 	// Client sync (Update): each feature sends each player this tick's final state it may see.
 	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})

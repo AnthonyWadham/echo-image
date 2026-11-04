@@ -6,7 +6,6 @@
     {"kinds": ["body"], "do": "stop"},
     {"kinds": ["echo"], "relations": ["enemy"], "do": "stop", "payload": true}
   ],
-  "rewind": {"interpolation_seconds": 0.1, "queue_seconds": 0.05, "ping_seconds": 0.1},
   "shots": {
     "bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}
   }

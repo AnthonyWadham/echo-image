@@ -6,70 +6,20 @@ import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
 	"echo_image/shards/game/internal/interact"
+	"echo_image/shards/game/internal/track/past"
 )
-
-// Row is a target as one tick's syncs show it: what it is, whose, where, its size, and the tags its
-// effects give it from the next tick on, as that tick's rules read them. It is the one record of a
-// target: TargetHistory keeps its rows, and the target sync sends each tick's.
-type Row struct {
-	Tick   uint64
-	Kind   interact.Kind
-	Side   interact.Side
-	Center box2d.Vec2
-	Radius float64
-	Tags   interact.Tags
-	Until  float64 // the part of the tick it lived: 1, or when it died in it
-}
-
-// RowTicks is the ticks of the rows view v is drawn from: b - 1 and b = ⌈v⌉. v is t = v - (b - 1) of the
-// way through tick b, 0 < t <= 1, so a whole tick is its end. The client's Timeline.sample picks the
-// same two.
-func RowTicks(view float64) (older, newer uint64) {
-	b := uint64(math.Ceil(view))
-	return b - 1, b
-}
-
-// AtView is a target where view v showed it, from its rows at RowTicks(v), or false if it showed none.
-// It is newer, its row at b, drawn partway from older, its row at b - 1: t / newer.Until of the way, and
-// gone past newer.Until. With no row at b - 1 (it is new at b), it is newer as it is. This is the rule
-// the client draws by (EntityViews' blend); testdata/view.json pins the two together.
-func AtView(older Row, hasOlder bool, newer Row, view float64) (Row, bool) {
-	t := view - (math.Ceil(view) - 1)
-	if t > newer.Until {
-		return Row{}, false
-	}
-	newer.Center = along(older, hasOlder, newer, t)
-	return newer, true
-}
-
-// along is where a target drawn from its rows older to newer is t of the way through newer's tick, t at
-// most newer.Until: partway from older's center at its own pace, or at newer's with no older row.
-func along(older Row, hasOlder bool, newer Row, t float64) box2d.Vec2 {
-	if !hasOlder {
-		return newer.Center
-	}
-	return lerp(older.Center, newer.Center, t/newer.Until)
-}
 
 // lerp is k of the way from a to b.
 func lerp(a, b box2d.Vec2, k float64) box2d.Vec2 {
 	return box2d.Vec2{X: a.X + float64((b.X-a.X)*k), Y: a.Y + float64((b.Y-a.Y)*k)}
 }
 
-// Span is part of a shot's tick, Start to End (0 to 1), in which a target shows as Row, moving from
-// Row.Center to To at its own pace. One with End at most Start is empty.
-type Span struct {
-	Row
-	Start, End float64
-	To         box2d.Vec2
-}
-
 // Seen is a target as a shot's tick meets it: its entity and serial, and the spans of the tick it shows
-// in, one per pair of rows the tick is drawn from.
+// in, one per pair of rows the tick is drawn from (past.Across).
 type Seen struct {
 	ID     uint32
 	Serial uint64
-	Spans  [2]Span
+	Spans  [2]past.Span
 }
 
 // Shown reports whether s shows in any part of the tick.
@@ -84,31 +34,6 @@ func (s *Seen) Move(from, to box2d.Vec2) {
 		sp := &s.Spans[i]
 		sp.Center, sp.To = lerp(from, to, sp.Start), lerp(from, to, sp.End)
 	}
-}
-
-// Across is a target as views v to v + 1 show it, from row, its row at each tick: those views are what
-// a shot's tick judged at view v is drawn across, since a frame's shots fly a tick while the view moves
-// a tick. It has a span for each pair of rows those views are drawn from that shows it, from where
-// AtView places it as the span starts to where as it ends.
-func Across(v float64, row func(tick uint64) (Row, bool)) [2]Span {
-	var spans [2]Span
-	first := uint64(math.Floor(v)) + 1 // the newer row of the first pair
-	for i := range spans {
-		b := first + uint64(i)
-		newer, ok := row(b)
-		if !ok {
-			continue
-		}
-		older, hasOlder := row(b - 1)
-		d := float64(b-1) - v // when in the shot's tick b's views begin
-		start, end := max(d, 0), min(d+newer.Until, 1)
-		if !(end > start) {
-			continue
-		}
-		spans[i] = Span{Row: newer, Start: start, End: end, To: along(older, hasOlder, newer, end-d)}
-		spans[i].Center = along(older, hasOlder, newer, start-d)
-	}
-	return spans
 }
 
 // Sights returns the target reach knows by key as a shot's tick meets it, or false when it shows
@@ -128,7 +53,7 @@ func NewReach() *Reach {
 
 // Add adds the target sights knows by key, which a view can place where it is now or between any of its
 // kept rows.
-func (r *Reach) Add(key uint64, now Row, kept ...Row) {
+func (r *Reach) Add(key uint64, now past.Row, kept ...past.Row) {
 	lo, hi, radius := now.Center, now.Center, now.Radius
 	for _, row := range kept {
 		lo, hi, radius = box2d.Min(lo, row.Center), box2d.Max(hi, row.Center), max(radius, row.Radius)
@@ -136,19 +61,6 @@ func (r *Reach) Add(key uint64, now Row, kept ...Row) {
 	pad := box2d.Vec2{X: radius, Y: radius}
 	box := box2d.AABB{LowerBound: box2d.Sub(lo, pad), UpperBound: box2d.Add(hi, pad)}
 	r.tree.CreateProxy(box, uint64(now.Kind), key)
-}
-
-// View is the view a shot a client predicts is judged at on tick: the one its client drew, held to those
-// whose tick's views (Across) are drawn from the rows kept by then, RewindTicks before tick up to tick - 2,
-// whose views run to the newest row (and 1 at least, as rows start at tick 0). An older view is judged
-// at the oldest, so a high ping must lead its shots but still hits. A newer one, or one that isn't a
-// number, is judged at the newest.
-func (t Tuning) View(view float64, tick uint64) float64 {
-	newest := max(float64(tick)-2, 1)
-	if !(view <= newest) {
-		return newest
-	}
-	return max(view, float64(tick)-float64(t.RewindTicks()), 1)
 }
 
 // Fly flies f, a shot of type def from side, one tick of dt seconds. It meets the map in world as it is,

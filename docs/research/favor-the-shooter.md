@@ -11,9 +11,9 @@ the claim model (problem 3).
   15 units/s, 20 Hz), more with ping.
 - **The fix: the server judges your shot where your screen drew its targets (server rewind).**
   - Every input frame carries its **view**: the render tick on screen.
-  - The server keeps 0.4 s of each Body's and Echo's rows: where it was, and its tags.
+  - The server keeps 0.25 s of each Body's and Echo's rows: where it was, and its tags.
   - Each tick, the server flies each of your shots with `flight.Fly`: the map now, and each Body and
-    Echo as your views drew it across the tick, from its rows (`flight.Across`).
+    Echo as your views drew it across the tick, from its rows (`past.Across`).
   - Your predictor (the server's Go code, built to wasm) flies the same shot with the same code, from
     the same rows: the same end, to the bit.
 - **The client sends no hits.** The server finds every hit itself, every tick.
@@ -65,8 +65,9 @@ the claim model (problem 3).
 
 ### 3. Targets keep their recent rows
 
-- **What:** every target (each Body and Echo) carries `TargetHistory`: its last 9 rows (`KeptRows`),
-  oldest first: those every view 0.4 s back (8 ticks at 20 Hz) is drawn from. A row (`flight.Row`) is
+- **What:** every target (each Body and Echo) carries `TargetHistory`: its last 6 rows at 20 Hz, 16 at
+  60 Hz (`Window.KeptRows`), oldest first: those every view 0.25 s back (5 ticks at 20 Hz) is drawn
+  from. A row (`past.Row`) is
   its tick, kind, side (owner and team), center, radius, tags and `Until`. It is the target's one
   record: the server judges by it, and the target sync sends it.
 - **How:** `projectile.HistorySystem` (Update, after `effect.ResolveSystem`, before the syncs) writes
@@ -79,7 +80,7 @@ the claim model (problem 3).
 - **What:** view v is drawn from the rows at ticks b − 1 and b, for b = ⌈v⌉: it is v − (b − 1) of the
   way through tick b, so a whole tick is its own end. A target is its row at b, placed partway from its
   row at b − 1, or as it is when new at b. Without both ticks, nothing is drawn or placed.
-  `flight.RowTicks` picks the ticks and `flight.AtView` places it; the client's `Timeline.sample` and
+  `past.RowTicks` picks the ticks and `past.AtView` places it; the client's `Timeline.sample` and
   `blend` do the same.
 - **How:** `testdata/view.json` (`TestViewFixture`) holds targets over a few ticks and where views
   across them place each, as Go computes it. The client's `EntityViews` must draw them there, to the
@@ -113,21 +114,21 @@ the claim model (problem 3).
   - A view never goes back. A frame's view below the largest one applied, or NaN, is taken at that one
     (`InputQueue.ViewFloor`, from 0, kept across sessions). Your render clock never steps back, so an
     honest view never trips it, and the predictor has no copy of it.
-  - `flight.Tuning.View` holds it to the views whose tick's views the rows kept are drawn from: no
-    older than 8 ticks, no newer than the tick − 2, whose views run to the newest row. An older view (a
+  - `past.Window.Clamp` holds it to the views whose tick's views the rows kept are drawn from: no
+    older than 5 ticks at 20 Hz, no newer than the tick − 2, whose views run to the newest row. An older view (a
     high ping) is judged at the oldest: you must lead your shots, but you still hit. NaN and the
     infinities can't leave the window.
   - The map is cast now. It is never rewound.
   - One query of `flight.Reach` finds the Bodies and Echoes that could be on it at the view: a Box2D
     tree (`box2d.DynamicTree`) built each tick, one box per target around its kept rows and where it is
     now. There is no speed bound: a dash, a blink or a landing stays inside its box (2026-11-01). Each
-    is pair-cast in its frame as it moves across the views v to v + 1 (`flight.Across`): a frame's
+    is pair-cast in its frame as it moves across the views v to v + 1 (`past.Across`): a frame's
     shots fly a tick while its screen's view moves a tick (F2, 2026-11-01). The caster's own Body and
     Echo move from where they were a tick ago to where they are now, as its predictor has them and its
     screen draws them. The Echo keeps its rows' tags, which both sides have.
   - The first thing met ends the shot, in `Fly`'s order: the nearer, then the earlier rule, then the
     map, then the lower ID. A payload becomes a `DamageIntent`. History is never rewritten.
-- **The same bits as the predictor, so no margin.** Both run `flight.Fly` with `flight.Across` from
+- **The same bits as the predictor, so no margin.** Both run `flight.Fly` with `past.Across` from
   the same rows. `TestPredictionMatchesServer` guards it.
 - **Why:** the server's own query decides every hit, on every tick's path, so no hit hangs on a
   message arriving, and blockers are always checked.
@@ -172,7 +173,8 @@ the claim model (problem 3).
 
 ### 9. Content (unchanged)
 
-- **What:** `rewind` in the projectile tuning, a budget (2026-11-01): `interpolation_seconds` 0.1 +
+- **What:** `window` in the track tuning (`content/track/tuning.json`, moved from the projectile tuning's
+  `rewind` 2026-11-03), a budget (2026-11-01): `interpolation_seconds` 0.1 +
   `queue_seconds` 0.05 + `ping_seconds` 0.1, so 0.25 s (it was a flat 0.4 s). The predictor loads it
   too, and the client's render clock draws `interpolation_seconds` behind.
 - `max_target_speed` is gone (2026-11-01): each target's rows bound how far it moved, so no speed

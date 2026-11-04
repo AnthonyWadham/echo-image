@@ -55,7 +55,7 @@ export interface Stepped {
 export interface Predictor {
   /** The sim it runs: the SimVersion a shard built from the same tree sends. */
   readonly version: string
-  /** How far behind the newest tick to draw others: the content's, which the server's rewind allows. */
+  /** How far behind the newest tick to draw others: the content's, which the server's track window allows. */
   readonly interpolationSeconds: number
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync): void

@@ -24,6 +24,7 @@ import (
 	"echo_image/shards/game/internal/physics/timestep"
 	"echo_image/shards/game/internal/player/motion"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track/past"
 )
 
 // Content is the content the predictor runs: the server's own files, loaded as the shard loads them.
@@ -31,16 +32,18 @@ type Content struct {
 	Abilities cast.Tuning
 	Shots     flight.Tuning
 	Effects   status.Tuning
+	Track     past.Tuning
 }
 
 // Load reads Content from fsys, the content embed.FS, with content.Load, as the shard does: each file
 // decoded strictly, the hooks bound, then each checked.
 func Load(fsys fs.FS) (Content, error) {
 	var c Content
-	var errs [3]error
+	var errs [4]error
 	c.Abilities, errs[0] = content.Load[cast.Tuning](fsys)
 	c.Shots, errs[1] = content.Load[flight.Tuning](fsys)
 	c.Effects, errs[2] = content.Load[status.Tuning](fsys)
+	c.Track, errs[3] = content.Load[past.Tuning](fsys)
 	return c, errors.Join(errs[:]...)
 }
 
@@ -101,7 +104,7 @@ type Frame struct {
 type Sight struct {
 	ID     uint32
 	Serial uint64
-	flight.Row
+	past.Row
 }
 
 // Predictor steps your Body one tick per frame from the last State. Its world has no map yet; walls
@@ -141,7 +144,7 @@ func (p *Predictor) See(tick uint64, sights []Sight) {
 		at[s.Serial] = s
 	}
 	p.seen[tick], p.newest = at, max(p.newest, tick)
-	keep := p.content.Shots.KeptRows()
+	keep := p.content.Track.Window.KeptRows()
 	for t := range p.seen {
 		if t+keep <= tick {
 			delete(p.seen, t)
@@ -155,14 +158,14 @@ func (p *Predictor) Forget() {
 	p.newest = 0
 }
 
-// sights is each target still there across the views a frame at view is drawn over (flight.Across), view
-// held as the server holds it (flight.Tuning.View), for your shots to meet as FlightSystem judges them:
+// sights is each target still there across the views a frame at view is drawn over (past.Across), view
+// held as the server holds it (past.Window.Clamp), for your shots to meet as FlightSystem judges them:
 // your Body moving from prev to where it is now, all the tick with your tags st, and your Echo as you
 // predict it (Echo). It returns no reach when a target sync of those views isn't here: then your shots
 // meet no target.
 func (p *Predictor) sights(view float64, prev box2d.Vec2, st status.Status) (*flight.Reach, flight.Sights) {
 	s := &p.state
-	view = p.content.Shots.View(view, s.Tick)
+	view = p.content.Track.Window.Clamp(view, s.Tick)
 	for t := uint64(math.Floor(view)); t <= uint64(math.Ceil(view))+1; t++ {
 		if _, ok := p.seen[t]; !ok {
 			return nil, nil
@@ -175,16 +178,16 @@ func (p *Predictor) sights(view float64, prev box2d.Vec2, st status.Status) (*fl
 			continue
 		}
 		v := flight.Seen{ID: n.ID, Serial: serial}
-		var kept []flight.Row
+		var kept []past.Row
 		switch {
 		case n.ID == s.Body:
-			row := flight.Row{Kind: n.Kind, Side: interact.Side{Owner: s.Body, Team: s.Team}, Radius: s.Radius,
+			row := past.Row{Kind: n.Kind, Side: interact.Side{Owner: s.Body, Team: s.Team}, Radius: s.Radius,
 				Tags: st.Tags, Until: 1}
-			v.Spans[0] = flight.Span{Row: row, End: 1}
+			v.Spans[0] = past.Span{Row: row, End: 1}
 			v.Move(prev, s.Center)
-			kept = append(kept, flight.Row{Center: prev, Radius: s.Radius}, flight.Row{Center: s.Center, Radius: s.Radius})
+			kept = append(kept, past.Row{Center: prev, Radius: s.Radius}, past.Row{Center: s.Center, Radius: s.Radius})
 		default:
-			v.Spans = flight.Across(view, func(tick uint64) (flight.Row, bool) {
+			v.Spans = past.Across(view, func(tick uint64) (past.Row, bool) {
 				sight, ok := p.seen[tick][serial]
 				return sight.Row, ok
 			})
@@ -195,7 +198,7 @@ func (p *Predictor) sights(view float64, prev box2d.Vec2, st status.Status) (*fl
 			}
 			if hasEcho && n.Kind == interact.Echo && n.Side.Owner == s.Body {
 				v.Move(echoPrev, echo)
-				kept = append(kept, flight.Row{Center: echoPrev, Radius: n.Radius}, flight.Row{Center: echo, Radius: n.Radius})
+				kept = append(kept, past.Row{Center: echoPrev, Radius: n.Radius}, past.Row{Center: echo, Radius: n.Radius})
 			}
 		}
 		if v.Shown() {

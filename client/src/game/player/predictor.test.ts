@@ -51,8 +51,8 @@ const stepAll = (frames: InputFrame[]) => {
 }
 
 test("plays the run's content: its render delay too", () => {
-  const projectile = JSON.parse(content['projectile/tuning.json']!) as { rewind: { interpolation_seconds: number } }
-  expect(predictor.interpolationSeconds).toBe(projectile.rewind.interpolation_seconds)
+  const track = JSON.parse(content['track/tuning.json']!) as { window: { interpolation_seconds: number } }
+  expect(predictor.interpolationSeconds).toBe(track.window.interpolation_seconds)
 })
 
 test("runs this tree's sim: the version a shard built from it sends", () => {

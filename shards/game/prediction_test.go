@@ -15,6 +15,7 @@ import (
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track/past"
 	"fmt"
 	"maps"
 	"math"
@@ -272,7 +273,7 @@ func see(t *testing.T, p *predict.Predictor, targets projectile.TargetSync) {
 	t.Helper()
 	var sights []predict.Sight
 	for s := range overWire(t, targets).Targets.Values() {
-		sights = append(sights, predict.Sight{ID: s.EntityID, Serial: s.Serial, Row: flight.Row{
+		sights = append(sights, predict.Sight{ID: s.EntityID, Serial: s.Serial, Row: past.Row{
 			Kind: s.Kind, Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y},
 			Radius: s.Radius, Tags: s.Tags, Until: s.Until,
 		}})
@@ -489,8 +490,8 @@ var recorded = map[string]string{
 		"bolt": {"cooldown_seconds": 2.0, "aimed": true, "hook": "launch", "params": {"shot": "bolt"}},
 		"dash": {"cooldown_seconds": 6.0, "aimed": true, "hook": "dash",
 			"params": {"distance": 6.0, "seconds": 0.3, "effect": "dash"}}}}`,
-	"projectile/tuning.json": `{"rewind": {"interpolation_seconds": 0.125, "queue_seconds": 0.05, "ping_seconds": 0.225},
-		"shots": {"bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}}}`,
+	"projectile/tuning.json": `{"shots": {"bolt": {"speed": 15.0, "range": 20.0, "radius": 0.15, "damage": 25}}}`,
+	"track/tuning.json":      `{"window": {"interpolation_seconds": 0.125, "queue_seconds": 0.05, "ping_seconds": 0.225}}`,
 	"effect/tuning.json": `{"kinds": {
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
 		"stun": {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
@@ -874,24 +875,24 @@ func badNetwork(t *testing.T, w *cardinal.TestWorld, p, q *predict.Predictor, al
 }
 
 // The predictor sees a target only from the target syncs of every tick the views of a frame's tick are
-// drawn from (flight.Across), and only while the newest sync shows it alive. Otherwise her shot passes
+// drawn from (past.Across), and only while the newest sync shows it alive. Otherwise her shot passes
 // where her screen drew it. A hit ends her shot touching it where her screen drew it when they met, its
 // last tick at its speed (test content: a bolt that flies 0.75 units a tick at any rate).
 func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 	_, bolt := primary(t)
 	bolt.Speed = 0.75 * physics.ServerTickRateHz
-	rules, err := predict.Load(patched(t, deepRewind, map[string]string{
+	rules, err := predict.Load(patched(t, deepWindow, map[string]string{
 		"projectile/tuning.json": fmt.Sprintf(`{"shots": {"bolt": {"speed": %v}}}`, bolt.Speed),
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	step := bolt.Speed * physics.SecondsPerTick
-	rewind := rules.Shots.RewindTicks()
-	now := rewind + 4 // her state's tick: for her first frame the server keeps rows from tick 4
+	back := rules.Track.Window.Ticks()
+	now := back + 4 // her state's tick: for her first frame the server keeps rows from tick 4
 	// The enemy stands on her shot's path, or farther on it, or 2 units up off it, or dies halfway
 	// through a tick there. A newer one can take its ID, never its serial.
-	enemy := predict.Sight{ID: 7, Serial: 70, Row: flight.Row{Kind: interact.Body, Side: interact.Side{Owner: 7, Team: 1},
+	enemy := predict.Sight{ID: 7, Serial: 70, Row: past.Row{Kind: interact.Body, Side: interact.Side{Owner: 7, Team: 1},
 		Center: box2d.Vec2{X: 1}, Radius: 0.5, Until: 1}}
 	far, up, dying, newer := enemy, enemy, enemy, enemy
 	far.Center.X = 2
@@ -911,11 +912,11 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		return m
 	}
 	kept := map[uint64]*predict.Sight{}
-	for tick := range rewind + 1 {
+	for tick := range back + 1 {
 		kept[4+tick] = &enemy
 	}
 	keptUp := map[uint64]*predict.Sight{}
-	for tick := range rewind + 1 {
+	for tick := range back + 1 {
 		keptUp[4+tick] = map[bool]*predict.Sight{true: &farUp, false: &far}[tick < 2]
 	}
 	for _, c := range []struct {
@@ -958,7 +959,7 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		for i, buttons := range []uint32{1, 0} { // she casts, then holds, her view a tick on
 			_, stepEnded := p.Step(predict.Frame{Seq: uint32(i + 1), AimX: 1, Buttons: buttons, ViewTick: c.view + float64(i)})
 			if len(stepEnded) > 0 {
-				view = rules.Shots.View(c.view+float64(i), now+uint64(i)+1)
+				view = rules.Track.Window.Clamp(c.view+float64(i), now+uint64(i)+1)
 			}
 			ended = append(ended, stepEnded...)
 		}
@@ -972,15 +973,15 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		// Where her screen drew it when they met: at its tick's view, Until of the way on.
 		e := ended[0]
 		met := view + e.End.Until
-		older, newer := flight.RowTicks(met)
-		var o, n flight.Row
+		older, newer := past.RowTicks(met)
+		var o, n past.Row
 		if s := c.syncs[older]; s != nil && s.Serial == e.End.Hit.Serial {
 			o = s.Row
 		}
 		if s := c.syncs[newer]; s != nil {
 			n = s.Row
 		}
-		drawn, _ := flight.AtView(o, o != flight.Row{}, n, met)
+		drawn, _ := past.AtView(o, o != past.Row{}, n, met)
 		at, center := e.End.At, box2d.Sub(e.End.At, e.End.Hit.Offset)
 		// Box2D stops a cast a slop short of touching.
 		if box2d.Distance(center, drawn.Center) > 1e-9 ||

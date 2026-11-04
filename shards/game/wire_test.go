@@ -10,7 +10,7 @@ import (
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
-	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/internal/track/past"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -173,7 +173,7 @@ type viewSpot struct {
 
 // TestViewFixture pins where a view draws each target, which the client's screen draws by too
 // (client/src/engine/render/entity_views.test.ts), to the bit: a frame's shots meet them there. A view
-// draws the syncs at flight.RowTicks with flight.AtView, by serial, and nothing without both syncs, as
+// draws the syncs at past.RowTicks with past.AtView, by serial, and nothing without both syncs, as
 // the predictor places them.
 func TestViewFixture(t *testing.T) {
 	at := func(id uint32, serial uint64, x, y, until float64) viewTarget {
@@ -187,12 +187,12 @@ func TestViewFixture(t *testing.T) {
 		{12, []viewTarget{at(1, 11, 2.5, 1.3, 1), at(2, 12, 5, 5, 1), at(3, 13, -3, 4.1, 0.375), at(4, 15, -6, 1, 1)}},
 		{13, []viewTarget{at(1, 11, 3, 3.3, 1), at(2, 12, 5.5, 4, 1), at(4, 15, -5.5, 1.5, 1)}},
 	}}
-	syncAt := func(tick uint64) (map[uint64]flight.Row, []viewTarget, bool) {
+	syncAt := func(tick uint64) (map[uint64]past.Row, []viewTarget, bool) {
 		for _, s := range fixture.Syncs {
 			if s.Tick == tick {
-				rows := map[uint64]flight.Row{}
+				rows := map[uint64]past.Row{}
 				for _, x := range s.Targets {
-					rows[x.Serial] = flight.Row{Tick: tick, Center: box2d.Vec2{X: x.X, Y: x.Y}, Until: x.Until}
+					rows[x.Serial] = past.Row{Tick: tick, Center: box2d.Vec2{X: x.X, Y: x.Y}, Until: x.Until}
 				}
 				return rows, s.Targets, true
 			}
@@ -202,7 +202,7 @@ func TestViewFixture(t *testing.T) {
 	// Before the first two syncs, through each tick's middle and end, at a death, and past the newest.
 	for _, view := range []float64{9.75, 10, 10.3, 11, 11.2, 11.375, 11.5, 12, 12.7, 13, 13.25} {
 		drawn := viewDrawn{View: view, Drawn: []viewSpot{}}
-		a, b := flight.RowTicks(view)
+		a, b := past.RowTicks(view)
 		older, _, hasOlder := syncAt(a)
 		newer, targets, _ := syncAt(b)
 		if !hasOlder {
@@ -210,7 +210,7 @@ func TestViewFixture(t *testing.T) {
 		}
 		for _, x := range targets {
 			o, ok := older[x.Serial]
-			if row, ok := flight.AtView(o, ok, newer[x.Serial], view); ok {
+			if row, ok := past.AtView(o, ok, newer[x.Serial], view); ok {
 				drawn.Drawn = append(drawn.Drawn, viewSpot{Serial: x.Serial, X: row.Center.X, Y: row.Center.Y})
 			}
 		}

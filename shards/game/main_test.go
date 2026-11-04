@@ -87,9 +87,9 @@ func patched(t testing.TB, patches ...map[string]string) content.Overlay {
 	return files
 }
 
-// deepRewind lets a shot's view go back 0.4 s (test content), for tests that draw bob from well before
+// deepWindow lets a shot's view go back 0.4 s (test content), for tests that draw bob from well before
 // he moved.
-var deepRewind = map[string]string{"projectile/tuning.json": `{"rewind": {"interpolation_seconds": 0.1,
+var deepWindow = map[string]string{"track/tuning.json": `{"window": {"interpolation_seconds": 0.1,
 	"queue_seconds": 0.05, "ping_seconds": 0.25}}`}
 
 // effectKinds are the effect kinds tests put on things through an emitter. No ability uses them yet, so
@@ -403,7 +403,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
 			`unknown shot "blot"`},
 		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},
-		{"rewind that favors no ping", "projectile/tuning.json", `{"rewind": {"ping_seconds": 0}}`, "ping_seconds"},
+		{"window that favors no ping", "track/tuning.json", `{"window": {"ping_seconds": 0}}`, "ping_seconds"},
 		{"payload with no relations", "projectile/tuning.json",
 			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
 		{"rule for shots meeting shots", "projectile/tuning.json",

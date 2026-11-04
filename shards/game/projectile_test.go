@@ -10,9 +10,10 @@ import (
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
+	"echo_image/shards/game/internal/track"
+	"echo_image/shards/game/internal/track/past"
 	"fmt"
 	"maps"
 	"math"
@@ -151,7 +152,7 @@ func TestShotDamageCarriesItsCast(t *testing.T) {
 // An enemy Body on the path in front of bob's Echo where alice drew it stops the shot there: bob stood
 // half over his Echo, toward her, and walked off after her view. The Echo takes no damage.
 func TestEnemyBodyBlocksShot(t *testing.T) {
-	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+	w := cardinal.NewTestWorld(t, withContent(t, deepWindow)) // a view 0.375 s back
 	alice, bob := claim(t, w)
 	moveFor(w, bob, -1, 0, ticks(0.1))
 	drawn := yourBody(t, bodiesFor(t, w, "bob"))
@@ -192,7 +193,7 @@ func TestBodyOnItsEchoShieldsIt(t *testing.T) {
 // A shot meets bob where alice drew him: he walked off its path after her view, and it still stops on
 // him.
 func TestShotHitsWhereTheViewHadIt(t *testing.T) {
-	w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.4 s back
+	w := cardinal.NewTestWorld(t, withContent(t, deepWindow)) // a view 0.4 s back
 	alice, bob := claim(t, w)
 	moveFor(w, bob, 0, -1, ticks(0.5))          // off his Echo
 	alice.back = 0.4 * physics.ServerTickRateHz // her views at step k are of the tick before he leaves, 0.35 s before it
@@ -241,7 +242,7 @@ func TestViewNeverGoesBack(t *testing.T) {
 		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			w := cardinal.NewTestWorld(t, withContent(t, deepRewind)) // a view 0.375 s back
+			w := cardinal.NewTestWorld(t, withContent(t, deepWindow)) // a view 0.375 s back
 			alice, bob := claim(t, w)
 			moveFor(w, bob, 0, -1, ticks(0.5)) // off his Echo
 			alice.back = 0.075 * physics.ServerTickRateHz
@@ -304,10 +305,10 @@ func TestShotMeetsTargetBetweenRows(t *testing.T) {
 }
 
 // A view the server keeps no rows for is held inside them, so alice's shot still meets bob's Echo, which
-// stands still: one older than rewind_seconds (a high ping), one not saved yet, and one that isn't a
+// stands still: one older than the track window (a high ping), one not saved yet, and one that isn't a
 // number.
 func TestViewOutsideTheRowsStillHits(t *testing.T) {
-	keep := float64(tuningOf[projectile.ProjectileTuning](t).RewindTicks())
+	keep := float64(tuningOf[track.TrackTuning](t).Window.Ticks())
 	for _, c := range []struct {
 		name string
 		back float64
@@ -562,18 +563,18 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	}
 }
 
-// Each Body and Echo keeps the rows every view rewind_seconds back is drawn from (KeptRows), one per tick,
+// Each Body and Echo keeps the rows every view the track window allows is drawn from (KeptRows), one per tick,
 // and its newest row is what this tick's target_sync shows of it: what screens draw, and what predictors
 // place it by, as the server's shots meet it. body_sync and echo_sync send only what rows lack.
 func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 	w, _, bob, fx := fxDuel(t)
 	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 3})
-	keep := int(tuningOf[projectile.ProjectileTuning](t).KeptRows())
+	keep := int(tuningOf[track.TrackTuning](t).Window.KeptRows())
 	stunned := false
-	newest := func(id uint32) []flight.Row {
+	newest := func(id uint32) []past.Row {
 		return slices.Collect(w.Entity(cardinal.EntityID(id)).Get[projectilecomp.TargetHistory]().Rows.Values())
 	}
-	check := func(what string, rows []flight.Row, want flight.Row, full bool) {
+	check := func(what string, rows []past.Row, want past.Row, full bool) {
 		t.Helper()
 		if len(rows) == 0 || len(rows) > keep || full && len(rows) != keep || rows[len(rows)-1] != want {
 			t.Fatalf("%s: %d rows ending %v, want %d ending %+v", what, len(rows), rows[max(len(rows)-1, 0):], keep, want)
@@ -596,7 +597,7 @@ func TestTargetHistoryIsWhatSyncsShow(t *testing.T) {
 		for s := range targets.Targets.Values() {
 			stunned = stunned || s.Kind == interact.Body && s.Tags&interact.Stunned != 0
 			e := w.Entity(cardinal.EntityID(s.EntityID))
-			check(fmt.Sprintf("target %d", s.EntityID), newest(s.EntityID), flight.Row{Tick: targets.Tick, Kind: s.Kind,
+			check(fmt.Sprintf("target %d", s.EntityID), newest(s.EntityID), past.Row{Tick: targets.Tick, Kind: s.Kind,
 				Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y}, Radius: s.Radius,
 				Tags: s.Tags, Until: s.Until}, i >= keep)
 			if s.Serial != e.Get[ref.Spawn]().Serial || s.Owner != uint32(e.Get[team.Owner]().Body) {
