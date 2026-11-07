@@ -110,8 +110,8 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
   const interpolationSeconds = exports.interpolationSeconds()
   // A uint64 goes as a decimal string, since a number can't hold every one.
   const stateOf = (sync: BodySync) => {
-    const { Body, Team, X, Y, Radius, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots, EchoDelay, EchoPath } =
-      sync.You
+    const { Body, Team, X, Y, Radius, MoveSpeed, Champion, Cooldowns, Effects, EffectsNext, Shots } = sync.You
+    const { EchoDelay, EchoSerial, EchoPath } = sync.You
     return {
       Tick: String(sync.Tick),
       Body,
@@ -132,6 +132,7 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
       EffectsNext,
       Shots,
       EchoDelay,
+      EchoSerial: String(EchoSerial),
       EchoPath,
     }
   }

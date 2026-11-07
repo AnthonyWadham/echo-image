@@ -6,15 +6,11 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
-	effectcomp "echo_image/shards/game/internal/effect/component"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
-	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	trackcomp "echo_image/shards/game/internal/track/component"
 	"echo_image/shards/game/internal/track/past"
 )
 
@@ -26,15 +22,14 @@ import (
 // component.ShotEnded: where, when in the tick and on what. A shot launched this tick moves this tick,
 // so its path starts at the shooter.
 //
-// A shot meets the map now, and each Body and Echo as it moves across the views its tick is drawn over
-// (past.Across), from their Track: a predicted shot across its caster's frame's view and the
-// next, as that client drew it, and any other (an Echo's) across this tick, as every screen draws it.
-// That is what the client's predictor flies it against, so a hit on screen is a hit on the server. One
-// Box2D cast and tree query per shot finds what it meets, so the cost is O(P·(log N + K·R)) for P shots,
-// N shapes, K found and R rules, plus O(T·W) a tick for the tree of T targets keeping W rows.
+// A shot meets the map now, and each tracked thing in the scene as its actor saw it: a predicted shot as
+// its caster's client drew the tick, while that caster is still the one its Cause names, and any other
+// (an Echo's) as every screen draws this tick. That is what the client's predictor flies it against, so
+// a hit on screen is a hit on the server. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things
+// found and R rules.
 type FlightSystem struct {
 	Tuning  ProjectileTuning
-	Window  past.Window // how far back a predicted shot's view may be
+	Scene   *past.Scene // this tick's tracked things, as track.SceneSystem built it
 	Physics *physics2d.Plugin
 }
 
@@ -46,16 +41,14 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 	if len(shots) == 0 {
 		return
 	}
-	world, reach := s.Physics.Engine(), reachOf(w)
+	world := s.Physics.Engine()
 	// Resolved after the search finished, since a resolved shot is destroyed.
 	for _, shot := range shots {
-		fly(w, world, s.Tuning, s.Window, shot, reach)
+		fly(w, world, s.Tuning, s.Scene, shot)
 	}
 }
 
-func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, window past.Window, shot cardinal.Entity,
-	reach *flight.Reach,
-) {
+func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, scene *past.Scene, shot cardinal.Entity) {
 	p := shot.Get[component.Projectile]()
 	def, ok := tuning.Shots[p.Type]
 	if !ok {
@@ -69,15 +62,12 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, window 
 		Radius:    p.Radius,
 		Remaining: p.Remaining,
 	}
-	tick := w.TickHeight()
-	view, predicted := viewOf(w, window, p)
-	if !predicted {
-		view = max(float64(tick)-1, 0) // this tick's views
+	side := team.SideOf(shot)
+	a, ok := scene.Client(uint32(p.Cause.Caster), p.Cause.CasterSerial, side)
+	if !p.Predicted || !ok {
+		a = scene.Present(side)
 	}
-	sights := func(key uint64) (flight.Seen, bool) {
-		return seenAt(w.Entity(cardinal.EntityID(key)), view, tick, p.Cause.Caster, predicted)
-	}
-	next, end, over := tuning.Fly(world, def, f, team.SideOf(shot), reach, sights, physics.SecondsPerTick)
+	next, end, over := tuning.Fly(world, def, f, a, scene, physics.SecondsPerTick)
 	if !over {
 		p.Remaining, p.Prev = next.Remaining, physics2d.Vec2(f.Pos)
 		shot.Set(p)
@@ -95,94 +85,4 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, window 
 		Team: shot.Get[team.Team]().ID, Radius: p.Radius, Prev: f.Pos, End: end,
 	})
 	shot.Destroy()
-}
-
-// viewOf is the view predicted shot p meets Bodies and Echoes at this tick: its caster's, held by the
-// window (past.Window.Clamp), or false when p isn't predicted or its caster has applied no frame.
-func viewOf(w *cardinal.World, window past.Window, p component.Projectile) (float64, bool) {
-	caster := w.Entity(p.Cause.Caster)
-	if !p.Predicted || !caster.Has[playercomp.InputQueue]() {
-		return 0, false
-	}
-	tick := w.TickHeight()
-	view, ok := caster.Get[playercomp.InputQueue]().View(tick)
-	return window.Clamp(view, tick), ok
-}
-
-// seenAt is target e across the views a shot's tick at view is drawn over (past.Across), from its
-// Track and its row at tick: how it is now, with its tags now. For a shot its caster's client
-// predicts, that caster's own Body and Echo move as its client draws them, from their rows a tick ago to
-// where they are now, its Body all the tick with its tags now. False when it shows nowhere.
-func seenAt(e cardinal.Entity, view float64, tick uint64, caster cardinal.EntityID, predicted bool) (flight.Seen, bool) {
-	if !e.Has[trackcomp.Track]() || !e.Has[ref.Spawn]() {
-		return flight.Seen{}, false
-	}
-	track, now := e.Get[trackcomp.Track](), rowOf(e, tick)
-	now.Tags = tagsAt(e, tick)
-	s := flight.Seen{ID: uint32(e.ID()), Serial: e.Get[ref.Spawn]().Serial}
-	if predicted && e.ID() == caster {
-		s.Spans[0] = past.Span{Row: now, End: 1}
-	} else {
-		s.Spans = past.Across(view, func(b uint64) (past.Row, bool) {
-			if b == tick {
-				return now, true
-			}
-			return track.At(b)
-		})
-	}
-	if predicted && (e.ID() == caster || now.Kind == interact.Echo && now.Side.Owner == uint32(caster)) {
-		prev, ok := track.At(tick - 1)
-		if !ok {
-			prev = now
-		}
-		s.Move(prev.Center, now.Center)
-	}
-	return s, s.Shown()
-}
-
-// reachOf is where each target can be at any view this tick: between its kept rows, or where it is
-// now, as seenAt places it.
-func reachOf(w *cardinal.World) *flight.Reach {
-	reach := flight.NewReach()
-	tick := w.TickHeight()
-	var kept []past.Row
-	for e := range w.Contains[targetRow]().Iter() {
-		if e.Get[physics2d.PhysicsBody2D]().Shapes.Len() == 0 {
-			continue
-		}
-		kept = e.Get[trackcomp.Track]().AppendRows(kept[:0], tick)
-		reach.Add(uint64(e.ID()), rowOf(e, tick), kept...)
-	}
-	return reach
-}
-
-// targetRow is a Body or Echo shots meet by its track.
-type targetRow struct {
-	Track     trackcomp.Track
-	Transform physics2d.Transform2D
-	Body      physics2d.PhysicsBody2D
-	Team      team.Team
-	Owner     team.Owner
-}
-
-// rowOf is target e as it is at tick, as track.RecordSystem records it.
-func rowOf(e cardinal.Entity, tick uint64) past.Row {
-	shape := e.Get[physics2d.PhysicsBody2D]().Shapes.At(0)
-	return past.Row{
-		Tick:   tick,
-		Kind:   interact.Kind(shape.CategoryBits),
-		Side:   team.SideOf(e),
-		Center: box2d.Vec2(e.Get[physics2d.Transform2D]().Position),
-		Radius: shape.Radius,
-		Tags:   tagsAt(e, tick+1),
-		Until:  1,
-	}
-}
-
-// tagsAt is the tags e's effects give it at tick.
-func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
-	if !e.Has[effectcomp.Effects]() {
-		return 0
-	}
-	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }

@@ -93,6 +93,14 @@ func (t Tuning) meet(s Shot, k interact.Kind, r interact.Relation, tags interact
 	return Meet{Do: Pass}, -1
 }
 
+// rule is the rule meet's index i names.
+func (t Tuning) rule(s Shot, i int) Meet {
+	if i < len(s.Meets) {
+		return s.Meets[i]
+	}
+	return t.Defaults[i-len(s.Meets)]
+}
+
 // UnmarshalJSON reads a response name. An unknown one fails, so bad content fails the boot.
 func (r *Response) UnmarshalJSON(b []byte) error {
 	var name string

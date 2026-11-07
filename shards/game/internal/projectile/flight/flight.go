@@ -46,11 +46,12 @@ type Hit struct {
 func (h Hit) OnTarget() bool { return h.Kind&^interact.Map != 0 }
 
 // End is how a shot's flight ended in a tick: where its center was, the part of the tick it flew to get
-// there (0 to 1), and what it met.
+// there (0 to 1), what it met, and the view its tick was judged at.
 type End struct {
 	At    box2d.Vec2
 	Until float64
 	Hit   Hit
+	View  float64
 }
 
 // hit is a thing on a shot's path that it doesn't pass.

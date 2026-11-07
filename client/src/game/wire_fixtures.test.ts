@@ -86,6 +86,7 @@ const bodySync: BodySync = {
       },
     ],
     EchoDelay: 100,
+    EchoSerial: 9007199254740993n,
     EchoPath: [
       { X: -3.5, Y: 0.25 },
       { X: -3.25, Y: 0.5 },

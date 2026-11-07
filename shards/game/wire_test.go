@@ -64,8 +64,9 @@ func TestWireFixtures(t *testing.T) {
 					Type: "bolt", Ability: "bolt", Seq: 4294967295, Launch: 1, PrevX: -4.75, PrevY: 2.125, X: -4.25, Y: 1.5,
 					VelX: 9, VelY: -12, Radius: 0.15, Remaining: 17.75,
 				}),
-				EchoDelay: 100,
-				EchoPath:  cardinal.SliceOf(physics2d.Vec2{X: -3.5, Y: 0.25}, physics2d.Vec2{X: -3.25, Y: 0.5}),
+				EchoDelay:  100,
+				EchoSerial: 9007199254740993,
+				EchoPath:   cardinal.SliceOf(physics2d.Vec2{X: -3.5, Y: 0.25}, physics2d.Vec2{X: -3.25, Y: 0.5}),
 			},
 			Bodies: cardinal.SliceOf(
 				player.BodyState{EntityID: 1, Serial: 1, PlayerID: 1, Nickname: "Player One", Champion: "starter"},

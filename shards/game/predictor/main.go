@@ -160,6 +160,7 @@ func state(v js.Value) predict.State {
 		Champion:    v.Get("Champion").String(),
 		EffectsNext: uint32(v.Get("EffectsNext").Int()),
 		EchoDelay:   uint32(v.Get("EchoDelay").Int()),
+		EchoSerial:  uint64Of(v.Get("EchoSerial")),
 	}
 	path := v.Get("EchoPath")
 	for i := range path.Length() {

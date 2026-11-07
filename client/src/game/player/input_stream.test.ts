@@ -28,6 +28,7 @@ const you = (InputSession: number, InputAck: number, InputQueued = 1, InputCap =
   EffectsNext: 0,
   Shots: [],
   EchoDelay: 0,
+  EchoSerial: 0n,
   EchoPath: [],
 })
 

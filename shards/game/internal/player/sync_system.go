@@ -35,6 +35,7 @@ type shotRow struct {
 
 // echoRow is an Echo's path, for its Body's YouState.
 type echoRow struct {
+	Spawn   ref.Spawn
 	Echo    echocomp.Echo
 	Owner   team.Owner
 	History echocomp.PathHistory
@@ -83,10 +84,10 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	for d := range w.SystemEvents[combatcomp.Died]() {
 		died[d.Target] = true
 	}
-	paths := map[cardinal.EntityID]echocomp.PathHistory{} // by owner Body, of Echoes still there next tick
+	echoes := map[cardinal.EntityID]cardinal.Entity{} // by owner Body, of Echoes still there next tick
 	for e := range w.Contains[echoRow]().Iter() {
 		if !died[e.ID()] {
-			paths[e.Get[team.Owner]().Body] = e.Get[echocomp.PathHistory]()
+			echoes[e.Get[team.Owner]().Body] = e
 		}
 	}
 	tuning := s.Tuning
@@ -99,8 +100,10 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			tuning.QueueCalmTicks(), tuning.BufferFrames()))
 		def := tuning.Champions[y.Champion]
 		y.SnapSeconds, y.FadeSeconds = def.SnapSeconds, def.FadeSeconds
-		if h, ok := paths[v.Body.ID()]; ok {
+		if e, ok := echoes[v.Body.ID()]; ok {
+			h := e.Get[echocomp.PathHistory]()
 			y.EchoDelay, y.EchoPath = uint32(h.Delay()), cardinal.SliceOf(h.Path(ahead)...)
+			y.EchoSerial = e.Get[ref.Spawn]().Serial
 		}
 		w.SendTo(v.Player, BodySync{
 			Tick:        w.TickHeight(),

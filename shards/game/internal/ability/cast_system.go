@@ -9,10 +9,12 @@ import (
 	"echo_image/shards/game/internal/ability/hooks"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	playercomp "echo_image/shards/game/internal/player/component"
+	"echo_image/shards/game/internal/ref"
 )
 
 // casterRow is a Body with input, a champion, cooldowns and effects.
 type casterRow struct {
+	Spawn     ref.Spawn
 	Input     playercomp.InputQueue
 	Champion  playercomp.Champion
 	Abilities component.Abilities
@@ -44,7 +46,8 @@ func (s *CastSystem) Run(w *cardinal.World) {
 		}
 		body.Set(component.Abilities{Cooldowns: cardinal.SliceOf(cooldowns...)})
 		for _, id := range casts {
-			cause := component.Cause{Caster: body.ID(), Ability: id, Tick: tick, Seq: f.Seq}
+			cause := component.Cause{Caster: body.ID(), CasterSerial: body.Get[ref.Spawn]().Serial, Ability: id,
+				Tick: tick, Seq: f.Seq}
 			w.EmitSystemEvent(component.AbilityCast{Cause: cause, AimX: aimX, AimY: aimY})
 		}
 	}

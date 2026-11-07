@@ -91,6 +91,7 @@ const sync = (x: number): BodySync => ({
     EffectsNext: 0,
     Shots: [],
     EchoDelay: 0,
+    EchoSerial: 0n,
     EchoPath: [],
   },
   Bodies: [you],

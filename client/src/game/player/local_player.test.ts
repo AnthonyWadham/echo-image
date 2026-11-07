@@ -69,6 +69,7 @@ const bodySync = (tick: number, ack = 0, bodies = [1]): BodySync => ({
     EffectsNext: 0,
     Shots: [],
     EchoDelay: 0,
+    EchoSerial: 0n,
     EchoPath: [],
   },
   Bodies: bodies.map((id) => ({

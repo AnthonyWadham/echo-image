@@ -27,21 +27,19 @@ func TestFlyEndsWhereAndWhenTheSweepSays(t *testing.T) {
 		at, until float64 // where its center ends, and when
 		hit       uint32
 	}{
-		{"a hit", 0.85, 20, 0.2, 0.2 / 0.75, 7},
-		{"a hit in a last tick cut short", 0.85, 0.3, 0.2, 0.2 / 0.75, 7},
+		{"a hit", 0.85, 20, 0.2, 0.2 / 0.75, 10},
+		{"a hit in a last tick cut short", 0.85, 0.3, 0.2, 0.2 / 0.75, 10},
 		{"its range", 0, 0.3, 0.3, 0.3 / 0.75, 0},
 	} {
 		worldDef := box2d.DefaultWorldDef()
-		echo := past.Row{Kind: interact.Echo, Side: interact.Side{Owner: 7, Team: 1}, Center: box2d.Vec2{X: c.echo}, Radius: 0.5}
-		reach := NewReach()
+		var things []thing
 		if c.echo != 0 {
-			reach.Add(7, echo)
-		}
-		sights := func(key uint64) (Seen, bool) {
-			return Seen{ID: uint32(key), Spans: [2]past.Span{{Row: echo, End: 1, To: echo.Center}}}, true
+			at := box2d.Vec2{X: c.echo}
+			things = append(things, thing{interact.Echo, interact.Side{Owner: 7, Team: 1}, at, at, at})
 		}
 		f := Flight{Velocity: box2d.Vec2{X: def.Speed}, Radius: def.Radius, Remaining: c.remaining}
-		_, end, over := tuning.Fly(box2d.NewWorld(&worldDef), def, f, interact.Side{Owner: 1}, reach, sights, dt)
+		a := past.Actor{Side: interact.Side{Owner: 1}, View: judged}
+		_, end, over := tuning.Fly(box2d.NewWorld(&worldDef), def, f, a, sceneOf(false, things...), dt)
 		// Box2D stops a cast a slop short of touching.
 		if !over || end.Hit.Target != c.hit || math.Abs(end.At.X-c.at) > 2*box2d.LinearSlop || end.At.Y != 0 ||
 			math.Abs(end.Until-c.until) > 2*box2d.LinearSlop/0.75 {

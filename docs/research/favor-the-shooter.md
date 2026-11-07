@@ -98,16 +98,17 @@ the claim model (problem 3).
   runs your sim.
 - **Why:** the predictor gets the server's own rows, with no field rebuilt from body_sync and echo_sync,
   and one stream to wait for. A new kind of target needs no predictor, glue or shot code: a thing is a
-  target because it keeps rows, and `Fly`, `Across`, `seenAt` and the predictor's `sights` use the kinds
-  the rows name. Only the own-Echo rule names a kind, since your predictor places your Echo itself. A
-  row is one circle: a target of another shape first gives `Row` a shape (F19).
+  target because it keeps rows, and the scene (`past.Scene`) uses the kinds the rows name. No rule
+  names a kind: your own Body and Echo are found by identity (`Track.Predicted`, your Body's ID and
+  `You.EchoSerial`). A row is one circle: a target of another shape first gives `Row` a shape (F19).
 - **Cost:** each target's spot is sent twice a tick, in its own sync for drawing and here.
 
 ### 6. The server flies predicted shots at their client's view
 
 - **What:** a shot an input frame cast is `Projectile.Predicted`. Each tick `FlightSystem` flies it
-  with `flight.Fly` at its caster's view. Any other shot (an Echo's) flies at this tick's views, as
-  every screen draws it.
+  with `flight.Fly` as its caster's client actor (`past.Scene.Client`), at its view, while the caster
+  is still the entity its `Cause.CasterSerial` names. Any other shot (an Echo's) flies as a present
+  actor (`Scene.Present`), at this tick's views, as every screen draws it.
 - **How:**
   - The view is the frame applied this tick. On a tick with no new frame, it is the last one moved on
     by the ticks since (`InputQueue.View`), as the client keeps drawing.
@@ -119,32 +120,40 @@ the claim model (problem 3).
     high ping) is judged at the oldest: you must lead your shots, but you still hit. NaN and the
     infinities can't leave the window.
   - The map is cast now. It is never rewound.
-  - One query of `flight.Reach` finds the Bodies and Echoes that could be on it at the view: a Box2D
-    tree (`box2d.DynamicTree`) built each tick, one box per target around its kept rows and where it is
-    now. There is no speed bound: a dash, a blink or a landing stays inside its box (2026-11-01). Each
-    is pair-cast in its frame as it moves across the views v to v + 1 (`past.Across`): a frame's
-    shots fly a tick while its screen's view moves a tick (F2, 2026-11-01). The caster's own Body and
-    Echo move from where they were a tick ago to where they are now, as its predictor has them and its
-    screen draws them. The Echo keeps its rows' tags, which both sides have.
+  - `track.SceneSystem` builds one `past.Scene` a tick, before every judge: each tracked thing's kept
+    rows and its row now, in a Box2D tree (`box2d.DynamicTree`) with one box per thing around all of
+    them, and each client's view, held once. There is no speed bound: a dash, a blink or a landing
+    stays inside its box (2026-11-01). `Scene.Cast` pair-casts each thing the tree finds in its frame
+    as it moves across the views v to v + 1 (`past.Across`): a frame's shots fly a tick while its
+    screen's view moves a tick (F2, 2026-11-01).
+  - One placement rule: a thing its owner's client predicts (`Track.Predicted`, your Body and Echo)
+    moves from its row a tick ago to now, as its predictor has it and its screen draws it, for that
+    client's predicted shots only. Its tags and life come from its rows at the view, which both sides
+    have (since 2026-11-04 for your Body too; no shipped rule can see it).
   - The first thing met ends the shot, in `Fly`'s order: the nearer, then the earlier rule, then the
-    map, then the lower ID. A payload becomes a `DamageIntent`. History is never rewritten.
-- **The same bits as the predictor, so no margin.** Both run `flight.Fly` with `past.Across` from
-  the same rows. `TestPredictionMatchesServer` guards it.
+    map, then the lower ID. Contacts are sorted, so the tree's visit order never matters. A payload
+    becomes a `DamageIntent`. History is never rewritten.
+- **The same bits as the predictor, so no margin.** Both run `flight.Fly` on a `past.Scene` built from
+  the same rows. `TestPredictionMatchesServer` guards it, `End.View` (the view each end was judged
+  at) included.
 - **Why:** the server's own query decides every hit, on every tick's path, so no hit hangs on a
   message arriving, and blockers are always checked.
-- **Cost:** per shot per tick, one map cast, one tree query, and up to two pair casts per Body or
-  Echo found. Building the tree is O(T·W) a tick for T targets keeping W rows.
+- **Cost:** per shot per tick, one map cast, one tree query, up to two pair casts per thing found and
+  one sort of what it met. The scene is O(T·W + T log T) a tick for T things keeping W rows, with no
+  allocations once warm: about 5 µs for 24 things at 60 Hz (`BenchmarkSceneBuild`).
 
 ### 7. The predictor flies your shots the same way
 
-- **What:** the predictor keeps one Box2D world with a body for each target that lived all of the
-  newest target sync's tick. One that died in that tick is gone on the server before your next frame,
-  so the predictor drops it at once.
+- **What:** the predictor keeps each thing's rows from the target syncs, by serial, as the server keeps
+  its `Track`, and builds the same `past.Scene` on a step with a shot. A thing that died in the newest
+  sync's tick is gone on the server before your next frame, so the scene leaves it out.
 - **How:**
-  - It keeps as many ticks of target sync rows as the server keeps (`KeptRows`).
-  - Each step places each target at the frame's view, held by the same `View` rule, with `AtView`,
-    and your Body and Echo where it predicts them. Then it flies your shots with `flight.Fly`.
-  - A view without both ticks' syncs places no targets, and your shot flies on.
+  - It keeps as many ticks of rows as the server keeps (`KeptRows`), in a ring per serial: no map. A
+    sync older than those is dropped, even one that comes late.
+  - A step with a shot builds the scene from the rows, your Body and Echo as it predicts them, and
+    acts at the frame's view, held by the same `Window.Clamp`. Then it flies your shots with
+    `flight.Fly`. A step with no shot builds nothing.
+  - A view without its ticks' syncs builds no scene, and your shot flies on: that step replays.
   - A replay after a body_sync is the same step, so it ends a shot where the first step did.
 - **Why:** the same rows, rule and cast as the server.
 
@@ -250,6 +259,8 @@ the claim model (problem 3).
   `ShotEnded`).
 - Track: `shards/game/internal/track/past/view.go` (`Row`, `AtView`, `Across`),
   `shards/game/internal/track/past/window.go` (`Window`, `Clamp`),
+  `shards/game/internal/track/past/scene.go` (`Scene`, `Actor`, `Cast`),
+  `shards/game/internal/track/scene_system.go`,
   `shards/game/internal/track/component/track.go` (`Track`),
   `shards/game/internal/track/record_system.go`,
   `shards/game/internal/track/sync_system.go` (`TargetSync` in `target_sync_event.go`).
@@ -263,5 +274,6 @@ the claim model (problem 3).
   `client/src/game/player/input_command.ts`, `client/src/game/projectile/projectile_sync_event.ts`,
   `client/src/game/track/target_sync_event.ts`.
 - Tests: `shards/game/*_test.go`, `shards/game/internal/projectile/flight/view_test.go`,
-  `shards/game/internal/track/past/view_test.go`, `shards/game/internal/track/component/track_test.go`,
+  `shards/game/internal/track/past/view_test.go`, `shards/game/internal/track/past/scene_test.go`,
+  `shards/game/internal/track/component/track_test.go`,
   `shards/game/testdata/`, and the client `*.test.ts` files above.

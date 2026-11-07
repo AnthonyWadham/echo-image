@@ -2,12 +2,13 @@
 // cooldowns, the effects they put on it, the shots it has in flight, and its Echo. It starts from the server's
 // state after your last applied frame, and steps each frame the server hasn't applied yet as one tick
 // of the server's own code, so with no surprises it lands on the server's bits. Your shots meet each
-// target (a Body or Echo) where your screen drew it, as the server's FlightSystem judges them. What others
+// tracked thing (a Body or Echo) where your screen drew it, as the server's FlightSystem judges them. What others
 // do (effects they put on you, kills) comes with the next state. It imports no Cardinal:
 // shards/game/predictor builds it for the browser.
 package predict
 
 import (
+	"cmp"
 	"errors"
 	"io/fs"
 	"math"
@@ -61,6 +62,7 @@ type State struct {
 	EffectsNext uint32 // the last serial its effect list gave out
 	Shots       []Shot // the shots it cast that are in flight
 	EchoDelay   uint32 // ticks its Echo trails it: 0 with no Echo
+	EchoSerial  uint64 // its Echo's serial: 0 with no Echo
 	// EchoPath is its Echo's spot at Tick, then where it will be on each next tick, as far as the server
 	// sent.
 	EchoPath []box2d.Vec2
@@ -99,7 +101,7 @@ type Frame struct {
 	ViewTick     float64
 }
 
-// Sight is a target as a target sync showed it: its entity and serial, and its row. The predictor keeps
+// Sight is a thing as a target sync showed it: its entity and serial, and its row. The predictor keeps
 // what it saw by Serial, since a newer entity can take ID.
 type Sight struct {
 	ID     uint32
@@ -108,16 +110,47 @@ type Sight struct {
 }
 
 // Predictor steps your Body one tick per frame from the last State. Its world has no map yet; walls
-// come with the arena. It keeps the target syncs each frame's views are drawn from.
+// come with the arena. It keeps each thing's rows from the target syncs, as the server keeps its Track,
+// for the views each frame is drawn over.
 type Predictor struct {
 	content Content
 	world   *box2d.World
 	state   State
-	start   uint64                      // the state's tick at the last Reset
-	moves   []box2d.Vec2                // your Body's center after each step since then
-	seen    map[uint64]map[uint64]Sight // the last KeptRows ticks of target syncs: by tick, then serial
-	newest  uint64                      // the newest tick seen
-	stepped []stepped                   // each frame stepped since the last Reset, oldest first
+	start   uint64       // the state's tick at the last Reset
+	moves   []box2d.Vec2 // your Body's center after each step since then
+	tracked []tracked    // each thing the kept syncs show, by serial
+	synced  []uint64     // the kept syncs' ticks: a ring, tick t at t % KeptRows, math.MaxUint64 for none
+	newest  uint64       // the newest tick seen
+	scene   *past.Scene  // what a step's shots meet
+	kept    []past.Row   // scratch: one thing's kept rows
+	stepped []stepped    // each frame stepped since the last Reset, oldest first
+}
+
+// tracked is one thing's rows from the kept syncs: a ring, tick t's at t % KeptRows. A slot of another
+// tick holds none of it.
+type tracked struct {
+	id     uint32
+	serial uint64
+	last   uint64 // the newest tick a sync showed it
+	rows   []past.Row
+}
+
+// at is t's row of tick, if a kept sync showed it.
+func (t *tracked) at(tick uint64) (past.Row, bool) {
+	if r := t.rows[tick%uint64(len(t.rows))]; r.Tick == tick {
+		return r, true
+	}
+	return past.Row{}, false
+}
+
+// appendRows appends t's rows of the ticks before before that its ring spans, oldest first.
+func (t *tracked) appendRows(dst []past.Row, before uint64) []past.Row {
+	for tick := before - min(before, uint64(len(t.rows))); tick < before; tick++ {
+		if r, ok := t.at(tick); ok {
+			dst = append(dst, r)
+		}
+	}
+	return dst
 }
 
 // stepped is the state a frame's step left, without its EchoPath, and whether its shots flew without
@@ -131,85 +164,80 @@ type stepped struct {
 // New returns a Predictor that runs content. Reset it before stepping.
 func New(content Content) *Predictor {
 	def := box2d.DefaultWorldDef()
-	return &Predictor{content: content, world: box2d.NewWorld(&def), seen: map[uint64]map[uint64]Sight{}}
+	p := &Predictor{content: content, world: box2d.NewWorld(&def), scene: past.NewScene(content.Track.Window),
+		synced: make([]uint64, content.Track.Window.KeptRows())}
+	p.Forget()
+	return p
 }
 
-// See keeps what the target sync of tick showed, so a frame can see each target across the views it
-// is drawn over. The newest sync says which targets are still there: those that lived its whole tick,
-// since the server removes one that died at the end of its tick, before any later frame's shots fly.
+// See keeps what the target sync of tick showed, so a frame can see each thing across the views it is
+// drawn over: each one's row by serial, as many ticks as the server keeps rows (Window.KeptRows). A sync
+// older than those is dropped. The newest sync says which things are still there: those that lived its
+// whole tick, since the server removes one that died at the end of its tick, before any later frame's
+// shots fly. O(T log T) for T things, with no allocations but a new thing's ring.
 func (p *Predictor) See(tick uint64, sights []Sight) {
-	at := make(map[uint64]Sight, len(sights))
+	keep := uint64(len(p.synced))
+	if tick+keep <= p.newest {
+		return
+	}
+	p.newest, p.synced[tick%keep] = max(p.newest, tick), tick
 	for _, s := range sights {
 		s.Tick = tick
-		at[s.Serial] = s
-	}
-	p.seen[tick], p.newest = at, max(p.newest, tick)
-	keep := p.content.Track.Window.KeptRows()
-	for t := range p.seen {
-		if t+keep <= tick {
-			delete(p.seen, t)
+		i, ok := slices.BinarySearchFunc(p.tracked, s.Serial, func(t tracked, serial uint64) int {
+			return cmp.Compare(t.serial, serial)
+		})
+		if !ok { // sized at its first row: every other slot holds it, at a tick not its own
+			p.tracked = slices.Insert(p.tracked, i, tracked{id: s.ID, serial: s.Serial,
+				rows: slices.Repeat([]past.Row{s.Row}, int(keep))})
 		}
+		t := &p.tracked[i]
+		t.rows[tick%keep], t.last = s.Row, max(t.last, tick)
 	}
+	p.tracked = slices.DeleteFunc(p.tracked, func(t tracked) bool { return t.last+keep <= p.newest })
 }
 
 // Forget drops every sync it saw: after a reconnect or a server restart.
 func (p *Predictor) Forget() {
-	clear(p.seen)
-	p.newest = 0
+	p.tracked, p.newest = p.tracked[:0], 0
+	for i := range p.synced {
+		p.synced[i] = math.MaxUint64
+	}
 }
 
-// sights is each target still there across the views a frame at view is drawn over (past.Across), view
-// held as the server holds it (past.Window.Clamp), for your shots to meet as FlightSystem judges them:
-// your Body moving from prev to where it is now, all the tick with your tags st, and your Echo as you
-// predict it (Echo). It returns no reach when a target sync of those views isn't here: then your shots
-// meet no target.
-func (p *Predictor) sights(view float64, prev box2d.Vec2, st status.Status) (*flight.Reach, flight.Sights) {
+// sceneAt is the actor your frame at view acts as, its view held as the server holds it
+// (past.Window.Clamp), and the scene your shots meet as FlightSystem judges them: each thing still
+// there, by its kept rows, your Body moving from prev to where it is now and your Echo as you predict it
+// (Echo). No scene when a target sync of the view's ticks isn't here: then your shots meet no thing.
+func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Scene) {
 	s := &p.state
-	view = p.content.Track.Window.Clamp(view, s.Tick)
-	for t := uint64(math.Floor(view)); t <= uint64(math.Ceil(view))+1; t++ {
-		if _, ok := p.seen[t]; !ok {
-			return nil, nil
+	a := past.Actor{Side: interact.Side{Owner: s.Body, Team: s.Team},
+		View: p.content.Track.Window.Clamp(view, s.Tick), Predicted: true}
+	keep := uint64(len(p.synced))
+	for t := uint64(math.Floor(a.View)); t <= uint64(math.Ceil(a.View))+1; t++ {
+		if p.synced[t%keep] != t {
+			return a, nil
 		}
 	}
 	echo, echoPrev, hasEcho := p.Echo()
-	reach, seen := flight.NewReach(), map[uint64]flight.Seen{}
-	for serial, n := range p.seen[p.newest] {
-		if n.Until < 1 {
+	p.scene.Reset(s.Tick)
+	for i := range p.tracked {
+		t := &p.tracked[i]
+		now, ok := t.at(p.newest)
+		if !ok || now.Until < 1 {
 			continue
 		}
-		v := flight.Seen{ID: n.ID, Serial: serial}
-		var kept []past.Row
+		th := past.Thing{ID: t.id, Serial: t.serial, Now: now, From: now.Center, To: now.Center}
 		switch {
-		case n.ID == s.Body:
-			row := past.Row{Kind: n.Kind, Side: interact.Side{Owner: s.Body, Team: s.Team}, Radius: s.Radius,
-				Tags: st.Tags, Until: 1}
-			v.Spans[0] = past.Span{Row: row, End: 1}
-			v.Move(prev, s.Center)
-			kept = append(kept, past.Row{Center: prev, Radius: s.Radius}, past.Row{Center: s.Center, Radius: s.Radius})
-		default:
-			v.Spans = past.Across(view, func(tick uint64) (past.Row, bool) {
-				sight, ok := p.seen[tick][serial]
-				return sight.Row, ok
-			})
-			for _, sync := range p.seen {
-				if sight, ok := sync[serial]; ok {
-					kept = append(kept, sight.Row)
-				}
-			}
-			if hasEcho && n.Kind == interact.Echo && n.Side.Owner == s.Body {
-				v.Move(echoPrev, echo)
-				kept = append(kept, past.Row{Center: echoPrev, Radius: n.Radius}, past.Row{Center: echo, Radius: n.Radius})
-			}
+		case t.id == s.Body:
+			th.Predicted, th.From, th.To = true, prev, s.Center
+		case hasEcho && t.serial == s.EchoSerial:
+			th.Predicted, th.From, th.To = true, echoPrev, echo
 		}
-		if v.Shown() {
-			seen[serial] = v
-			reach.Add(serial, n.Row, kept...)
-		}
+		p.kept = t.appendRows(p.kept[:0], p.newest)
+		p.scene.Add(th, p.kept)
 	}
-	return reach, func(key uint64) (flight.Seen, bool) {
-		v, ok := seen[key]
-		return v, ok
-	}
+	p.scene.Build()
+	return a, p.scene
 }
 
 // Reset starts over from s.
@@ -335,13 +363,17 @@ func (p *Predictor) Step(f Frame) (box2d.Vec2, []Ended) {
 			Pos: hooks.Vec2(s.Center), Aim: aim,
 		}, &asked)
 	}
-	reach, sights := p.sights(f.ViewTick, prev, st)
-	blind := reach == nil && (len(s.Shots) > 0 || len(asked.launches) > 0)
-	ends := p.fly(asked.launches, f.Seq, reach, sights)
+	var a past.Actor
+	var scene *past.Scene
+	shooting := len(s.Shots) > 0 || len(asked.launches) > 0
+	if shooting {
+		a, scene = p.sceneAt(f.ViewTick, prev)
+	}
+	ends := p.fly(asked.launches, f.Seq, a, scene)
 	p.affect(asked.effects)
 	was := p.State()
 	was.EchoPath = nil
-	p.stepped = append(p.stepped, stepped{seq: f.Seq, state: was, blind: blind})
+	p.stepped = append(p.stepped, stepped{seq: f.Seq, state: was, blind: shooting && scene == nil})
 	return s.Center, ends
 }
 
@@ -374,10 +406,10 @@ func (p *Predictor) move(moveX, moveY float64, st status.Status) box2d.Vec2 {
 	return center
 }
 
-// fly launches the shots frame seq's casts asked for, then flies all your shots one tick. One that stops
-// on a Body or Echo sights shows ends there; with no reach, shots pass Bodies and Echoes. It returns the
+// fly launches the shots frame seq's casts asked for, then flies all your shots one tick as a fired them.
+// One that stops on a thing in scene ends there; with no scene, shots pass every thing. It returns the
 // shots that ended.
-func (p *Predictor) fly(launches []cast.Launch, seq uint32, reach *flight.Reach, sights flight.Sights) []Ended {
+func (p *Predictor) fly(launches []cast.Launch, seq uint32, a past.Actor, scene *past.Scene) []Ended {
 	s := &p.state
 	shots := p.content.Shots
 	for _, l := range launches {
@@ -387,7 +419,6 @@ func (p *Predictor) fly(launches []cast.Launch, seq uint32, reach *flight.Reach,
 				Flight: flight.Launch(def, box2d.Vec2(l.From), box2d.Vec2(l.Dir))})
 		}
 	}
-	side := interact.Side{Owner: s.Body, Team: s.Team}
 	var ends []Ended
 	kept := s.Shots[:0]
 	for _, shot := range s.Shots {
@@ -395,7 +426,7 @@ func (p *Predictor) fly(launches []cast.Launch, seq uint32, reach *flight.Reach,
 		if !ok {
 			continue
 		}
-		next, end, over := shots.Fly(p.world, def, shot.Flight, side, reach, sights, timestep.Seconds)
+		next, end, over := shots.Fly(p.world, def, shot.Flight, a, scene, timestep.Seconds)
 		if over {
 			ends = append(ends, Ended{Shot: shot, End: end})
 			continue

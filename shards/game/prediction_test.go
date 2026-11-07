@@ -253,7 +253,7 @@ func predictFrom(t *testing.T, s player.BodySync) predict.State {
 		Tick: got.Tick, Body: you.Body, Team: you.Team, Center: box2d.Vec2{X: you.X, Y: you.Y},
 		Radius: you.Radius, MoveSpeed: you.MoveSpeed, Champion: you.Champion,
 		Cooldowns: slices.Collect(you.Cooldowns.Values()), Effects: slices.Collect(you.Effects.Values()),
-		EffectsNext: you.EffectsNext, EchoDelay: you.EchoDelay,
+		EffectsNext: you.EffectsNext, EchoDelay: you.EchoDelay, EchoSerial: you.EchoSerial,
 	}
 	for at := range you.EchoPath.Values() {
 		state.EchoPath = append(state.EchoPath, box2d.Vec2(at))
@@ -971,8 +971,12 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		if !c.hits {
 			continue
 		}
-		// Where her screen drew it when they met: at its tick's view, Until of the way on.
+		// Where her screen drew it when they met: at its tick's view, Until of the way on. It is the one the
+		// newest sync shows, by its serial.
 		e := ended[0]
+		if newest := c.syncs[slices.Max(slices.Collect(maps.Keys(c.syncs)))]; e.End.Hit.Serial != newest.Serial {
+			t.Errorf("%s: hit serial %d, want the newest sync's, %d", c.name, e.End.Hit.Serial, newest.Serial)
+		}
 		met := view + e.End.Until
 		older, newer := past.RowTicks(met)
 		var o, n past.Row
@@ -991,6 +995,17 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 			t.Errorf("%s: ended %+v, want her shot touching the enemy where she drew it then, %v, at its speed", c.name,
 				e, drawn.Center)
 		}
+	}
+	// A sync older than the rows kept changes nothing, though it comes last and shares the newest's slot.
+	p := predict.New(rules)
+	for _, tick := range slices.Sorted(maps.Keys(kept)) {
+		p.See(tick, []predict.Sight{*kept[tick]})
+	}
+	p.See(4, []predict.Sight{farUp})
+	p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
+	if _, ended := p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 1.5}); len(ended) != 1 ||
+		ended[0].End.Hit.Target != enemy.ID {
+		t.Errorf("a sync older than the rows kept came last: ended %+v, want a hit on %d", ended, enemy.ID)
 	}
 	// A frame stepped before its views' syncs came flew her shot past every target, so her client
 	// replays it, though the server agrees with the frame before.

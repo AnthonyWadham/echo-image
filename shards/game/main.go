@@ -21,6 +21,7 @@ import (
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
 	"echo_image/shards/game/internal/track"
+	"echo_image/shards/game/internal/track/past"
 )
 
 func main() {
@@ -99,6 +100,11 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// echo.SpawnSystem.
 	world.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})
 
+	// Scene (Update, after echo.SpawnSystem, before every judge): every tracked thing over the window, and
+	// each client's view, once a tick. Shots, and every later judge, query it.
+	scene := past.NewScene(c.track.Window)
+	world.RegisterSystem(&track.SceneSystem{Scene: scene})
+
 	// Ability hooks (Update): each cast runs its ability's hook, which asks the features that own the
 	// state for changes with intents (a shot to launch, a dash's forced move). Before every receiver of
 	// those intents.
@@ -108,7 +114,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// it meets by its rules. A shot launched this tick moves this tick, so its path starts at the
 	// shooter.
 	world.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})
-	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Window: c.track.Window, Physics: physicsPlugin})
+	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Scene: scene, Physics: physicsPlugin})
 
 	// Areas (Update): each area acts on the things overlapping its holder, by its rules. An Echo's
 	// anti-camp is one.

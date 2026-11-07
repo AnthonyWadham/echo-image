@@ -35,6 +35,7 @@ export interface YouState {
   EffectsNext: number // uint32: the last serial your Body's effect list gave out
   Shots: ShotState[] // the shots in flight your predictor flies: your frames cast them
   EchoDelay: number // uint32: ticks your Echo trails your Body; 0 with no Echo
+  EchoSerial: bigint // uint64: your Echo's serial, its row's in target_sync; 0 with no Echo
   EchoPath: { X: number; Y: number }[] // your Echo this tick, then its spot on each next tick
 }
 
