@@ -16,7 +16,7 @@ type syncRow struct {
 	Team      team.Team
 }
 
-// SyncSystem (Update, after casts) sends each player their team's kits, with SendTo. O(B·S) to
+// SyncSystem (PostUpdate) sends each player their team's kits, with SendTo. O(B·S) to
 // collect, then one send per player.
 type SyncSystem struct {
 	Tuning AbilityTuning

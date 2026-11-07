@@ -523,15 +523,18 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Hooks, shots and areas run in Update:** `ability.CastHookSystem` → `projectile.LaunchSystem` →
   `projectile.FlightSystem` → `area.AreaSystem`. A Body can cast the tick it is claimed (Equip runs
   before Cast), and a shot launched this tick moves this tick, its path starting at the shooter.
-- **`effect.ResolveSystem` runs after every system that reads status, just before the syncs.** What it
-  adds applies from the next tick, and it drops what is over by then, so a whole tick reads one status.
-- **`track.RecordSystem` runs after `effect.ResolveSystem`, before the syncs.** Each Body's and
-  Echo's row is exactly what this tick's syncs show of it, its tags read for the next tick and its
-  `Until` from its `Died`, so a predicted shot meets what its client drew. `FlightSystem` runs before
-  it, so a view can use rows up to the tick before (`TestTrackIsWhatSyncsShow`).
-- **Sync systems run last** (`player`, `echo`, `ability`, `projectile`, then
-  `track.SyncSystem`), so each sends the tick's final state. Only `combat.DeathSystem` comes
-  after them: it removes what died this tick, once each sync has sent it.
+- **`effect.ResolveSystem` runs last in Update.** What it adds applies from the next tick, and it
+  drops what is over by then, so a whole tick reads one status.
+- **Update writes the tick; PostUpdate reads it.** PostUpdate runs after every Update system, so no
+  Update order can put a reader before a writer. A new writer goes in Update; a new recorder or sync
+  goes in PostUpdate (`cardinal.WithHook(cardinal.PostUpdate)`). System events (`Died`) still show there.
+- **`track.RecordSystem` runs first in PostUpdate.** Each Body's and Echo's row is exactly what this
+  tick's syncs show of it, its tags read for the next tick and its `Until` from its `Died`, so a
+  predicted shot meets what its client drew. Judges run in Update, before it, so a view can use rows
+  up to the tick before (`TestTrackIsWhatSyncsShow`).
+- **Sync systems come next** (`player`, `echo`, `ability`, `projectile`, then `track.SyncSystem`), so
+  each sends the tick's final state. **`combat.DeathSystem` runs last**, the one PostUpdate system that
+  changes the world: it removes what died this tick, once each sync has sent it.
 
 ### Game data / definitions (`content.Load`)
 - **One loader, `content.Load[T](fsys)`,** which the shard and the client predictor share. It decodes

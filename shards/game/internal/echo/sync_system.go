@@ -18,7 +18,7 @@ type syncRow struct {
 	Effects effectcomp.Effects
 }
 
-// SyncSystem (Update, after damage resolves) sends each player the Echoes they may see, with SendTo. One
+// SyncSystem (PostUpdate) sends each player the Echoes they may see, with SendTo. One
 // that died this tick is sent once more, at HP 0: its row says when it died. O(E) to collect, then one
 // send per player.
 type SyncSystem struct{}

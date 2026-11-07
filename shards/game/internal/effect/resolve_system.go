@@ -14,9 +14,9 @@ type holderRow struct {
 	Effects component.Effects
 }
 
-// ResolveSystem (Update, after every EffectIntent emitter, before the syncs) is the only writer of
-// Effects. It adds this tick's intents in a fixed order, so they apply from the next tick, and drops
-// the entries that are over by then. So every system in a tick reads the same status. The rules are
+// ResolveSystem (Update, last: after every EffectIntent emitter) is the only writer of Effects. It
+// adds this tick's intents in a fixed order, so they apply from the next tick, and drops the entries
+// that are over by then. So every system in a tick reads the same status. The rules are
 // effect/status's, which the client predictor runs too. O(I log I + H·L) for I intents and H holders
 // of L entries.
 type ResolveSystem struct {

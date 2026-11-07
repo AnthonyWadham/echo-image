@@ -22,7 +22,7 @@ type recordRow struct {
 	Owner     team.Owner
 }
 
-// RecordSystem (Update, after effect.ResolveSystem, before the syncs) records this tick's row of every
+// RecordSystem (PostUpdate, first, so after every writer) records this tick's row of every
 // tracked thing, which is what this tick's syncs show of it. Judges meet it by its rows, at the view
 // their client drew, and SyncSystem sends them. It keeps those of every view the window allows
 // (KeptRows), each written in place: O(T) for T things.

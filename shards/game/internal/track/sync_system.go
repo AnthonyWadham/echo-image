@@ -14,7 +14,7 @@ type syncRow struct {
 	Track component.Track
 }
 
-// SyncSystem (Update, after RecordSystem, last of the syncs) sends each player the tracked things they
+// SyncSystem (PostUpdate, after RecordSystem) sends each player the tracked things they
 // may see, each as the row RecordSystem recorded this tick, so their screen draws it and their predictor
 // places it as the server's judges do. O(T) to collect, then one send per player.
 type SyncSystem struct{}

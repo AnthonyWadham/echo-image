@@ -70,7 +70,7 @@ the claim model (problem 3).
   is drawn from. A row (`past.Row`) is
   its tick, kind, side (owner and team), center, radius, tags and `Until`. It is the target's one
   record: the server judges by it, and the target sync sends it.
-- **How:** `track.RecordSystem` (Update, after `effect.ResolveSystem`, before the syncs) writes
+- **How:** `track.RecordSystem` (first in PostUpdate, so after every Update system) writes
   this tick's row in place, which is exactly what this tick's syncs show, with `Until` from `Died`.
 - **Why:** the server must know where a target was when you saw it. A component is snapshot-safe and
   dies with its entity.

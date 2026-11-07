@@ -133,17 +133,22 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// writer of Effects. What it adds applies from the next tick, so a whole tick reads one status.
 	world.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})
 
-	// Tracks (Update, after everything that moves, kills or tags a Body or Echo, before the syncs): each
-	// records what this tick's syncs show of it, so a predicted shot meets it at its client's view.
-	world.RegisterSystem(&track.RecordSystem{Window: c.track.Window})
+	// PostUpdate reads the tick's final state: every Update writer has run, so no Update order can put
+	// a reader before one. A new writer goes in Update; a new recorder or sync goes here, before
+	// DeathSystem, the one system here that changes the world.
+	post := cardinal.WithHook(cardinal.PostUpdate)
 
-	// Client sync (Update): each feature sends each player this tick's final state it may see.
-	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})
-	world.RegisterSystem(&echo.SyncSystem{})
-	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities})
-	world.RegisterSystem(&projectile.SyncSystem{})
-	world.RegisterSystem(&track.SyncSystem{})
+	// Tracks (PostUpdate, first): each records what this tick's syncs show of it, so a predicted shot
+	// meets it at its client's view.
+	world.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)
 
-	// Deaths (Update, last): what died this tick goes, after each sync sent it once more.
-	world.RegisterSystem(&combat.DeathSystem{})
+	// Client sync (PostUpdate): each feature sends each player this tick's final state it may see.
+	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()}, post)
+	world.RegisterSystem(&echo.SyncSystem{}, post)
+	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities}, post)
+	world.RegisterSystem(&projectile.SyncSystem{}, post)
+	world.RegisterSystem(&track.SyncSystem{}, post)
+
+	// Deaths (PostUpdate, last): what died this tick goes, after each sync sent it once more.
+	world.RegisterSystem(&combat.DeathSystem{}, post)
 }

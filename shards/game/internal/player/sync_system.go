@@ -41,7 +41,7 @@ type echoRow struct {
 	History echocomp.PathHistory
 }
 
-// SyncSystem (Update, after game logic) sends each player the Bodies they may see, and their own
+// SyncSystem (PostUpdate) sends each player the Bodies they may see, and their own
 // prediction data, with SendTo. O(B + P + E) to collect for B Bodies, P shots and E Echoes, then one
 // send per player.
 type SyncSystem struct {

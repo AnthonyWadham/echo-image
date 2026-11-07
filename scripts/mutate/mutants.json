@@ -473,6 +473,35 @@
    ]
   },
   {
+   "id": "LC4-U1",
+   "breaks": "RecordSystem back in Update before FlightSystem",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&projectile.FlightSystem{",
+     "new": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window})\n\tworld.RegisterSystem(&projectile.FlightSystem{"
+    }
+   ]
+  },
+  {
+   "id": "LC4-D1",
+   "breaks": "DeathSystem back in Update, before the syncs",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "world.RegisterSystem(&combat.DeathSystem{}, post)",
+     "new": "world.RegisterSystem(&combat.DeathSystem{})"
+    }
+   ]
+  },
+  {
    "id": "12-T1",
    "breaks": "fed before sim known",
    "check": "ts",

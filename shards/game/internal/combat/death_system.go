@@ -9,7 +9,7 @@ import (
 	"echo_image/shards/game/internal/combat/component"
 )
 
-// DeathSystem (Update, after the syncs) removes what died this tick. The syncs ran first, so each sent
+// DeathSystem (PostUpdate, after the syncs) removes what died this tick. The syncs ran first, so each sent
 // it once more, alive until it died. O(D log D) for D deaths.
 type DeathSystem struct{}
 

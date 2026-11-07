@@ -10,7 +10,7 @@ import (
 	"echo_image/shards/game/internal/team"
 )
 
-// SyncSystem (Update, after shots fly) sends each player the shots they may see, with SendTo: those in
+// SyncSystem (PostUpdate) sends each player the shots they may see, with SendTo: those in
 // flight, and each component.ShotEnded of the tick, where and when it ended, so a client draws it to
 // its end. A player's own predicted shots are left out: its predictor draws them. O(P + E) to collect,
 // then O(P + E) per player.
