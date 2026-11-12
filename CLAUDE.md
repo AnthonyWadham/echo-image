@@ -52,7 +52,7 @@ one is the *what*.
 - **world-engine is pinned** in `go.mod`: that line is the version, so no doc repeats it. To move it:
   `go get github.com/argus-labs/world-engine@<commit or tag>`, in a commit of its own that says why.
   No `vendor/`: the shard's Docker build downloads modules itself.
-- **Toolchain:** go.mod's go line (1.27.1) is the Go the shard's Docker build runs (the world CLI's
+- **Toolchain:** go.mod's go line (1.27.4) is the Go the shard's Docker build runs (the world CLI's
   golang image), and `SimVersion` hashes the release. `predictor.mjs` builds with exactly that Go
   (`GOTOOLCHAIN`), whatever is installed. Bump it with the CLI's image.
 - `world.toml` declares the shards.
