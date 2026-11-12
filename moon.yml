@@ -1,0 +1,22 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+
+language: 'go'
+toolchains:
+  default: 'system'
+
+tasks:
+  check:
+    description: 'Every check, Go and client, at both tick rates'
+    command: 'scripts/check.sh'
+    options:
+      cache: false
+  check-go:
+    description: 'The Go half of check'
+    command: 'scripts/check.sh go'
+    options:
+      cache: false
+  mutate:
+    description: 'Mutation tests; pass ids or prefixes after --'
+    command: 'go run ./scripts/mutate'
+    options:
+      cache: false

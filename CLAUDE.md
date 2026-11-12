@@ -21,6 +21,9 @@ one is the *what*.
 > *after* the user explicitly says the game is running. Building/vetting the Go code locally
 > (`go build ./...`) is fine; spinning up the cluster is the user's job.
 
+- **From the repo root, with moon:** `moon run client:dev` (serve the client), `client:test`,
+  `client:build`, `client:typecheck`, `echo:check` (`scripts/check.sh`), `echo:check-go`,
+  `echo:mutate -- <ids>`. `moon tasks` lists them.
 - **Plain local build/vet/test:** `go build ./...` / `go vet ./shards/... ./pkg/...` / `go test ./...`.
   Run the tests at 60 Hz too: `go test -tags rate60 ./...`, and in `client/`
   `GOFLAGS=-tags=rate60 bun run test` (see tick-rate independence). `scripts/check.sh` runs every

@@ -38,3 +38,5 @@ go.work.sum
 
 # Claude Code: machine-local permissions only. Shared .claude/commands/ IS committed.
 .claude/settings.local.json
+# moon
+.moon/cache/
