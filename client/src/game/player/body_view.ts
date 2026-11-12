@@ -1,8 +1,9 @@
 import { Mesh, SphereGeometry } from 'three'
+import type { Object3D } from 'three'
 import { White, lit, mix } from '../../engine/render/color'
 import { EntityViews } from '../../engine/render/entity_views'
-import type { Stage } from '../../engine/render/stage'
 import { TeamLooks } from '../team/team_look'
+import { BodyKind } from '../track/target_sync_event'
 import type { TargetState } from '../track/target_sync_event'
 import type { LocalPlayer } from './local_player'
 
@@ -13,22 +14,23 @@ interface BodyView {
   readonly root: Mesh
 }
 
-/** Every Body, from its rows: yours lighter and where you've predicted it. */
-export function newBodyViews(stage: Stage, player: LocalPlayer): EntityViews<TargetState, BodyView> {
+/** Every Body, from its rows, in scene: yours lighter and where you've predicted it. */
+export function newBodyViews(scene: Object3D, player: LocalPlayer): EntityViews<TargetState, BodyView> {
   const looks = new TeamLooks((c) => ({ body: lit(c), you: lit(mix(c, White, 0.5)) }))
   const material = (b: TargetState) => {
     const look = looks.get(b.Team)
-    return b.EntityID === player.you ? look.you : look.body
+    return player.owns(b.Serial) ? look.you : look.body
   }
   return new EntityViews(
-    stage.scene,
-    player.bodyRows,
+    scene,
+    player.targets,
     (b): BodyView => ({ root: new Mesh(geometry, material(b)) }),
     (view, b, x, y) => {
-      const at = b.EntityID === player.you ? player.drawn : undefined
+      const at = player.drawnOwn(b.Serial)
       view.root.material = material(b)
       view.root.position.set(at?.x ?? x, at?.y ?? y, b.Radius)
       view.root.scale.setScalar(b.Radius)
     },
+    { shows: (r) => r.Kind === BodyKind },
   )
 }

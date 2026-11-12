@@ -35,17 +35,25 @@ export interface EntityView {
   readonly root: Object3D
 }
 
+/** What else EntityViews may be told. */
+export interface EntityViewsOptions<S> {
+  /** Which of the timeline's states these views draw: one kind of a timeline that holds several. */
+  shows?: (s: S) => boolean
+  /** Where a state is drawn when not at its own X, Y: a shot that ended on another entity. */
+  end?: (s: S) => Spot | undefined
+}
+
 /**
  * One kind of entity's views, by serial, drawn from its timeline. A view is made when its entity shows
  * up, and removed once it ended (blend) or the server stops reporting it. place gets the render tick too,
- * to find the entity's other states. end, if given, says where a state is drawn when not at its own X, Y:
- * a shot that ended on another entity.
+ * to find the entity's other states.
  */
 export class EntityViews<S extends Placed, V extends EntityView> {
   readonly #parent: Object3D
   readonly #timeline: Timeline<readonly S[]>
   readonly #create: (s: S) => V
   readonly #place: (view: V, s: S, x: number, y: number, tick: number) => void
+  readonly #shows: ((s: S) => boolean) | undefined
   readonly #end: ((s: S) => Spot | undefined) | undefined
   readonly #views = new Map<bigint, V>()
   readonly #seen = new Set<bigint>()
@@ -55,12 +63,13 @@ export class EntityViews<S extends Placed, V extends EntityView> {
     timeline: Timeline<readonly S[]>,
     create: (s: S) => V,
     place: (view: V, s: S, x: number, y: number, tick: number) => void,
-    end?: (s: S) => Spot | undefined,
+    { shows, end }: EntityViewsOptions<S> = {},
   ) {
     this.#parent = parent
     this.#timeline = timeline
     this.#create = create
     this.#place = place
+    this.#shows = shows
     this.#end = end
   }
 
@@ -78,6 +87,7 @@ export class EntityViews<S extends Placed, V extends EntityView> {
       const { from, to, t } = sample
       const before = new Map(from.map((s): [bigint, S] => [s.Serial, s]))
       for (const s of to) {
+        if (this.#shows && !this.#shows(s)) continue
         const start = s.PrevX === undefined || s.PrevY === undefined ? undefined : { X: s.PrevX, Y: s.PrevY }
         const at = blend(start ?? before.get(s.Serial) ?? s, this.#end?.(s) ?? s, t, s.Until)
         if (at) this.#place(this.#view(s), s, at.x, at.y, tick)

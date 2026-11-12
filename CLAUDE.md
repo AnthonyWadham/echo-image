@@ -606,6 +606,12 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   (`OnTarget`, `TargetSerial`, `OffsetX`, `OffsetY`), and so does the predictor for your own shots. Each
   screen ends the shot at the target where it draws it this frame, plus the offset (`endOn`, from
   `EntityViews.at`; shots draw after Bodies and Echoes). A target the screen doesn't draw keeps `X, Y`.
+- **Every Body and Echo is drawn from one timeline, `LocalPlayer.targets`** (each `TargetSync`). Each
+  kind's views pick their rows by kind (`EntityViews` `shows`), so a new kind of target is one more view,
+  with no new timeline or sync. Your own things are drawn as predicted by serial alone
+  (`LocalPlayer.drawnOwn`: your Body's from the same tick's body_sync, your Echo's `You.EchoSerial`),
+  never by kind, owner or EntityID: an older Echo of yours, or a newer Body that took your ID, is drawn
+  from its rows.
 - **A shot says where its flight this tick began** (`PrevX`, `PrevY`: its launch point on its first
   tick), in `ProjectileState` and `ShotState`. Every screen draws its tick from there, never from an
   older sync (`Placed.PrevX`), so a new shot leaves its launcher. Your predictor keeps it on a reset, so
@@ -673,7 +679,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     `echo_path_seconds` (`content/player/tuning.json`) or its delay, and `You.EchoDelay` the delay. The
     predictor walks the path a spot per step (`Predictor.Echo`). Past the delay, your Echo is where it
     predicted your Body that many steps back; past the path but inside the delay, it waits at the
-    path's end. The client draws your Echo from it (`LocalPlayer.drawnEcho`), others' from their rows (`LocalPlayer.echoRows`).
+    path's end. The client draws your Echo from it (`LocalPlayer.drawnOwn`), others' from their rows.
     The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
     (`past.Row`: kind, side, circle, tags and `Until`) is its one record: its `Track` keeps its
@@ -682,7 +688,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     serial (`See`), and builds the same `past.Scene` on a step with a shot, holding only
     targets that lived all of the newest sync's tick: one that died in it is gone on the server before
     your next frame. The render clock waits for `TargetSync` like any timeline
-    (`LocalPlayer.bodyRows`, `echoRows`), and it feeds the predictor only once a body_sync says the shard runs your
+    (`LocalPlayer.targets`), and it feeds the predictor only once a body_sync says the shard runs your
     sim. Shot code names no target kind: your Body (its ID) and your Echo (`You.EchoSerial`) are
     predicted things in the scene. Each step meets them across its `ViewTick` and the next
     (`past.Across`, from the rule `EntityViews` draws with), held by the server's rule

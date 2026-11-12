@@ -63,7 +63,7 @@ describe('EntityViews', () => {
       shots,
       () => ({ root: new Object3D() }),
       (view, _s, x, y) => view.root.position.set(x, y, 0),
-      (s) => (s.Until === undefined ? undefined : { X: 2, Y: 2 }), // where this screen draws what it ended on
+      { end: (s) => (s.Until === undefined ? undefined : { X: 2, Y: 2 }) }, // where this screen draws what it ended on
     )
     views.draw(10.25)
     expect(views.at(1n)).toEqual({ x: 1, y: 1 }) // half way to its end at (2, 2)

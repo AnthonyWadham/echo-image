@@ -40,7 +40,7 @@ export function newProjectileViews(
       view.root.position.set(x, y, 0.5)
       view.root.scale.setScalar(s.Radius)
     },
-    end,
+    { end },
   )
   // Your shots have no entity until the server confirms them, so they're a pool of balls, one per shot.
   const yours: Mesh[] = []

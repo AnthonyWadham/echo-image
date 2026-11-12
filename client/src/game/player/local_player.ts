@@ -1,7 +1,6 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import type { Spot } from '../../engine/render/entity_views'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
-import { BodyKind, EchoKind } from '../track/target_sync_event'
 import type { TargetState, TargetSync } from '../track/target_sync_event'
 import type { BodyState, BodySync, InputHealth } from './body_sync_event'
 import type { Input } from './input_command'
@@ -25,11 +24,10 @@ export class LocalPlayer {
   /** What each body_sync shows of every Body beyond its row: who plays it and how it looks. */
   readonly bodies: Timeline<BodyState[]>
   /**
-   * The Body and Echo rows each target_sync shows, which screens draw them from. The render clock waits
-   * for them, so your predictor has every view's rows.
+   * The rows each target_sync shows, every Body and Echo's: each kind's views draw theirs. The render
+   * clock waits for them, so your predictor has every view's rows.
    */
-  readonly bodyRows: Timeline<TargetState[]>
-  readonly echoRows: Timeline<TargetState[]>
+  readonly targets: Timeline<TargetState[]>
   readonly input: InputStream
   readonly prediction: Prediction
   /** body_sync events received. */
@@ -49,18 +47,19 @@ export class LocalPlayer {
   #connected = false
   #playing = false
   #sameSim = false // the newest body_sync since connecting says the shard runs your sim
+  #own: { body?: bigint; echo?: bigint } = {} // the serials of what you predict, from the newest body_sync
 
   constructor(timelines: Timelines, session: number, predictor: Predictor) {
     this.#timelines = timelines
     this.bodies = timelines.create<BodyState[]>()
-    this.bodyRows = timelines.create<TargetState[]>()
-    this.echoRows = timelines.create<TargetState[]>()
+    this.targets = timelines.create<TargetState[]>()
     this.input = new InputStream(session)
     this.prediction = new Prediction(predictor)
     this.sim = predictor.version
     timelines.onReset(() => {
       this.#playing = false
       this.#sameSim = false
+      this.#own = {}
       this.input.reset()
       this.prediction.clear()
     })
@@ -84,6 +83,21 @@ export class LocalPlayer {
   /** Where to draw your Echo while playing: predicted like your Body, so the gap between them is the real one. */
   get drawnEcho(): Vec2 | undefined {
     return this.#playing ? this.prediction.echo(this.#alpha) : undefined
+  }
+
+  /** Whether serial names your Body. */
+  owns(serial: bigint): boolean {
+    return serial === this.#own.body
+  }
+
+  /**
+   * Where to draw the thing with serial if you predict it: your Body or your Echo, while playing. Its
+   * serial says, never its kind or owner: an Echo of yours that isn't your Echo now is drawn from its rows.
+   */
+  drawnOwn(serial: bigint): Vec2 | undefined {
+    if (serial === this.#own.body) return this.drawn
+    if (serial === this.#own.echo) return this.drawnEcho
+    return undefined
   }
 
   /**
@@ -129,6 +143,7 @@ export class LocalPlayer {
     this.team = s.You.Team
     this.inputHealth = s.You.InputHealth
     this.tickSeconds = s.TickSeconds
+    this.#own = { body: this.me?.Serial, echo: s.You.EchoSerial > 0n ? s.You.EchoSerial : undefined }
     this.input.ack(s.You, s.TickSeconds)
     if (!(this.tickSeconds > 0 && this.me)) return
     this.#playing = true
@@ -137,8 +152,7 @@ export class LocalPlayer {
 
   /** Keeps the rows each target_sync shows, to draw, and for your shots to meet once the shard runs your sim. */
   onTargetSync(s: TargetSync): void {
-    this.#timelines.add(this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind))
-    this.#timelines.add(this.echoRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind))
+    this.#timelines.add(this.targets, s.Tick, s.Targets)
     if (this.#sameSim) this.prediction.seeTargets(s)
   }
 

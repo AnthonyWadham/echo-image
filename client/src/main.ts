@@ -52,8 +52,8 @@ async function play(playerId: string): Promise<void> {
   const shots = timelines.create<ProjectileState[]>()
 
   const stage = new Stage(document.body)
-  const bodyViews = newBodyViews(stage, player)
-  const echoViews = newEchoViews(stage, echoes, player)
+  const bodyViews = newBodyViews(stage.scene, player)
+  const echoViews = newEchoViews(stage.scene, echoes, player)
   // Shots draw last, so one that ended on a Body or Echo ends where this frame draws it.
   const targetAt = (serial: bigint) => bodyViews.at(serial) ?? echoViews.at(serial)
   const views = [bodyViews, echoViews, newProjectileViews(stage, shots, player, targetAt)]

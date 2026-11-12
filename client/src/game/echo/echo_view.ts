@@ -1,11 +1,11 @@
 import { CylinderGeometry, Group, Mesh, MeshBasicMaterial, PlaneGeometry } from 'three'
-import type { Material } from 'three'
+import type { Material, Object3D } from 'three'
 import { lit } from '../../engine/render/color'
 import { EntityViews } from '../../engine/render/entity_views'
-import type { Stage } from '../../engine/render/stage'
 import type { Timeline } from '../../engine/sync/timeline'
 import type { LocalPlayer } from '../player/local_player'
 import { TeamLooks } from '../team/team_look'
+import { EchoKind } from '../track/target_sync_event'
 import type { TargetState } from '../track/target_sync_event'
 import type { EchoState } from './echo_sync_event'
 
@@ -35,23 +35,24 @@ function echoView(material: Material): EchoView {
   return { root: new Group().add(shape, back, hp), shape, hp }
 }
 
-/** Every Echo, from its rows, with its health from the same tick's echo_sync: yours where you've predicted it. */
+/** Every Echo, from its rows, in scene, with its health from the same tick's echo_sync: yours as predicted. */
 export function newEchoViews(
-  stage: Stage,
+  scene: Object3D,
   echoes: Timeline<EchoState[]>,
   player: LocalPlayer,
 ): EntityViews<TargetState, EchoView> {
   const looks = new TeamLooks(([r, g, b]) => lit([r * 0.6, g * 0.6, b * 0.6]))
   return new EntityViews(
-    stage.scene,
-    player.echoRows,
+    scene,
+    player.targets,
     (r) => echoView(looks.get(r.Team)),
     (view, r, x, y, tick) => {
-      const at = r.Owner === player.you ? player.drawnEcho : undefined
+      const at = player.drawnOwn(r.Serial)
       const e = echoes.sample(tick)?.to.find((s) => s.Serial === r.Serial)
       view.shape.material = looks.get(r.Team)
       view.root.position.set(at?.x ?? x, at?.y ?? y, 0)
       view.hp.scale.setX(e && e.MaxHP > 0 ? Math.min(Math.max(e.HP / e.MaxHP, 0), 1) : 0)
     },
+    { shows: (r) => r.Kind === EchoKind },
   )
 }

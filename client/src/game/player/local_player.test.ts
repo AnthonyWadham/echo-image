@@ -1,7 +1,12 @@
+import { Group } from 'three'
 import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
+import type { EchoState } from '../echo/echo_sync_event'
+import { newEchoViews } from '../echo/echo_view'
 import { BodyKind, EchoKind } from '../track/target_sync_event'
+import type { TargetState } from '../track/target_sync_event'
 import type { BodySync } from './body_sync_event'
+import { newBodyViews } from './body_view'
 import { LocalPlayer } from './local_player'
 import type { PredictedEcho, Predictor } from './predictor'
 
@@ -237,7 +242,7 @@ describe('LocalPlayer', () => {
     const echo = { ...row, EntityID: 3, Serial: 3n, Kind: EchoKind }
     player.onTargetSync({ Tick: 100n, Targets: [echo, body] })
     expect(timelines.newestTick).toBe(100)
-    expect([player.bodyRows.newest, player.echoRows.newest]).toEqual([[body], [echo]])
+    expect(player.targets.newest).toEqual([echo, body])
     player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
     player.onTargetSync({ Tick: 101n, Targets: [] })
     player.setConnected(false, { x: 0, y: 0 })
@@ -275,5 +280,70 @@ describe('LocalPlayer', () => {
     expect(echoes.newestTick).toBe(5)
     expect(player.playing).toBe(false)
     expect(player.input.unacked).toEqual([])
+  })
+})
+
+/** A target row of kind at (x, 0), owned by Body owner. */
+const row = (kind: bigint, serial: bigint, owner: number, x: number): TargetState => ({
+  ...{ EntityID: Number(serial), Serial: serial, Kind: kind, Owner: owner, Team: 0, X: x, Y: 0 },
+  ...{ Radius: 0.5, Tags: 0n, Until: 1 },
+})
+
+describe('Body and Echo views', () => {
+  // Playing Body 1 (serial 1) at (100, 0), its Echo serial 5 predicted at (80, 0). Ticks 99 and 100
+  // hold Body 1, Body 2, your Echo, an older Echo of yours (serial 6) and Body 2's Echo, each at x = serial.
+  function scene() {
+    const timelines = new Timelines(0.1)
+    const player = newPlayer(timelines)
+    player.setConnected(true, { x: 0, y: 0 })
+    const s = bodySync(100, 0, [1, 2])
+    s.You.EchoSerial = 5n
+    s.You.EchoDelay = 20
+    s.You.EchoPath = [{ X: 80, Y: 0 }]
+    player.onBodySync(s)
+    const rows = [
+      row(BodyKind, 1n, 1, 1),
+      row(BodyKind, 2n, 2, 2),
+      row(EchoKind, 5n, 1, 5),
+      row(EchoKind, 6n, 1, 6),
+      row(EchoKind, 7n, 2, 7),
+    ]
+    for (const tick of [99n, 100n]) player.onTargetSync({ Tick: tick, Targets: rows })
+    return player
+  }
+  const drawn = (parent: Group) => parent.children.map((c) => c.position.x)
+
+  test('each kind draws only its own rows of the one timeline, and yours where you predict it', () => {
+    const player = scene()
+    const bodies = new Group()
+    const echoes = new Group()
+    const views = [newBodyViews(bodies, player), newEchoViews(echoes, new Timelines(0.1).create<EchoState[]>(), player)]
+    for (const v of views) v.draw(99.5)
+    expect(drawn(bodies)).toEqual([100, 2])
+    // Only your Echo now is predicted: the older one of yours and Body 2's are where their rows have them.
+    expect(drawn(echoes)).toEqual([80, 6, 7])
+  })
+
+  test('draws a newer Body that took your EntityID from its rows', () => {
+    const player = scene()
+    // By tick 101 your Body is gone and Body serial 8 has its EntityID; no body_sync says so yet.
+    player.onTargetSync({ Tick: 101n, Targets: [{ ...row(BodyKind, 8n, 1, 8), EntityID: 1 }] })
+    const bodies = new Group()
+    newBodyViews(bodies, player).draw(100.5)
+    expect(drawn(bodies)).toEqual([8])
+  })
+
+  test('says which thing you predict by its serial alone', () => {
+    const player = scene()
+    expect([1n, 2n, 5n, 6n, 7n].map((s) => player.drawnOwn(s))).toEqual([
+      { x: 100, y: 0 },
+      undefined,
+      { x: 80, y: 0 },
+      undefined,
+      undefined,
+    ])
+    expect([1n, 2n, 5n].map((s) => player.owns(s))).toEqual([true, false, false])
+    player.setConnected(false, { x: 0, y: 0 })
+    expect([player.drawnOwn(1n), player.drawnOwn(5n), player.owns(1n)]).toEqual([undefined, undefined, false])
   })
 })

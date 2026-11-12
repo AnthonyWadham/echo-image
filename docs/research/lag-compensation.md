@@ -105,8 +105,8 @@ func (t Track) AppendRows(dst []past.Row, before uint64) []past.Row // oldest fi
   unchanged. The wire name stays `target_sync`.
 - **How:** same `netsync.Items` (`Everyone`, `seenBy`), one `SendTo` per viewer, complete every tick.
   The client decoder moves to `game/track` with the same types. The client keeps one timeline of
-  targets keyed by serial; Body and Echo views filter it by kind. The draw-own rule becomes
-  `row.EntityID === you.Body || row.Serial === you.EchoSerial`, not a kind check.
+  targets keyed by serial; Body and Echo views filter it by kind. The draw-own rule is by serial
+  alone: your Body's (from the same tick's body_sync) or `You.EchoSerial`, not a kind or EntityID check.
 - **Why:** no surveyed library sends lag-compensation history as its own stream. Each peer builds it
   from replicated state, and Netick draws and judges from the same From/To/Alpha. Keeping the wire name
   keeps the wire fixture, the client decode and their mutants unchanged.

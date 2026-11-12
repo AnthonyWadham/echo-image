@@ -502,6 +502,54 @@
    ]
   },
   {
+   "id": "LC5-O1",
+   "breaks": "draw-own ignores EchoSerial: every Echo you own is drawn as predicted",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/echo/echo_view.ts",
+     "old": "const at = player.drawnOwn(r.Serial)",
+     "new": "const at = r.Owner === player.you ? player.drawnEcho : undefined"
+    }
+   ]
+  },
+  {
+   "id": "LC5-O2",
+   "breaks": "draw-own by EntityID: a newer Body with your Body's ID is drawn as yours",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/body_view.ts",
+     "old": "const at = player.drawnOwn(b.Serial)",
+     "new": "const at = b.EntityID === player.you ? player.drawn : undefined"
+    }
+   ]
+  },
+  {
+   "id": "LC5-O3",
+   "breaks": "own serials kept after leaving the stream",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "      this.#own = {}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC5-S1",
+   "breaks": "EntityViews ignores shows",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/render/entity_views.ts",
+     "old": "        if (this.#shows && !this.#shows(s)) continue\n",
+     "new": ""
+    }
+   ]
+  },
+  {
    "id": "12-T1",
    "breaks": "fed before sim known",
    "check": "ts",
@@ -515,12 +563,12 @@
   },
   {
    "id": "12-T2",
-   "breaks": "no Body rows timeline",
+   "breaks": "no targets timeline",
    "check": "ts",
    "edits": [
     {
      "file": "client/src/game/player/local_player.ts",
-     "old": "    this.#timelines.add(this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind))\n",
+     "old": "    this.#timelines.add(this.targets, s.Tick, s.Targets)\n",
      "new": ""
     }
    ]
@@ -2745,24 +2793,34 @@
   },
   {
    "id": "F18-R1",
-   "breaks": "Body rows hold Echoes, not Bodies",
+   "breaks": "Body views draw Echoes, not Bodies",
    "check": "ts",
    "edits": [
     {
-     "file": "client/src/game/player/local_player.ts",
-     "old": "this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === BodyKind)",
-     "new": "this.bodyRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind)"
+     "file": "client/src/game/player/body_view.ts",
+     "old": "{ shows: (r) => r.Kind === BodyKind }",
+     "new": "{ shows: (r) => r.Kind === EchoKind }"
+    },
+    {
+     "file": "client/src/game/player/body_view.ts",
+     "old": "import { BodyKind } from",
+     "new": "import { EchoKind } from"
     }
    ]
   },
   {
    "id": "F18-R2",
-   "breaks": "no Echo rows timeline",
+   "breaks": "Echo views draw every kind",
    "check": "ts",
    "edits": [
     {
-     "file": "client/src/game/player/local_player.ts",
-     "old": "    this.#timelines.add(this.echoRows, s.Tick, s.Targets.filter((r) => r.Kind === EchoKind))\n",
+     "file": "client/src/game/echo/echo_view.ts",
+     "old": "    { shows: (r) => r.Kind === EchoKind },\n",
+     "new": ""
+    },
+    {
+     "file": "client/src/game/echo/echo_view.ts",
+     "old": "import { EchoKind } from '../track/target_sync_event'\n",
      "new": ""
     }
    ]

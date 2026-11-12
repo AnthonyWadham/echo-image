@@ -48,7 +48,7 @@ export class Hud {
     const lines = [this.#status(status), `States received: ${player.received}`]
     for (const e of echoes.newest ?? []) {
       const hp = `${Math.round(e.HP)}/${Math.round(e.MaxHP)} HP`
-      const team = player.echoRows.newest?.find((r) => r.Serial === e.Serial)?.Team
+      const team = player.targets.newest?.find((r) => r.Serial === e.Serial)?.Team
       lines.push(`Echo of P${e.PlayerID} (team ${team ?? '?'}): ${hp}`)
     }
     // Your kit is predicted, so a cast starts its countdown at once.
