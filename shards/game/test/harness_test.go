@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/shard"
 	"encoding/json"
 	"flag"
 	"math"
@@ -49,12 +50,12 @@ func tuningOf[T content.File](t *testing.T) T {
 	return v
 }
 
-// withContent is register with each patch deep-merged into the shipped content file it names, in
+// withContent is Register with each patch deep-merged into the shipped content file it names, in
 // order, so a test can add a shot type or a champion. Objects merge, and anything else replaces.
 func withContent(t testing.TB, patches ...map[string]string) func(*cardinal.World) {
 	t.Helper()
 	files := patched(t, patches...)
-	return func(world *cardinal.World) { registerWith(world, files, otel.GetMeterProvider()) }
+	return func(world *cardinal.World) { shard.RegisterWith(world, files, otel.GetMeterProvider()) }
 }
 
 // patched is the content withContent registers, which a predictor can load too.
@@ -237,7 +238,7 @@ func primary(t *testing.T) (cast.Def, flight.Shot) {
 // duel has alice and bob take their Bodies (on opposite teams), standing still.
 func duel(t *testing.T) (w *cardinal.TestWorld, alice, bob *client) {
 	t.Helper()
-	w = cardinal.NewTestWorld(t, register)
+	w = cardinal.NewTestWorld(t, shard.Register)
 	alice, bob = claim(t, w)
 	return w, alice, bob
 }
@@ -414,13 +415,13 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 			`{"shots": {"bolt": {"meets": [{"kinds": ["shot"], "do": "stop"}]}}}`, "names a kind a shot never meets"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			_, err := loadCatalog(patched(t, map[string]string{c.file: c.patch}))
+			err := shard.CheckContent(patched(t, map[string]string{c.file: c.patch}))
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("loaded with error %v, want one naming %s", err, c.want)
 			}
 		})
 	}
-	if _, err := loadCatalog(content.FS); err != nil {
+	if err := shard.CheckContent(content.FS); err != nil {
 		t.Fatalf("the shipped content fails: %v", err)
 	}
 }
@@ -437,7 +438,7 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 		otel.SetTracerProvider(before)
 		_ = traced.Shutdown(context.Background()) // before forwards to traced for good, so turn it off
 	})
-	cardinal.NewTestWorld(t, register).Tick()
+	cardinal.NewTestWorld(t, shard.Register).Tick()
 
 	reader := func(name string) bool {
 		return strings.HasSuffix(name, ".RecordSystem") || strings.HasSuffix(name, ".SyncSystem")

@@ -29,7 +29,7 @@ one is the *what*.
   (`.github/workflows/check.yml`) runs its Go half, `scripts/check.sh go`, on amd64 and arm64 for
   every push and pull request. The client half joins once the SDK's MessagePack codec is on npm and
   `client/package.json` pins it in place of the `../../go-ecs` alias.
-  The world tests in `shards/game` run real ticks through `main.go`'s `register` with
+  The world tests in `shards/game/test` run real ticks through `shard.Register` with
   `cardinal.NewTestWorld`, so a missing registration fails there; they also pin the client-sync,
   prediction, ability, shot, Echo, area, damage and effect rules below.
 - **Mutation checks:** `go run ./scripts/mutate` breaks each rule in `scripts/mutate/mutants.json` once,
@@ -38,12 +38,12 @@ one is the *what*.
 - **Random play:** `TestRandomPlayIsPredicted` plays 2,000 random but honest ticks from a new seed
   each run, and checks prediction every tick. A failure names its seed; `-seed` reruns it.
   `FuzzFlyMeetsAMovingTargetWhenTheyTouch` (`go test -fuzz`) fuzzes when a shot meets a moving target.
-- **Tick cost:** `BenchmarkTick` times a 3v3 tick (`go test -run '^$' -bench Tick ./shards/game`, with
+- **Tick cost:** `BenchmarkTick` times a 3v3 tick (`go test -run '^$' -bench Tick ./shards/game/test`, with
   `-tags rate60` for 60 Hz). `TestTickAllocations` fails when that tick allocates past its ceiling for
   the rate. Allocation counts don't depend on the machine; raise a ceiling only for a known reason.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
-  `projectile_test.go`, … in `shards/game`). One harness: shared helpers live in `main_test.go`. Never
-  a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
+  `projectile_test.go`, … in `shards/game/test`). One harness: shared helpers live in
+  `harness_test.go`. Never a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
 - **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
   `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
@@ -68,8 +68,11 @@ one is the *what*.
 
 ```
 shards/game/
-  main.go                       registration wiring ONLY
-  catalog.go                    every content file, loaded at boot, and the IDs across files checked
+  main.go                       makes the world and calls shard.Register, nothing else
+  shard/     package shard       the wiring: Register, and RegisterWith for a test's content and metrics
+    shard.go                    registration wiring ONLY
+    catalog.go                  every content file, loaded at boot, and the IDs across files checked
+  test/      package test        the world tests (only _test.go files) and their testdata
   content/   package content     embedded JSON config (go:embed), namespaced content/<feature>/*.json,
                                   and Load, the one strict loader
   internal/
@@ -192,17 +195,17 @@ name their JSON file by path string in `JSONFile()`.
    sub-packages only when a package genuinely gets large (~10+ files), and split **by sub-feature**
    (`combat/status`), **never by layer** (no `components/` `systems/` `events/` trio upfront).
 3. **Descriptive package names, no stutter.** `physics.NewPlugin` not `physics.NewPhysicsPlugin`;
-   `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `main.go` import-alias-free. The
+   `physics.NewBody2D` not `physics.NewPhysicsBody2D`. This keeps `shard.go` import-alias-free. The
    rule targets verb/function stutter; an eponymous type in a single-concept package (`team.Team`,
    like stdlib `list.List`) is fine.
 4. **A component/event lives in the package that owns it.** Promote to a *cross-cutting* `shared`/`core`
    package only when ownership is genuinely ambiguous — not preemptively. (This is about ambiguous
    *ownership*; a feature's OWN `component/` leaf is a different, deliberately-early split — see File
    layout rule 2.)
-5. **`main.go` is wiring only** — construct the world, register plugins/systems in order, no logic.
+5. **`shard.go` is wiring only** — register plugins/systems in order, no logic.
 6. **Each feature registers its own types** in `register.go`: `RegisterTypes(w)` registers every
    component (including its `component/` leaf's), command and system event the feature owns.
-   `main.go` calls each feature's `RegisterTypes` before registering systems.
+   `shard.go` calls each feature's `RegisterTypes` before registering systems.
 
 ### File layout within a package
 
@@ -233,7 +236,7 @@ can read another's data without risking an import cycle.
      once the feature also owns systems a cross-feature importer would otherwise drag in.
    - **Cross-importing two features' components** takes a one-word import alias (both are `package
      component`): `import playercomp "…/player/component"`. That alias lives in the importing *system*
-     file — `main.go` imports feature packages, never their component leaves, so it stays alias-free.
+     file — `shard.go` imports feature packages, never their component leaves, so it stays alias-free.
    - **Yes, the leaf goes in up front, before a second importer exists — deliberately.** This is the one
      place we promote data *preemptively*: in ECS a component being read cross-feature is near-certain,
      and retrofitting the leaf later means touching every importer. The leaf is one file and the
@@ -279,7 +282,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   physics2d step. A build tag picks it: `timestep.Rate` is 20, or 60 built with `-tags rate60`
   (`rate20.go`, `rate60.go`), and the sim version says which. `world build` passes no build tags yet,
   so a deployed shard runs 20 Hz (F23 in `docs/research/foundation-review.md`).
-- **Tests run at both rates.** They state durations in seconds (`ticks(seconds)` in `main_test.go`);
+- **Tests run at both rates.** They state durations in seconds (`ticks(seconds)` in `harness_test.go`);
   raw ticks appear only as a few ticks of margin or a fractional view lag. Each rate has its own
   prediction recording. The client converts seconds to frames with body_sync's `TickSeconds`
   (`InputStream`, whose tests loop over both rates); `GOFLAGS=-tags=rate60` reruns the predictor's tests
@@ -489,7 +492,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   exact ones (floor, mod, …).
   **Never `math.Hypot`:** it fuses on arm64. Use `box2d.Length`.
 
-### System registration ordering (`main.go`)
+### System registration ordering (`shard.go`)
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
@@ -519,7 +522,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **`history.SceneSystem` runs in Update after `echo.SpawnSystem`, before `ability.CastHookSystem`,** so
   a just-spawned Echo is in this tick's scene (`TestShotMeetsAnEchoTheTickItSpawns`) and every judge
   after it reads one scene. Nothing between
-  them moves a recorded thing. The scene is derived, never saved: main.go hands the one `*past.Scene`
+  them moves a recorded thing. The scene is derived, never saved: shard.go hands the one `*past.Scene`
   to `history.SceneSystem` and to each judge (`projectile.FlightSystem`), as it does the physics plugin.
   That shared pointer is the one place the leaf rule bends.
 - **Hooks, shots and areas run in Update:** `ability.CastHookSystem` → `projectile.LaunchSystem` →
@@ -551,10 +554,10 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   the IDs one file names in another: each ability's shots and effect kinds (hooks list theirs in
   `Refs`), and each champion's kit, Echo and Echo area. A champion with no Echo could never be
   eliminated. `TestBadContentFailsTheBoot` pins both kinds of failure.
-- **Each system that reads config holds its file** in a typed `Tuning` field, set in `main.go` from
+- **Each system that reads config holds its file** in a typed `Tuning` field, set in `shard.go` from
   the catalog. Content never changes after boot, so a system reads it directly, never a copy per
   entity.
-- **Tests change content with `withContent`** (`main_test.go`): it deep-merges JSON patches into the
+- **Tests change content with `withContent`** (`harness_test.go`): it deep-merges JSON patches into the
   shipped files and boots the real `registerWith` from that `fs.FS`; `patched` gives a predictor the same.
   Use it for test-only shot types and champions; never add test content to the shipped files.
   A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
@@ -823,7 +826,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 
 ## Engine cheat-sheet (Cardinal)
 
-- **Systems** are structs with `Run(w *cardinal.World)`, registered in `main.go` with
+- **Systems** are structs with `Run(w *cardinal.World)`, registered in `shard.go` with
   `world.RegisterSystem(&feature.FooSystem{...}, cardinal.WithHook(...))`. Dependencies (the data
   plugin) are struct fields set there. Log with `w.Logger()`.
 - **Search rows:** `w.Contains[Row]()` / `w.Exact[Row]()`, where `Row` is a struct whose fields are

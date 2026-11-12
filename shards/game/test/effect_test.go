@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	effectcomp "echo_image/shards/game/internal/effect/component"

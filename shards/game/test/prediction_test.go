@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	"cmp"
@@ -16,6 +16,7 @@ import (
 	"echo_image/shards/game/internal/predict"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
+	"echo_image/shards/game/shard"
 	"fmt"
 	"maps"
 	"math"
@@ -145,7 +146,7 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 // body_sync says which sim the shard runs, so a client predicts only with a predictor of the same
 // (predictor.mjs stamps its wasm from the same function: predictor.test.ts).
 func TestBodySyncSaysWhichSimItRuns(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Command("alice", input(1, frame(1, 0, 0)))
 	w.Tick()
 	if got, want := bodiesFor(t, w, "alice").SimVersion, echoimage.SimVersion(); got != want {
@@ -691,7 +692,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		for i := range max(len(want), len(got)) {
 			if i >= len(want) || i >= len(got) || want[i] != got[i] {
 				t.Fatalf("%s line %d differs from this run. If the sim changed on purpose, run "+
-					"`go test ./shards/game -run TestPredictionMatchesServer -update` (with -tags rate60 at 60 Hz) "+
+					"`go test ./shards/game/test -run TestPredictionMatchesServer -update` (with -tags rate60 at 60 Hz) "+
 					"and review the diff.\nwant: %.300s\ngot:  %.300s", digestPath, i+1, at(want, i), at(got, i))
 			}
 		}
@@ -1067,7 +1068,7 @@ func TestPredictorAgreesOnlyWithTheEchoItStepped(t *testing.T) {
 // its js-only glue: the code that must give every target the same bits. Taken from the build, so a new
 // import is scanned the day it lands.
 func sharedCore(t *testing.T) []string {
-	list := exec.Command("go", "list", "-deps", "./predictor")
+	list := exec.Command("go", "list", "-deps", "../predictor")
 	list.Env = append(list.Environ(), "GOOS=js", "GOARCH=wasm")
 	deps, err := list.CombinedOutput()
 	if err != nil {

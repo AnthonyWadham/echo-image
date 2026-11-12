@@ -5,14 +5,14 @@ import { Timeline } from '../sync/timeline'
 import { EntityViews, blend } from './entity_views'
 import type { Placed } from './entity_views'
 
-// TestViewFixture's (shards/game/main_test.go): targets over a few ticks of syncs, and where the server's
+// TestViewFixture's (shards/game/test/wire_test.go): targets over a few ticks of syncs, and where the server's
 // flight.RowTicks and AtView have each at views across them, by serial. Your shots meet them there. It's
 // JSON, so serials come as numbers.
 interface ViewFixture {
   Syncs: { Tick: number; Targets: (Omit<Placed, 'Serial'> & { Serial: number })[] }[]
   Views: { View: number; Drawn: { Serial: number; X: number; Y: number }[] }[]
 }
-const viewFixture = new URL('../../../../shards/game/testdata/view.json', import.meta.url)
+const viewFixture = new URL('../../../../shards/game/test/testdata/view.json', import.meta.url)
 
 describe('blend', () => {
   test('draws a live entity t of the way from its older state', () => {

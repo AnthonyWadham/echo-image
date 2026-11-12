@@ -1,4 +1,4 @@
-package main
+package shard
 
 import (
 	"errors"
@@ -91,4 +91,10 @@ func (c catalog) lineUp() error {
 		errs = append(errs, fmt.Errorf("dev_champion %q is no champion", c.movement.DevChampion))
 	}
 	return errors.Join(errs...)
+}
+
+// CheckContent is the boot's check of the content in fsys: the error a boot with it would fail by.
+func CheckContent(fsys fs.FS) error {
+	_, err := loadCatalog(fsys)
+	return err
 }

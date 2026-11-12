@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	abilitycomp "echo_image/shards/game/internal/ability/component"
@@ -10,6 +10,7 @@ import (
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/shard"
 	"fmt"
 	"maps"
 	"math"
@@ -425,7 +426,7 @@ func TestShotPassesThroughAllies(t *testing.T) {
 // Each is sent once more, at its range, its last tick flown from where the one before ended.
 func TestShotExpiresAtRange(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(register, fx))
+	w := cardinal.NewTestWorld(t, withEmitter(shard.Register, fx))
 	claim(t, w)
 	def, shot := primary(t)
 	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
@@ -465,7 +466,7 @@ func TestShotExpiresAtRange(t *testing.T) {
 // it, so it never draws one from the other.
 func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(register, fx))
+	w := cardinal.NewTestWorld(t, withEmitter(shard.Register, fx))
 	claim(t, w)
 	def, shot := primary(t)
 	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
@@ -670,7 +671,7 @@ func TestLaunchOrderIsFixed(t *testing.T) {
 		Team: 1, From: physics2d.Vec2{Y: 5}, Dir: physics2d.Vec2{Y: 1}}
 	teams := func(order ...projectilecomp.LaunchIntent) map[uint32]uint8 {
 		fx := &emitter{}
-		w := cardinal.NewTestWorld(t, withEmitter(register, fx))
+		w := cardinal.NewTestWorld(t, withEmitter(shard.Register, fx))
 		claim(t, w)
 		for _, in := range order {
 			emit(fx, in)

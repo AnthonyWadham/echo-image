@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	"bytes"
@@ -118,7 +118,7 @@ func TestWireFixtures(t *testing.T) {
 			}
 			if !bytes.Equal(got, want) {
 				t.Fatalf("%T no longer encodes as %s. If intended, run "+
-					"`go test ./shards/game -run TestWireFixtures -update` and update its type in client/src/game",
+					"`go test ./shards/game/test -run TestWireFixtures -update` and update its type in client/src/game",
 					s.payload, path)
 			}
 		})
@@ -232,6 +232,6 @@ func TestViewFixture(t *testing.T) {
 	}
 	if want, err := os.ReadFile(path); err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("%s no longer matches how a view draws (%v). If intended, run "+
-			"`go test ./shards/game -run TestViewFixture -update`, then make the client's draw match", path, err)
+			"`go test ./shards/game/test -run TestViewFixture -update`, then make the client's draw match", path, err)
 	}
 }

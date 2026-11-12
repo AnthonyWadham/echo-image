@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	"echo_image/shards/game/internal/area"
@@ -6,6 +6,7 @@ import (
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player"
+	"echo_image/shards/game/shard"
 	"fmt"
 	"math"
 	"slices"
@@ -75,7 +76,7 @@ func TestEchoRetracesItsBody(t *testing.T) {
 		setup func(*cardinal.World)
 		delay int
 	}{
-		{"shipped", register, echoDelay(t)},
+		{"shipped", shard.Register, echoDelay(t)},
 		{"quick", quick, 2 * physics.ServerTickRateHz},
 	} {
 		t.Run(c.name, func(t *testing.T) {

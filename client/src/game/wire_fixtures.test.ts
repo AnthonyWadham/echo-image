@@ -8,10 +8,10 @@ import type { Input } from './player/input_command'
 import type { ProjectileSync } from './projectile/projectile_sync_event'
 import { BodyKind, EchoKind, type TargetSync } from './history/target_sync_event'
 
-// Golden payloads from TestWireFixtures (shards/game/main_test.go), built from the same samples.
+// Golden payloads from TestWireFixtures (shards/game/test/wire_test.go), built from the same samples.
 // They pin each *_event.ts and input_command.ts type to its Go struct: a Go uint64 decodes as a
 // bigint, every other number as a number.
-const dir = new URL('../../../shards/game/testdata/wire/', import.meta.url)
+const dir = new URL('../../../shards/game/test/testdata/wire/', import.meta.url)
 const read = (name: string) => new Uint8Array(readFileSync(new URL(`${name}.msgpack`, dir)))
 
 const bodySync: BodySync = {

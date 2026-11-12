@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	combatcomp "echo_image/shards/game/internal/combat/component"

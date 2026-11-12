@@ -17,13 +17,13 @@ import (
 // with nothing else.
 func TestSimVersionIsTheSourceWithoutTests(t *testing.T) {
 	src := fstest.MapFS{
-		"go.mod":                           {Data: []byte("module x\n")},
-		"shards/game/main.go":              {Data: []byte("package main\n")},
-		"shards/game/content/a/b.json":     {Data: []byte("{}")},
-		"shards/game/main_test.go":         {Data: []byte("package main\n")},
-		"shards/game/testdata/run.json":    {Data: []byte("[]")},
-		"shards/game/internal/x/x.go":      {Data: []byte("package x\n")},
-		"shards/game/internal/x/x_test.go": {Data: []byte("package x\n")},
+		"go.mod":                             {Data: []byte("module x\n")},
+		"shards/game/main.go":                {Data: []byte("package main\n")},
+		"shards/game/content/a/b.json":       {Data: []byte("{}")},
+		"shards/game/main_test.go":           {Data: []byte("package main\n")},
+		"shards/game/test/testdata/run.json": {Data: []byte("[]")},
+		"shards/game/internal/x/x.go":        {Data: []byte("package x\n")},
+		"shards/game/internal/x/x_test.go":   {Data: []byte("package x\n")},
 	}
 	with := func(path, data string) fstest.MapFS {
 		c := maps.Clone(src)
@@ -41,7 +41,7 @@ func TestSimVersionIsTheSourceWithoutTests(t *testing.T) {
 	for name, fsys := range map[string]fstest.MapFS{
 		"the same files":   maps.Clone(src),
 		"a test changed":   with("shards/game/internal/x/x_test.go", "package x // more\n"),
-		"testdata changed": with("shards/game/testdata/run.json", "[1]"),
+		"testdata changed": with("shards/game/test/testdata/run.json", "[1]"),
 	} {
 		if got := versionOf(fsys, ""); got != base {
 			t.Errorf("%s: version %s, want %s", name, got, base)
@@ -76,7 +76,7 @@ func TestSimVersionCoversWhatTheSimIsBuiltFrom(t *testing.T) {
 			t.Errorf("SimVersion doesn't hash %s", file)
 		}
 	}
-	if _, err := fs.Stat(source, "shards/game/testdata"); err == nil {
+	if _, err := fs.Stat(source, "shards/game/test/testdata"); err == nil {
 		t.Error("the shard binary embeds its tests' data")
 	}
 	local, err := exec.Command("go", "list", "-m", "-f", `{{with .Replace}}{{if not .Version}}{{.Path}}{{end}}{{end}}`,

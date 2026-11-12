@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
+	"echo_image/shards/game/shard"
 	"math"
 	"slices"
 	"testing"
@@ -31,7 +32,7 @@ func requireAck(t *testing.T, s player.BodySync, want uint32) {
 // The client predicts by replaying frames newer than InputAck, one tick of movement each. That only
 // works if an acked frame has already moved the Body in the position sent with the ack.
 func TestFrameMovesBodySameTickAsAck(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 
 	w.Command("alice", input(1, frame(1, 1, 0)))
 	w.Tick()
@@ -53,7 +54,7 @@ func TestFrameMovesBodySameTickAsAck(t *testing.T) {
 }
 
 func TestFramesApplyOnePerTickInSeqOrder(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Command("alice", input(1, frame(1, 0, 0)))
 	w.Tick()
 	start := bodiesFor(t, w, "alice")
@@ -80,7 +81,7 @@ func TestFramesApplyOnePerTickInSeqOrder(t *testing.T) {
 }
 
 func TestResentAndStaleFramesAreIgnored(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Command("alice", input(1, frame(1, 1, 0), frame(2, 1, 0)))
 	w.Tick()
 	w.Tick()
@@ -96,7 +97,7 @@ func TestResentAndStaleFramesAreIgnored(t *testing.T) {
 }
 
 func TestNewSessionStartsOver(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Command("alice", input(1, frame(5, 1, 0)))
 	w.Tick()
 	before := bodiesFor(t, w, "alice")
@@ -113,7 +114,7 @@ func TestNewSessionStartsOver(t *testing.T) {
 }
 
 func TestBufferKeepsNewestFrames(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	limit := uint32(tuningOf[player.MovementTuning](t).BufferFrames())
 	frames := func(from, to uint32) []playercomp.InputFrame {
 		var fs []playercomp.InputFrame
@@ -149,7 +150,7 @@ func TestBufferKeepsNewestFrames(t *testing.T) {
 }
 
 func TestSilentClientStops(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Command("alice", input(1, frame(1, 1, 0)))
 	w.Tick()
 
@@ -167,7 +168,7 @@ func TestSilentClientStops(t *testing.T) {
 }
 
 func TestBadFrameDoesNotMove(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	// Start moving, so a bad frame that was skipped instead would leave the Body coasting.
 	w.Command("alice", input(1, frame(1, 1, 0)))
 	w.Tick()
@@ -180,7 +181,7 @@ func TestBadFrameDoesNotMove(t *testing.T) {
 }
 
 func TestStateOnlyGoesToPlayersWithABody(t *testing.T) {
-	w := cardinal.NewTestWorld(t, register)
+	w := cardinal.NewTestWorld(t, shard.Register)
 	w.Tick()
 	n := len(w.Events[player.BodySync]()) + len(w.Events[echo.EchoSync]()) +
 		len(w.Events[ability.AbilitySync]()) + len(w.Events[projectile.ProjectileSync]())
@@ -284,7 +285,7 @@ func TestBodiesPassThroughEachOther(t *testing.T) {
 func TestInputHealthIsCounted(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	w := cardinal.NewTestWorld(t, func(world *cardinal.World) {
-		registerWith(world, content.FS, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+		shard.RegisterWith(world, content.FS, sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
 	})
 	alice, _ := claim(t, w)
 	limit := int(bodiesFor(t, w, "alice").You.InputCap)

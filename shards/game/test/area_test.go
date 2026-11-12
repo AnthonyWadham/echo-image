@@ -1,4 +1,4 @@
-package main
+package test
 
 import (
 	areacomp "echo_image/shards/game/internal/area/component"

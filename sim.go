@@ -18,7 +18,8 @@ import (
 // stamp a commit instead.
 //
 //go:embed go.mod go.sum
-//go:embed shards/game/main.go shards/game/catalog.go shards/game/content shards/game/internal
+//go:embed shards/game/main.go shards/game/shard/shard.go shards/game/shard/catalog.go
+//go:embed shards/game/content shards/game/internal
 //go:embed shards/game/predictor
 var source embed.FS
 

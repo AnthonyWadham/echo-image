@@ -33,6 +33,6 @@ copyFileSync(`${go(['env', 'GOROOT'])}/lib/wasm/wasm_exec.js`, glue)
 /** vitest's global setup: the build above has run by now, and tests can inject its simVersion. */
 export default function setup(project) {
   const run = fileURLToPath(new URL('game/player/prediction.msgpack', src))
-  go(['test', './shards/game', '-run', '^TestPredictionMatchesServer$', '-count=1', `-record=${run}`])
+  go(['test', './shards/game/test', '-run', '^TestPredictionMatchesServer$', '-count=1', `-record=${run}`])
   project.provide('simVersion', sim)
 }

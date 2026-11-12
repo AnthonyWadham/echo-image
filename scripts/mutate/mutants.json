@@ -4,10 +4,10 @@
   "go60": "go test -tags rate60 ./...",
   "ts": "cd client && bun run test",
   "ts60": "cd client && GOFLAGS=-tags=rate60 bun run test",
-  "prediction": "go test ./shards/game -run 'TestPrediction|TestPredictor'",
+  "prediction": "go test ./shards/game/test -run 'TestPrediction|TestPredictor'",
   "sim60": "go test -tags rate60 .",
-  "prediction-rerecorded": "go test ./shards/game -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; go test ./shards/game -run 'TestPrediction|TestPredictor'",
-  "ts-rerecorded": "go test ./shards/game -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; cd client && bun run test"
+  "prediction-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; go test ./shards/game/test -run 'TestPrediction|TestPredictor'",
+  "ts-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; cd client && bun run test"
  },
  "mutants": [
   {
@@ -567,12 +567,12 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n",
      "new": ""
     },
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&history.SceneSystem{Scene: scene})\n",
      "new": "\tworld.RegisterSystem(&history.SceneSystem{Scene: scene})\n\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n"
     }
@@ -645,12 +645,12 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n",
      "new": ""
     },
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&projectile.FlightSystem{",
      "new": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window})\n\tworld.RegisterSystem(&projectile.FlightSystem{"
     }
@@ -662,7 +662,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "world.RegisterSystem(&combat.DeathSystem{}, post)",
      "new": "world.RegisterSystem(&combat.DeathSystem{})"
     }
@@ -674,12 +674,12 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()}, post)\n",
      "new": ""
     },
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n",
      "new": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n\tworld.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})\n"
     }
@@ -691,12 +691,12 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n",
      "new": ""
     },
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n",
      "new": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects}, cardinal.WithHook(cardinal.PostUpdate))\n"
     }
@@ -1395,12 +1395,12 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "SimVersion: echoimage.SimVersion()}",
      "new": "SimVersion: \"dev\"}"
     },
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\techoimage \"echo_image\"\n",
      "new": ""
     }
@@ -1908,7 +1908,7 @@
    "check": "prediction",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "\t\tfor _, f := range s.Frames {\n\t\t\t_, e := p.Step",
      "new": "\t\tfor _, f := range s.Frames[len(s.Frames)-1:] {\n\t\t\t_, e := p.Step"
     }
@@ -1932,7 +1932,7 @@
    "check": "prediction-rerecorded",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "record(p, before, targets, unacked, ended))",
      "new": "record(p, before, targets, unacked[len(unacked)-1:], ended))"
     }
@@ -1944,7 +1944,7 @@
    "check": "prediction-rerecorded",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "record(p, before, targets, unacked, ended))",
      "new": "record(p, before, targets, unacked, nil))"
     }
@@ -1956,7 +1956,7 @@
    "check": "ts-rerecorded",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "run = append(run, badNetwork(t, w, p, predict.New(rules), alice, bolt)...)",
      "new": "badNetwork(t, w, p, predict.New(rules), alice, bolt)"
     }
@@ -1968,7 +1968,7 @@
    "check": "prediction-rerecorded",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "Frames: append([]playercomp.InputFrame{}, frames...)",
      "new": "Frames: frames"
     }
@@ -2136,7 +2136,7 @@
    "check": "prediction",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "body %v,%v shots %+v ended %+v kit",
      "new": "body %v,%v shots %+v ended %.0v kit"
     }
@@ -2148,7 +2148,7 @@
    "check": "prediction",
    "edits": [
     {
-     "file": "shards/game/testdata/prediction-20hz.txt",
+     "file": "shards/game/test/testdata/prediction-20hz.txt",
      "old": "tick 0 frames [{Seq:2",
      "new": "tick 0 frames [{Seq:3"
     }
@@ -2160,7 +2160,7 @@
    "check": "prediction",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "\t\techo = fmt.Sprintf(\"%+v\", *s.Echo)\n",
      "new": ""
     }
@@ -2172,7 +2172,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/main.go",
+     "file": "shards/game/shard/shard.go",
      "old": "\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n",
      "new": "\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
     }
@@ -2184,7 +2184,7 @@
    "check": "go60",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "max(len(gap), ready+flight-len(head))",
      "new": "max(len(gap), ready+flight-len(head)-ready-flight)"
     }
@@ -2196,7 +2196,7 @@
    "check": "ts",
    "edits": [
     {
-     "file": "shards/game/prediction_test.go",
+     "file": "shards/game/test/prediction_test.go",
      "old": "\t\t\tended = append(ended, e...)\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}",
      "new": "\t\t\tended = e\n\t\t\topen = append(open, replay{f.Seq, ack, before.Tick, guessOf(p), e})\n\t\t}"
     }
@@ -2232,7 +2232,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/catalog.go",
+     "file": "shards/game/shard/catalog.go",
      "old": "\treturn c, c.lineUp()\n",
      "new": "\treturn c, nil\n"
     }
@@ -2388,7 +2388,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/catalog.go",
+     "file": "shards/game/shard/catalog.go",
      "old": "\tif _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok {",
      "new": "\tif _, ok := c.effects.Kinds[c.echoes.DeathEffect]; !ok && false {"
     }
@@ -2819,7 +2819,7 @@
    "edits": [
     {
      "file": "sim.go",
-     "old": "//go:embed go.mod go.sum\n//go:embed shards/game/main.go shards/game/catalog.go shards/game/content shards/game/internal\n//go:embed shards/game/predictor\n",
+     "old": "//go:embed go.mod go.sum\n//go:embed shards/game/main.go shards/game/shard/shard.go shards/game/shard/catalog.go\n//go:embed shards/game/content shards/game/internal\n//go:embed shards/game/predictor\n",
      "new": "//go:embed go.mod go.sum pkg shards\n"
     }
    ]
