@@ -70,7 +70,7 @@ func TestTrackIsWhatSyncsShow(t *testing.T) {
 				t.Fatalf("target_sync sent %+v, want its serial and owner", s)
 			}
 		}
-		if targets.Tick != bodies.Tick || len(sent) != held {
+		if targets.Tick != bodies.Tick || targets.Targets.Len() != held {
 			t.Fatalf("target_sync %+v, want tick %d's %d tracked things", targets, bodies.Tick, held)
 		}
 		for b := range bodies.Bodies.Values() { // what the rows lack, of each

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
@@ -17,10 +18,6 @@ import (
 	"echo_image/shards/game/internal/track"
 	"encoding/json"
 	"flag"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"go/types"
 	"math"
 	"slices"
 	"strings"
@@ -30,6 +27,8 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func input(session uint32, frames ...playercomp.InputFrame) player.Input {
@@ -426,35 +425,41 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 	}
 }
 
-// Every recorder and sync reads the tick's final state: main.go registers each in PostUpdate, after
-// every writer, from track.RecordSystem to combat.DeathSystem, the one system there that changes the
-// world.
+// Every recorder and sync reads the tick's final state: each runs in PostUpdate, after every writer,
+// from track.RecordSystem to combat.DeathSystem, the one system there that changes the world. Read from
+// a tick's spans, so it is the order that ran, wherever each system was registered.
 func TestReadersRunInPostUpdate(t *testing.T) {
-	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
+	spans := tracetest.NewSpanRecorder()
+	traced := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	before := otel.GetTracerProvider()
+	otel.SetTracerProvider(traced)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(before)
+		_ = traced.Shutdown(context.Background()) // before forwards to traced for good, so turn it off
+	})
+	cardinal.NewTestWorld(t, register).Tick()
+
 	reader := func(name string) bool {
 		return strings.HasSuffix(name, ".RecordSystem") || strings.HasSuffix(name, ".SyncSystem")
 	}
 	var post []string
-	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
+	for _, span := range spans.Ended() {
+		var name, hook string
+		for _, kv := range span.Attributes() {
+			switch kv.Key {
+			case "cardinal.system.name":
+				name = strings.TrimPrefix(kv.Value.AsString(), "*")
+			case "cardinal.system.hook":
+				hook = kv.Value.AsString()
+			}
 		}
-		if fn, ok := call.Fun.(*ast.SelectorExpr); !ok || fn.Sel.Name != "RegisterSystem" {
-			return true
-		}
-		name, _, _ := strings.Cut(strings.TrimPrefix(types.ExprString(call.Args[0]), "&"), "{")
 		switch {
-		case len(call.Args) > 1 && types.ExprString(call.Args[1]) == "post":
+		case hook == "SYSTEM_HOOK_POST_UPDATE":
 			post = append(post, name)
 		case reader(name) || name == "combat.DeathSystem":
 			t.Errorf("%s runs before PostUpdate", name)
 		}
-		return true
-	})
+	}
 	if len(post) < 2 || post[0] != "track.RecordSystem" || post[len(post)-1] != "combat.DeathSystem" {
 		t.Fatalf("PostUpdate runs %v, want track.RecordSystem first and combat.DeathSystem last", post)
 	}

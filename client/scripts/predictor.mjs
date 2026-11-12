@@ -6,7 +6,7 @@
 // tree's sim version, which a shard built from it sends in body_sync. GOFLAGS=-tags=rate60 builds all
 // three at 60 Hz.
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, readFileSync } from 'node:fs'
+import { copyFileSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const repo = fileURLToPath(new URL('../../', import.meta.url))
@@ -26,7 +26,9 @@ go(['build', '-trimpath', `-ldflags=-s -w -X main.simVersion=${sim}`, '-o', wasm
   GOOS: 'js',
   GOARCH: 'wasm',
 })
-copyFileSync(`${go(['env', 'GOROOT'])}/lib/wasm/wasm_exec.js`, new URL('engine/wasm/wasm_exec.js', src))
+const glue = new URL('engine/wasm/wasm_exec.js', src)
+rmSync(glue, { force: true }) // a toolchain from the module cache is read-only, and so is the last copy
+copyFileSync(`${go(['env', 'GOROOT'])}/lib/wasm/wasm_exec.js`, glue)
 
 /** vitest's global setup: the build above has run by now, and tests can inject its simVersion. */
 export default function setup(project) {

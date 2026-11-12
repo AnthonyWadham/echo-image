@@ -321,6 +321,8 @@ describe('Body and Echo views', () => {
     const views = [newBodyViews(bodies, player), newEchoViews(echoes, new Timelines(0.1).create<EchoState[]>(), player)]
     for (const v of views) v.draw(99.5)
     expect(drawn(bodies)).toEqual([100, 2])
+    const [yours, theirs] = bodies.children as Mesh[]
+    expect(yours?.material).not.toBe(theirs?.material) // yours is lighter
     // Only your Echo now is predicted: the older one of yours and Body 2's are where their rows have them.
     expect(drawn(echoes)).toEqual([80, 6, 7])
   })

@@ -365,6 +365,23 @@
    ]
   },
   {
+   "id": "LC2-S1",
+   "breaks": "target_sync sends each tracked thing twice",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/sync_system.go",
+     "old": "\t\ttargets.Add(e, netsync.Everyone, TargetState{\n",
+     "new": "\t\tfor range 2 {\n\t\ttargets.Add(e, netsync.Everyone, TargetState{\n"
+    },
+    {
+     "file": "shards/game/internal/track/sync_system.go",
+     "old": "Until: r.Until,\n\t\t})\n",
+     "new": "Until: r.Until,\n\t\t})\n\t\t}\n"
+    }
+   ]
+  },
+  {
    "id": "LC3-C1",
    "breaks": "Client ignores the serial",
    "check": "go",
@@ -492,6 +509,18 @@
     {
      "file": "shards/game/internal/track/past/scene.go",
      "old": "\ts.found = nil // a meet that casts again gets its own\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC3-N2",
+   "breaks": "a cast drops its candidate buffer, so each cast allocates",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/past/scene.go",
+     "old": "\ts.found = found[:0]\n",
      "new": ""
     }
    ]
@@ -657,6 +686,23 @@
    ]
   },
   {
+   "id": "LC4-W1",
+   "breaks": "effect.ResolveSystem, a writer, in PostUpdate by the inline hook",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n",
+     "new": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects}, cardinal.WithHook(cardinal.PostUpdate))\n"
+    }
+   ]
+  },
+  {
    "id": "LC5-O1",
    "breaks": "draw-own ignores EchoSerial: every Echo you own is drawn as predicted",
    "check": "ts",
@@ -749,6 +795,18 @@
      "file": "client/src/game/player/local_player.ts",
      "old": "this.#own = { body: this.me?.Serial,",
      "new": "this.#own = { body: this.you === undefined ? undefined : BigInt(this.you),"
+    }
+   ]
+  },
+  {
+   "id": "LC5-O6",
+   "breaks": "your Body drawn with the look of the others",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/body_view.ts",
+     "old": "return player.isYou(b.Serial) ? look.you : look.body",
+     "new": "return look.body"
     }
    ]
   },

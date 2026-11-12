@@ -160,7 +160,8 @@ func TestSceneCastAppendsTheKindsItMeets(t *testing.T) {
 	}
 }
 
-// A meet may cast the scene again: each cast still meets what it crosses.
+// A meet may cast the scene again: each cast still meets what it crosses, and a plain cast still
+// allocates nothing.
 func TestSceneCastNests(t *testing.T) {
 	s := NewScene(sceneWindow)
 	s.Reset(10)
@@ -189,6 +190,10 @@ func TestSceneCastNests(t *testing.T) {
 	if outer := ids(s.Cast(a, q, meet, nil)); !slices.Equal(outer, []uint32{8, 10, 12, 14}) ||
 		!slices.Equal(inner, []uint32{12, 14}) {
 		t.Errorf("contacts %v, and %v from a cast in its meet; want 8 10 12 14, and 12 14", outer, inner)
+	}
+	var room [8]Contact
+	if n := testing.AllocsPerRun(10, func() { s.Cast(a, q, meetAll, room[:0]) }); n != 0 {
+		t.Errorf("a plain cast allocates %v times, want 0", n)
 	}
 }
 

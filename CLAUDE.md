@@ -530,7 +530,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Update writes the tick; PostUpdate reads it.** PostUpdate runs after every Update system, so no
   Update order can put a reader before a writer. A new writer goes in Update; a new recorder or sync
   goes in PostUpdate (`cardinal.WithHook(cardinal.PostUpdate)`), which `TestReadersRunInPostUpdate`
-  checks in main.go. System events (`Died`) still show there.
+  checks from the systems a tick ran. System events (`Died`) still show there.
 - **`track.RecordSystem` runs first in PostUpdate.** Each Body's and Echo's row is exactly what this
   tick's syncs show of it, its tags read for the next tick and its `Until` from its `Died`, so a
   predicted shot meets what its client drew. Judges run in Update, before it, so a view can use rows
