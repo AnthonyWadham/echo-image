@@ -121,12 +121,12 @@ shards/game/
       component/  package component   Projectile, LaunchIntent, ShotEnded — projectile's leaf
       flight/     package flight      one tick of a shot's flight and what it meets first: Tuning (shot
                                       types, the default rules), Launch, and Fly — no Cardinal import
-    track/    package track       lag compensation: scene_system.go (this tick's Scene, before every
-                                  judge), record_system.go (each tracked thing's row, once a tick),
-                                  sync_system.go (sends them as TargetSync), tuning.go (TrackTuning =
+    history/    package history       lag compensation: scene_system.go (this tick's Scene, before every
+                                  judge), record_system.go (each recorded thing's row, once a tick),
+                                  sync_system.go (sends them as TargetSync), tuning.go (HistoryTuning =
                                   past.Tuning), doc.go
-      component/  package component   Track (the ring of a thing's rows; a constructor adds it) —
-                                      track's leaf
+      component/  package component   History (the ring of a thing's rows; a constructor adds it) —
+                                      history's leaf
       past/       package past        the one record and view rule (Row, RowTicks, AtView, Across), the
                                       Window a view may lag (Ticks, KeptRows, Clamp), and the Scene
                                       every judge queries (Thing, Actor, Query, Contact, Cast) — no
@@ -155,25 +155,25 @@ Current dependency direction (must stay acyclic): a feature's behavior package d
 the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feature>/component`** leaves
 it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
 team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
-ability/cast, combat/component, echo/component, projectile/component, track/component}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
+ability/cast, combat/component, echo/component, projectile/component, history/component}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
-team, ref, netsync, combat/component, projectile/component, projectile/flight, track/past}`, `track →
-{interact, team, ref, netsync, combat/component, effect/component, player/component, track/component,
-track/past}`, `area → {physics, interact, team, area/component,
+team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past}`, `history →
+{interact, team, ref, netsync, combat/component, effect/component, player/component, history/component,
+history/past}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
 {physics, physics/timestep, interact, team, ref, netsync, echo/component, area/component,
-combat/component, player/component, effect/component, effect/status, track/component}`, `effect → {effect/component,
+combat/component, player/component, effect/component, effect/status, history/component}`, `effect → {effect/component,
 effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
 also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
 combat's and projectile's leaves import ability's leaf for `Cause`, projectile's imports
-`projectile/flight` for `End`, and track's imports `track/past` for `Row`), so they're dependency *sinks*
+`projectile/flight` for `End`, and history's imports `history/past` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
 `interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`, and
 `physics/timestep` for hooks); and
-`track/past`, `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
+`history/past`, `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
 predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
 `player/motion` for `InputFrame.Move`. `content` is a leaf too, standard library only (imported by
 package main, `predict` and the predictor for `FS` and `Load`); feature packages never import it — they
@@ -336,7 +336,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
   each shot every tick and resolves the **first** thing on its path that its rules don't pass
   (`flight.Fly`): one Box2D shape cast on `Physics.Engine()` over the map kinds its rules stop at, and
-  one Box2D pair cast per tracked thing the scene's tree query finds (`past.Scene.Cast`), judged by its
+  one Box2D pair cast per recorded thing the scene's tree query finds (`past.Scene.Cast`), judged by its
   owner's relation and tags (team isn't a collision bit). A shot's `Type` names its shot type, whose rules are looked up
   each tick; its numbers are copied at launch.
   - First hit wins, which is what makes body-blocking exact, and a swept path can't tunnel at any
@@ -369,7 +369,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     to the newest row. An older view (a high ping) is judged at the oldest, so it must lead its shots
     but still hits.
   - **The window is a budget, not a round number:** what an honest view lags, added up, in
-    `content/track/tuning.json` (`window`): `interpolation_seconds` (how far behind the newest tick the client
+    `content/history/tuning.json` (`window`): `interpolation_seconds` (how far behind the newest tick the client
     draws, which its render clock reads through the predictor, so both read one value), `queue_seconds`
     and the `ping_seconds` it favors. A cheat can't claim more than an honest player at that ping. The
     load fails unless the ping adds at least a tick.
@@ -378,14 +378,14 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     can't pick an older moment for each shot. An honest view only moves on (the render clock never
     steps back), so the predictor has no copy of this rule.
   - The map is now. It is never rewound.
-  - Each tracked thing is where the views drew it (its `Track`, `past.Across`). `track.SceneSystem`
+  - Each recorded thing is where the views drew it (its `History`, `past.Across`). `history.SceneSystem`
     builds one `past.Scene` a tick, before every judge: each thing's kept rows and its row now, one
     Box2D tree box around all of them, so no speed bound (a dash, blink or landing stays in its box),
     and each client's view, held once. A judge acts as an actor: `Scene.Client(id, serial, side)` for
     a client while its Body is still the one with that serial (`Cause.CasterSerial`), else
     `Scene.Present(side)`, this tick as every screen draws it. It queries the scene (`Scene.Cast`),
     never the tree.
-  - **One placement rule** (`Scene.spans`): a thing its owner's client predicts (`Track.Predicted`)
+  - **One placement rule** (`Scene.spans`): a thing its owner's client predicts (`History.Predicted`)
     moves as that client draws it, from its row a tick ago to now, for that client's predicted actions
     only; its tags and life come from its rows at the view, like everything else. That covers your
     Body and your Echo by identity, not by kind. Contacts sort by fraction, rank, then ID, so the
@@ -423,7 +423,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   physics2d or `Physics.Engine()`, and decide pass or stop in its callback. Box2D's tree is what keeps
   it scalable, and every shape is already in it. A Box2D pair cast (`box2d.ShapeCastCircle`) on a shape
   the tree found counts too, as does one on what a component saved, found by its own
-  `box2d.DynamicTree` (`past.Scene`: the tracked things at an actor's view).
+  `box2d.DynamicTree` (`past.Scene`: the recorded things at an actor's view).
 - **Category bits describe what a shape IS (its kind, `interact.Kind`)** — `Body`, `Echo`, `Shot`,
   `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
   the bits, so never renumber one.
@@ -516,11 +516,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **`echo.ReplaySystem` runs in PreUpdate, after Movement and before the physics plugin,** so Box2D
   holds this tick's Echo poses when shots and areas query it (`TestShotMeetsEchoWhereItIsNow`). An
   Echo spawned this tick joins Box2D next tick.
-- **`track.SceneSystem` runs in Update after `echo.SpawnSystem`, before `ability.CastHookSystem`,** so
+- **`history.SceneSystem` runs in Update after `echo.SpawnSystem`, before `ability.CastHookSystem`,** so
   a just-spawned Echo is in this tick's scene (`TestShotMeetsAnEchoTheTickItSpawns`) and every judge
   after it reads one scene. Nothing between
-  them moves a tracked thing. The scene is derived, never saved: main.go hands the one `*past.Scene`
-  to `track.SceneSystem` and to each judge (`projectile.FlightSystem`), as it does the physics plugin.
+  them moves a recorded thing. The scene is derived, never saved: main.go hands the one `*past.Scene`
+  to `history.SceneSystem` and to each judge (`projectile.FlightSystem`), as it does the physics plugin.
   That shared pointer is the one place the leaf rule bends.
 - **Hooks, shots and areas run in Update:** `ability.CastHookSystem` → `projectile.LaunchSystem` →
   `projectile.FlightSystem` → `area.AreaSystem`. A Body can cast the tick it is claimed (Equip runs
@@ -531,11 +531,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   Update order can put a reader before a writer. A new writer goes in Update; a new recorder or sync
   goes in PostUpdate (`cardinal.WithHook(cardinal.PostUpdate)`), which `TestReadersRunInPostUpdate`
   checks from the systems a tick ran. System events (`Died`) still show there.
-- **`track.RecordSystem` runs first in PostUpdate.** Each Body's and Echo's row is exactly what this
+- **`history.RecordSystem` runs first in PostUpdate.** Each Body's and Echo's row is exactly what this
   tick's syncs show of it, its tags read for the next tick and its `Until` from its `Died`, so a
   predicted shot meets what its client drew. Judges run in Update, before it, so a view can use rows
-  up to the tick before (`TestTrackIsWhatSyncsShow`).
-- **Sync systems come next** (`player`, `echo`, `ability`, `projectile`, then `track.SyncSystem`), so
+  up to the tick before (`TestHistoryIsWhatSyncsShow`).
+- **Sync systems come next** (`player`, `echo`, `ability`, `projectile`, then `history.SyncSystem`), so
   each sends the tick's final state. **`combat.DeathSystem` runs last**, the one PostUpdate system that
   changes the world: it removes what died this tick, once each sync has sent it.
 
@@ -582,7 +582,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   world-engine #915) and no automatic component sync.
 - **Each feature sends its own sync event** from its own `SyncSystem`, registered last:
   `player.BodySync`, `echo.EchoSync`, `ability.AbilitySync`, `projectile.ProjectileSync` and
-  `track.TargetSync`. Each goes to every player with `w.SendTo` every tick and is complete — an
+  `history.TargetSync`. Each goes to every player with `w.SendTo` every tick and is complete — an
   entity missing from it is gone or hidden — so joining or reconnecting needs nothing else. Clients
   interpolate each stream on `Tick * TickSeconds`. A new synced feature adds its own event and
   `SyncSystem`; `netsync` doesn't change.
@@ -685,7 +685,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     path's end. The client draws your Echo from it (`LocalPlayer.drawnOwn`), others' from their rows.
     The tick your Echo dies, `EchoPath` is empty, since it is gone the next.
   - **Your shots stop where your screen shows them hit, as the server judges them.** A target's row
-    (`past.Row`: kind, side, circle, tags and `Until`) is its one record: its `Track` keeps its
+    (`past.Row`: kind, side, circle, tags and `Until`) is its one record: its `History` keeps its
     rows, and `TargetSync` sends each tick's, which is all your predictor reads to place targets. The
     predictor keeps as many ticks of them as the server keeps rows (`Window.KeptRows`), in a ring per
     serial (`See`), and builds the same `past.Scene` on a step with a shot, holding only

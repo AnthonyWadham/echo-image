@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { decodePayload } from '@argus-labs/sdk'
 import { beforeAll, expect, inject, test } from 'vitest'
-import type { TargetSync } from '../track/target_sync_event'
+import type { TargetSync } from '../history/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import { loadPredictor } from './predictor'
@@ -51,8 +51,8 @@ const stepAll = (frames: InputFrame[]) => {
 }
 
 test("plays the run's content: its render delay too", () => {
-  const track = JSON.parse(content['track/tuning.json']!) as { window: { interpolation_seconds: number } }
-  expect(predictor.interpolationSeconds).toBe(track.window.interpolation_seconds)
+  const history = JSON.parse(content['history/tuning.json']!) as { window: { interpolation_seconds: number } }
+  expect(predictor.interpolationSeconds).toBe(history.window.interpolation_seconds)
 })
 
 test("runs this tree's sim: the version a shard built from it sends", () => {

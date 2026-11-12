@@ -8,12 +8,12 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	historycomp "echo_image/shards/game/internal/history/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	trackcomp "echo_image/shards/game/internal/track/component"
 )
 
 // bodyRow is a player Body an Echo shadows: identity (Player marks Body-only archetypes and gives the
@@ -27,13 +27,13 @@ type bodyRow struct {
 }
 
 // echoRow is the Echo entity: identity + trail, the Health it carries, team and owner, the physics2d
-// trio, its effect list, and its track (the rows screens draw it from and shots meet it by).
+// trio, its effect list, and its history (the rows screens draw it from and shots meet it by).
 // BodyTypeManual means the replay owns the pose; the collider is the hurtbox projectile tests shots
 // against.
 type echoRow struct {
 	Spawn     ref.Spawn
 	Echo      component.Echo
-	History   component.PathHistory
+	Path      component.PathHistory
 	Health    combatcomp.Health
 	Team      team.Team
 	Owner     team.Owner
@@ -41,7 +41,7 @@ type echoRow struct {
 	Velocity  physics2d.Velocity2D
 	Body      physics2d.PhysicsBody2D
 	Effects   effectcomp.Effects
-	Track     trackcomp.Track
+	History   historycomp.History
 }
 
 // SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.InputSystem takes
@@ -108,7 +108,7 @@ func spawnEcho(w *cardinal.World, tuning EchoTuning, body cardinal.Entity) {
 	e.Set(team.Owner{Body: body.ID()})
 	e.Set(pose)
 	e.Set(physics2d.Velocity2D{})
-	e.Set(trackcomp.Track{Predicted: true})
+	e.Set(historycomp.History{Predicted: true})
 	e.Set(physics.NewBody2D(physics2d.BodyTypeManual, physics2d.ColliderShape{
 		ShapeType:    physics2d.ShapeTypeCircle,
 		Radius:       tuning.HitRadius,

@@ -6,10 +6,10 @@ import (
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/history"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/internal/track"
 	"fmt"
 	"maps"
 	"math"
@@ -109,7 +109,7 @@ func TestKilledEchoLastsUntilTheShotReachesIt(t *testing.T) {
 		!touching(ended[0], got.X, got.Y, got.Radius) {
 		t.Fatalf("bob got his dying Echo %+v and shots ending %+v, want it at 0 HP until the shot touched it", got, ended)
 	}
-	if i := sentTo[track.TargetSync](t, w, "bob").Targets.IndexFunc(func(s track.TargetState) bool {
+	if i := sentTo[history.TargetSync](t, w, "bob").Targets.IndexFunc(func(s history.TargetState) bool {
 		return s.Serial == got.Serial && s.Until == got.Until
 	}); i < 0 {
 		t.Fatalf("bob's target_sync doesn't show his dying Echo until %v", got.Until)
@@ -326,10 +326,10 @@ func TestShotMeetsTargetBetweenRows(t *testing.T) {
 }
 
 // A view the server keeps no rows for is held inside them, so alice's shot still meets bob's Echo, which
-// stands still: one older than the track window (a high ping), one not saved yet, and one that isn't a
+// stands still: one older than the history window (a high ping), one not saved yet, and one that isn't a
 // number.
 func TestViewOutsideTheRowsStillHits(t *testing.T) {
-	keep := float64(tuningOf[track.TrackTuning](t).Window.Ticks())
+	keep := float64(tuningOf[history.HistoryTuning](t).Window.Ticks())
 	for _, c := range []struct {
 		name string
 		back float64

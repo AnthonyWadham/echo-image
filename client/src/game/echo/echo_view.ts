@@ -5,8 +5,8 @@ import { EntityViews } from '../../engine/render/entity_views'
 import type { Timeline } from '../../engine/sync/timeline'
 import type { LocalPlayer } from '../player/local_player'
 import { TeamLooks } from '../team/team_look'
-import { EchoKind } from '../track/target_sync_event'
-import type { TargetState } from '../track/target_sync_event'
+import { EchoKind } from '../history/target_sync_event'
+import type { TargetState } from '../history/target_sync_event'
 import type { EchoState } from './echo_sync_event'
 
 // Shared by every view, so a view owns nothing to dispose.

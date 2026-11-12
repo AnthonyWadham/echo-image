@@ -6,7 +6,7 @@ import (
 	"echo_image/shards/game/internal/physics/timestep"
 )
 
-// Tuning is lag compensation's content, loaded from content/track/tuning.json.
+// Tuning is lag compensation's content, loaded from content/history/tuning.json.
 type Tuning struct {
 	Window Window `json:"window"`
 }
@@ -42,14 +42,14 @@ func (w Window) Clamp(view float64, tick uint64) float64 {
 }
 
 // JSONFile is the path within the content embed.FS.
-func (Tuning) JSONFile() string { return "track/tuning.json" }
+func (Tuning) JSONFile() string { return "history/tuning.json" }
 
 // Validate runs at load time; a returned error panics the boot — fail loud on bad content.
 func (t Tuning) Validate() error {
 	w := t.Window
 	if !(w.InterpolationSeconds >= 0 && w.QueueSeconds >= 0) ||
 		w.Ticks() < uint64(timestep.Ticks(w.InterpolationSeconds+w.QueueSeconds))+1 {
-		return fmt.Errorf("track_tuning: window needs interpolation_seconds and queue_seconds >= 0, and "+
+		return fmt.Errorf("history_tuning: window needs interpolation_seconds and queue_seconds >= 0, and "+
 			"ping_seconds of at least a tick at %d Hz, got %+v", timestep.Rate, w)
 	}
 	return nil

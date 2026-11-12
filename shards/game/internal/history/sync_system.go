@@ -1,20 +1,20 @@
-package track
+package history
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/shards/game/internal/history/component"
 	"echo_image/shards/game/internal/netsync"
 	"echo_image/shards/game/internal/ref"
-	"echo_image/shards/game/internal/track/component"
 )
 
-// syncRow is a tracked thing players may be sent.
+// syncRow is a recorded thing players may be sent.
 type syncRow struct {
-	Spawn ref.Spawn
-	Track component.Track
+	Spawn   ref.Spawn
+	History component.History
 }
 
-// SyncSystem (PostUpdate, after RecordSystem) sends each player the tracked things they
+// SyncSystem (PostUpdate, after RecordSystem) sends each player the recorded things they
 // may see, each as the row RecordSystem recorded this tick, so their screen draws it and their predictor
 // places it as the server's judges do. O(T) to collect, then one send per player.
 type SyncSystem struct{}
@@ -27,7 +27,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 	tick := w.TickHeight()
 	var targets netsync.Items[TargetState]
 	for e := range w.Contains[syncRow]().Iter() {
-		r, ok := e.Get[component.Track]().At(tick)
+		r, ok := e.Get[component.History]().At(tick)
 		if !ok {
 			continue
 		}

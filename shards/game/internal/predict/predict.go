@@ -2,7 +2,7 @@
 // cooldowns, the effects they put on it, the shots it has in flight, and its Echo. It starts from the server's
 // state after your last applied frame, and steps each frame the server hasn't applied yet as one tick
 // of the server's own code, so with no surprises it lands on the server's bits. Your shots meet each
-// tracked thing (a Body or Echo) where your screen drew it, as the server's FlightSystem judges them. What others
+// recorded thing (a Body or Echo) where your screen drew it, as the server's FlightSystem judges them. What others
 // do (effects they put on you, kills) comes with the next state. It imports no Cardinal:
 // shards/game/predictor builds it for the browser.
 package predict
@@ -21,11 +21,11 @@ import (
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/effect/status"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics/timestep"
 	"echo_image/shards/game/internal/player/motion"
 	"echo_image/shards/game/internal/projectile/flight"
-	"echo_image/shards/game/internal/track/past"
 )
 
 // Content is the content the predictor runs: the server's own files, loaded as the shard loads them.
@@ -33,7 +33,7 @@ type Content struct {
 	Abilities cast.Tuning
 	Shots     flight.Tuning
 	Effects   status.Tuning
-	Track     past.Tuning
+	History   past.Tuning
 }
 
 // Load reads Content from fsys, the content embed.FS, with content.Load, as the shard does: each file
@@ -44,7 +44,7 @@ func Load(fsys fs.FS) (Content, error) {
 	c.Abilities, errs[0] = content.Load[cast.Tuning](fsys)
 	c.Shots, errs[1] = content.Load[flight.Tuning](fsys)
 	c.Effects, errs[2] = content.Load[status.Tuning](fsys)
-	c.Track, errs[3] = content.Load[past.Tuning](fsys)
+	c.History, errs[3] = content.Load[past.Tuning](fsys)
 	return c, errors.Join(errs[:]...)
 }
 
@@ -110,25 +110,25 @@ type Sight struct {
 }
 
 // Predictor steps your Body one tick per frame from the last State. Its world has no map yet; walls
-// come with the arena. It keeps each thing's rows from the target syncs, as the server keeps its Track,
+// come with the arena. It keeps each thing's rows from the target syncs, as the server keeps its History,
 // for the views each frame is drawn over.
 type Predictor struct {
-	content Content
-	world   *box2d.World
-	state   State
-	start   uint64       // the state's tick at the last Reset
-	moves   []box2d.Vec2 // your Body's center after each step since then
-	tracked []tracked    // each thing the kept syncs show, by serial
-	synced  []uint64     // the kept syncs' ticks: a ring, tick t at t % KeptRows, math.MaxUint64 for none
-	newest  uint64       // the newest tick seen
-	scene   *past.Scene  // what a step's judges meet
-	kept    []past.Row   // scratch: one thing's kept rows
-	stepped []stepped    // each frame stepped since the last Reset, oldest first
+	content  Content
+	world    *box2d.World
+	state    State
+	start    uint64       // the state's tick at the last Reset
+	moves    []box2d.Vec2 // your Body's center after each step since then
+	recorded []recorded   // each thing the kept syncs show, by serial
+	synced   []uint64     // the kept syncs' ticks: a ring, tick t at t % KeptRows, math.MaxUint64 for none
+	newest   uint64       // the newest tick seen
+	scene    *past.Scene  // what a step's judges meet
+	kept     []past.Row   // scratch: one thing's kept rows
+	stepped  []stepped    // each frame stepped since the last Reset, oldest first
 }
 
-// tracked is one thing's rows from the kept syncs: a ring, tick t's at t % KeptRows. A slot of another
+// recorded is one thing's rows from the kept syncs: a ring, tick t's at t % KeptRows. A slot of another
 // tick holds none of it.
-type tracked struct {
+type recorded struct {
 	id     uint32
 	serial uint64
 	last   uint64 // the newest tick a sync showed it
@@ -136,7 +136,7 @@ type tracked struct {
 }
 
 // at is t's row of tick, if a kept sync showed it.
-func (t *tracked) at(tick uint64) (past.Row, bool) {
+func (t *recorded) at(tick uint64) (past.Row, bool) {
 	if r := t.rows[tick%uint64(len(t.rows))]; r.Tick == tick {
 		return r, true
 	}
@@ -144,7 +144,7 @@ func (t *tracked) at(tick uint64) (past.Row, bool) {
 }
 
 // appendRows appends t's rows of the ticks before before that its ring spans, oldest first.
-func (t *tracked) appendRows(dst []past.Row, before uint64) []past.Row {
+func (t *recorded) appendRows(dst []past.Row, before uint64) []past.Row {
 	for tick := before - min(before, uint64(len(t.rows))); tick < before; tick++ {
 		if r, ok := t.at(tick); ok {
 			dst = append(dst, r)
@@ -164,8 +164,8 @@ type stepped struct {
 // New returns a Predictor that runs content. Reset it before stepping.
 func New(content Content) *Predictor {
 	def := box2d.DefaultWorldDef()
-	p := &Predictor{content: content, world: box2d.NewWorld(&def), scene: past.NewScene(content.Track.Window),
-		synced: make([]uint64, content.Track.Window.KeptRows())}
+	p := &Predictor{content: content, world: box2d.NewWorld(&def), scene: past.NewScene(content.History.Window),
+		synced: make([]uint64, content.History.Window.KeptRows())}
 	p.Forget()
 	return p
 }
@@ -183,22 +183,22 @@ func (p *Predictor) See(tick uint64, sights []Sight) {
 	p.newest, p.synced[tick%keep] = max(p.newest, tick), tick
 	for _, s := range sights {
 		s.Tick = tick
-		i, ok := slices.BinarySearchFunc(p.tracked, s.Serial, func(t tracked, serial uint64) int {
+		i, ok := slices.BinarySearchFunc(p.recorded, s.Serial, func(t recorded, serial uint64) int {
 			return cmp.Compare(t.serial, serial)
 		})
 		if !ok { // sized at its first row: every other slot holds it, at a tick not its own
-			p.tracked = slices.Insert(p.tracked, i, tracked{id: s.ID, serial: s.Serial,
+			p.recorded = slices.Insert(p.recorded, i, recorded{id: s.ID, serial: s.Serial,
 				rows: slices.Repeat([]past.Row{s.Row}, int(keep))})
 		}
-		t := &p.tracked[i]
+		t := &p.recorded[i]
 		t.rows[tick%keep], t.last = s.Row, max(t.last, tick)
 	}
-	p.tracked = slices.DeleteFunc(p.tracked, func(t tracked) bool { return t.last+keep <= p.newest })
+	p.recorded = slices.DeleteFunc(p.recorded, func(t recorded) bool { return t.last+keep <= p.newest })
 }
 
 // Forget drops every sync it saw: after a reconnect or a server restart.
 func (p *Predictor) Forget() {
-	p.tracked, p.newest = p.tracked[:0], 0
+	p.recorded, p.newest = p.recorded[:0], 0
 	for i := range p.synced {
 		p.synced[i] = math.MaxUint64
 	}
@@ -211,7 +211,7 @@ func (p *Predictor) Forget() {
 func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Scene) {
 	s := &p.state
 	a := past.Actor{Side: interact.Side{Owner: s.Body, Team: s.Team},
-		View: p.content.Track.Window.Clamp(view, s.Tick), Predicted: true}
+		View: p.content.History.Window.Clamp(view, s.Tick), Predicted: true}
 	keep := uint64(len(p.synced))
 	for t := uint64(math.Floor(a.View)); t <= uint64(math.Ceil(a.View))+1; t++ {
 		if p.synced[t%keep] != t {
@@ -220,8 +220,8 @@ func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Sc
 	}
 	echo, echoPrev, hasEcho := p.Echo()
 	p.scene.Reset(s.Tick)
-	for i := range p.tracked {
-		t := &p.tracked[i]
+	for i := range p.recorded {
+		t := &p.recorded[i]
 		now, ok := t.at(p.newest)
 		if !ok || now.Until < 1 {
 			continue

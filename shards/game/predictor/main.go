@@ -14,10 +14,10 @@ import (
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/effect/status"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/predict"
 	"echo_image/shards/game/internal/projectile/flight"
-	"echo_image/shards/game/internal/track/past"
 )
 
 // simVersion is the echoimage.SimVersion of the tree this was built from: predictor.mjs stamps it with
@@ -36,7 +36,7 @@ func main() {
 		// interpolationSeconds is how far behind the newest tick the client draws others: the content's,
 		// so a shot's view is one the server allows.
 		"interpolationSeconds": js.FuncOf(func(js.Value, []js.Value) any {
-			return rules.Track.Window.InterpolationSeconds
+			return rules.History.Window.InterpolationSeconds
 		}),
 		"reset": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			p.Reset(state(args[0]))

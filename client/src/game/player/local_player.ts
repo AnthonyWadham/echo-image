@@ -1,7 +1,7 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import type { Spot } from '../../engine/render/entity_views'
 import type { Timeline, Timelines } from '../../engine/sync/timeline'
-import type { TargetState, TargetSync } from '../track/target_sync_event'
+import type { TargetState, TargetSync } from '../history/target_sync_event'
 import type { BodyState, BodySync, InputHealth } from './body_sync_event'
 import type { Input } from './input_command'
 import { InputStream } from './input_stream'

@@ -5,16 +5,16 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	historycomp "echo_image/shards/game/internal/history/component"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	trackcomp "echo_image/shards/game/internal/track/component"
 )
 
 // bodyRow is a player Body: identity, champion, team, owner (itself), input, speed, the physics2d trio,
-// its effect list, and its track (the rows screens draw it from and shots meet it by). Deliberately NO
+// its effect list, and its history (the rows screens draw it from and shots meet it by). Deliberately NO
 // Health — the Body is invincible; Health lives on the Echo.
 type bodyRow struct {
 	Spawn     ref.Spawn
@@ -28,7 +28,7 @@ type bodyRow struct {
 	Velocity  physics2d.Velocity2D
 	Body      physics2d.PhysicsBody2D
 	Effects   effectcomp.Effects
-	Track     trackcomp.Track
+	History   historycomp.History
 }
 
 // DevSpawnSystem makes the dev roster's Bodies (content: dev_spawns) at world init, numbered from 1 in
@@ -61,7 +61,7 @@ func spawnBody(w *cardinal.World, tuning MovementTuning, champion string, id uin
 	b.Set(component.MoveSpeed{Value: def.MoveSpeed})
 	b.Set(physics2d.Transform2D{Position: pos})
 	b.Set(physics2d.Velocity2D{})
-	b.Set(trackcomp.Track{Predicted: true})
+	b.Set(historycomp.History{Predicted: true})
 	// Manual: MovementSystem owns the pose and stops it at walls with Box2D's mover. Box2D itself never
 	// moves or blocks it. No Health component is set, which is what makes it invincible (never a combat
 	// damage target).

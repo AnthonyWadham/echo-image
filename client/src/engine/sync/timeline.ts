@@ -92,7 +92,7 @@ export class Timelines {
   tickSeconds = 0
   /**
    * Seconds behind the newest tick to draw: the content's interpolation_seconds, which the server's
-   * track window allows for. About two ticks, so the clock seldom reaches the newest and waits.
+   * history window allows for. About two ticks, so the clock seldom reaches the newest and waits.
    */
   readonly interpolationSeconds: number
   readonly #all: Timeline<unknown>[] = []

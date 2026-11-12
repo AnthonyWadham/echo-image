@@ -8,6 +8,7 @@ import (
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/history"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/physics/timestep"
@@ -15,7 +16,6 @@ import (
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/projectile/flight"
-	"echo_image/shards/game/internal/track"
 	"encoding/json"
 	"flag"
 	"math"
@@ -93,7 +93,7 @@ func patched(t testing.TB, patches ...map[string]string) content.Overlay {
 
 // deepWindow lets a shot's view go back 0.4 s (test content), for tests that draw bob from well before
 // he moved.
-var deepWindow = map[string]string{"track/tuning.json": `{"window": {"interpolation_seconds": 0.1,
+var deepWindow = map[string]string{"history/tuning.json": `{"window": {"interpolation_seconds": 0.1,
 	"queue_seconds": 0.05, "ping_seconds": 0.25}}`}
 
 // effectKinds are the effect kinds tests put on things through an emitter. No ability uses them yet, so
@@ -338,15 +338,15 @@ func echoOf(t *testing.T, w *cardinal.TestWorld, viewer string, owner body) echo
 }
 
 // rowOf is the row viewer's target_sync shows of the Body or Echo with serial.
-func rowOf(t *testing.T, w *cardinal.TestWorld, viewer string, serial uint64) track.TargetState {
+func rowOf(t *testing.T, w *cardinal.TestWorld, viewer string, serial uint64) history.TargetState {
 	t.Helper()
-	for r := range sentTo[track.TargetSync](t, w, viewer).Targets.Values() {
+	for r := range sentTo[history.TargetSync](t, w, viewer).Targets.Values() {
 		if r.Serial == serial {
 			return r
 		}
 	}
 	t.Fatalf("%s's target_sync has no row of serial %d", viewer, serial)
-	return track.TargetState{}
+	return history.TargetState{}
 }
 
 // echoSeen is an Echo as a viewer's syncs show it: what its row lacks, and its row.
@@ -407,7 +407,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"unknown shot", "ability/tuning.json", `{"abilities": {"bolt": {"params": {"shot": "blot"}}}}`,
 			`unknown shot "blot"`},
 		{"unknown dev champion", "player/tuning.json", `{"dev_champion": "rook"}`, `dev_champion "rook"`},
-		{"window that favors no ping", "track/tuning.json", `{"window": {"ping_seconds": 0}}`, "ping_seconds"},
+		{"window that favors no ping", "history/tuning.json", `{"window": {"ping_seconds": 0}}`, "ping_seconds"},
 		{"payload with no relations", "projectile/tuning.json",
 			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
 		{"rule for shots meeting shots", "projectile/tuning.json",
@@ -426,7 +426,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 }
 
 // Every recorder and sync reads the tick's final state: each runs in PostUpdate, after every writer,
-// from track.RecordSystem to combat.DeathSystem, the one system there that changes the world. Read from
+// from history.RecordSystem to combat.DeathSystem, the one system there that changes the world. Read from
 // a tick's spans, so it is the order that ran, wherever each system was registered.
 func TestReadersRunInPostUpdate(t *testing.T) {
 	spans := tracetest.NewSpanRecorder()
@@ -460,8 +460,8 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 			t.Errorf("%s runs before PostUpdate", name)
 		}
 	}
-	if len(post) < 2 || post[0] != "track.RecordSystem" || post[len(post)-1] != "combat.DeathSystem" {
-		t.Fatalf("PostUpdate runs %v, want track.RecordSystem first and combat.DeathSystem last", post)
+	if len(post) < 2 || post[0] != "history.RecordSystem" || post[len(post)-1] != "combat.DeathSystem" {
+		t.Fatalf("PostUpdate runs %v, want history.RecordSystem first and combat.DeathSystem last", post)
 	}
 	for _, name := range post[1 : len(post)-1] {
 		if !reader(name) {

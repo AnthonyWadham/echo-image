@@ -1,4 +1,4 @@
-package track
+package history
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
@@ -6,7 +6,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 )
 
-// TargetSync is one player's view of the tracked things this tick, each as its row: what screens draw
+// TargetSync is one player's view of the recorded things this tick, each as its row: what screens draw
 // and shots meet. Sent every tick and complete: a target missing from it is gone or hidden. One that
 // died in the tick is in it once more, with when. The client's predictor places targets from it alone.
 type TargetSync struct {
@@ -17,7 +17,7 @@ type TargetSync struct {
 // Name is the event name.
 func (TargetSync) Name() string { return "target_sync" }
 
-// TargetState is one tracked thing's row this tick (past.Row), with its entity and serial.
+// TargetState is one recorded thing's row this tick (past.Row), with its entity and serial.
 type TargetState struct {
 	EntityID uint32
 	Serial   uint64 // its ref.Spawn serial: what tells it from a newer entity with its EntityID

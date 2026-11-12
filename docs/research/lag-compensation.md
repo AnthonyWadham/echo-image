@@ -6,14 +6,14 @@ every blocker the two critiques raised.
 
 ## Summary
 
-- **Verdict: move lag compensation out of `projectile` into one new feature, `track`.** It owns each
+- **Verdict: move lag compensation out of `projectile` into one new feature, `history`.** It owns each
   thing's public record. Every screen draws it, the predictor reads it, and every judge queries it.
-- **One record per thing.** A Body or Echo opts in with one component, `trackcomp.Track`: a ring of its
+- **One record per thing.** A Body or Echo opts in with one component, `historycomp.History`: a ring of its
   rows, written once a tick, after every writer, with 0 allocations.
 - **One sync.** The record still goes out as `target_sync`, byte for byte as today. Only its owner moves.
-- **One scene a tick.** `track.SceneSystem` builds one Box2D tree over each thing's kept rows, and
+- **One scene a tick.** `history.SceneSystem` builds one Box2D tree over each thing's kept rows, and
   resolves each client's view once. Shots, and later melee, rays, picks and bursts, all query it.
-- **One query service** in the pure package `track/past`: `Cast` (swept or instant), `Overlap` and
+- **One query service** in the pure package `history/past`: `Cast` (swept or instant), `Overlap` and
   `Pose`. Each judges "as actor A saw it" and returns contacts in one total order.
 - **One placement rule** replaces the own-Body and own-Echo cases written twice today.
 - Geometry and hit-rule tags are judged at the view. The map and every outcome are judged now.
@@ -23,13 +23,13 @@ every blocker the two critiques raised.
 
 | Package | New or moved | Owns |
 |---|---|---|
-| `track` | new feature | `SceneSystem`, `RecordSystem`, `SyncSystem`; `TargetSync` (moved, same wire name); tuning |
-| `track/component` | new leaf | `Track`: the ring, and the opt-in |
-| `track/past` | new, pure (wasm) | `Row`, the view rule, `Window`, `Scene`, `Actor`, `Query`, `Contact`, `Cast`, `Overlap`, `Pose` |
+| `history` | new feature | `SceneSystem`, `RecordSystem`, `SyncSystem`; `TargetSync` (moved, same wire name); tuning |
+| `history/component` | new leaf | `History`: the ring, and the opt-in |
+| `history/past` | new, pure (wasm) | `Row`, the view rule, `Window`, `Scene`, `Actor`, `Query`, `Contact`, `Cast`, `Overlap`, `Pose` |
 | `projectile/flight` | shrinks | shot types, meet rules, `Fly` on top of `past` |
 | `projectile` | shrinks | launch and flight only; no history, no target sync, no player import |
 | `predict` | changed | a per-serial mirror of the record; a scene when a step's first judge looks |
-| client `game/track` | moved | the `target_sync` decoder (from `game/projectile`) |
+| client `game/history` | moved | the `target_sync` decoder (from `game/projectile`) |
 
 ## Problems
 
@@ -51,23 +51,23 @@ every blocker the two critiques raised.
 
 ### 1. A neutral feature owns each thing's record
 
-- **What:** a new feature, `track`. It owns the record, the recorder, the scene, the sync and the window.
-  Judges import only the pure `track/past`, never the feature.
-- **How:** constructors opt in. `player.bodyRow` and `echo.echoRow` hold `trackcomp.Track{Predicted: true}`
-  instead of `projectilecomp.TargetHistory`. A future barrier adds `Track{}`.
+- **What:** a new feature, `history`. It owns the record, the recorder, the scene, the sync and the window.
+  Judges import only the pure `history/past`, never the feature.
+- **How:** constructors opt in. `player.bodyRow` and `echo.echoRow` hold `historycomp.History{Predicted: true}`
+  instead of `projectilecomp.TargetHistory`. A future barrier adds `History{}`.
 - **Why:** every mature library puts history in one module, and targets opt in with its component
   (Fusion HitboxRoot, Netick HitShapeContainer, lightyear LagCompensationHistory, L4D2 `LagCompensate`).
   Valve's own TF2 code calls the players-only manager a mistake. The record also drives drawing, as
   Overwatch's MovementState does, so no judge may own it.
-- **Name:** `track`, because the record is a thing's public track. "rewind" is Echo-Swap's Echo-path
-  rewind. "lagcomp" names one judge's concern, not the drawing record. An options doc names a homing
-  helper `track`; that helper is renamed in the docs step.
+- **Name:** `history`, because the record is a thing's public history. "rewind" is Echo-Swap's Echo-path
+  rewind. "lagcomp" names one judge's concern, not the drawing record. It was `track` until 2026-11-12,
+  which did not say what it holds.
 - **Rejected:** keeping history in `projectile` and exporting `Reach` (the drawn record stays with its
   first judge); the row in a judging package like `lagcomp` (the same coupling, one package over).
 
 ### 2. One recorder, a ring, after every writer
 
-- **What:** `track.RecordSystem` replaces `projectile.HistorySystem`. It runs first in PostUpdate.
+- **What:** `history.RecordSystem` replaces `projectile.HistorySystem`. It runs first in PostUpdate.
 - **How:**
   - The ring holds `KeptRows` slots; tick t sits at slot `t % KeptRows`. `With` writes in place: O(1),
     0 allocations. It is sized at a thing's first row (1 allocation per life). A window change resizes
@@ -83,28 +83,28 @@ every blocker the two critiques raised.
   `PathHistory` (another owner, length and content, and Echo-Swap will rewrite it).
 
 ```go
-package component // track/component: imports cardinal and track/past
+package component // history/component: imports cardinal and history/past
 
-// Track is a thing's rows from its last ticks, as each tick's target sync showed it. Its constructor
-// adds it; then every screen draws the thing and every judge finds it. Only track.RecordSystem writes it.
-type Track struct {
+// History is a thing's rows from its last ticks, as each tick's target sync showed it. Its constructor
+// adds it; then every screen draws the thing and every judge finds it. Only history.RecordSystem writes it.
+type History struct {
 	Rows      cardinal.Slice[past.Row] // a ring: tick t at t % len
 	Predicted bool                     // its owner's client predicts it (a Body, an Echo)
 }
 
-func (Track) Name() string { return "track" }
+func (History) Name() string { return "history" }
 
-func (t Track) At(tick uint64) (past.Row, bool)                     // O(1); checks Row.Tick
-func (t Track) Record(r past.Row, keep int) Track                   // With at r.Tick % keep
-func (t Track) AppendRows(dst []past.Row, before uint64) []past.Row // oldest first, ticks < before
+func (t History) At(tick uint64) (past.Row, bool)                     // O(1); checks Row.Tick
+func (t History) Record(r past.Row, keep int) History                   // With at r.Tick % keep
+func (t History) AppendRows(dst []past.Row, before uint64) []past.Row // oldest first, ticks < before
 ```
 
 ### 3. The record is the one sync
 
-- **What:** `TargetSyncSystem`, `TargetSync` and `TargetState` move from `projectile` to `track`
+- **What:** `TargetSyncSystem`, `TargetSync` and `TargetState` move from `projectile` to `history`
   unchanged. The wire name stays `target_sync`.
 - **How:** same `netsync.Items` (`Everyone`, `seenBy`), one `SendTo` per viewer, complete every tick.
-  The client decoder moves to `game/track` with the same types. The client keeps one timeline of
+  The client decoder moves to `game/history` with the same types. The client keeps one timeline of
   targets keyed by serial; Body and Echo views filter it by kind. The draw-own rule is by serial
   alone: your Body's (from the same tick's body_sync) or `You.EchoSerial`, not a kind or EntityID check.
 - **Why:** no surveyed library sends lag-compensation history as its own stream. Each peer builds it
@@ -115,7 +115,7 @@ func (t Track) AppendRows(dst []past.Row, before uint64) []past.Row // oldest fi
 
 ### 4. One window for drawing and judging
 
-- **What:** the budget moves from projectile content to track content, as `past.Window`. One value
+- **What:** the budget moves from projectile content to history content, as `past.Window`. One value
   drives the render clock, the ring size and the clamp.
 - **How:** `interpolation_seconds` 0.1 + `queue_seconds` 0.05 + `ping_seconds` 0.1 = 0.25 s. The
   wasm `interpolationSeconds` reads it. `Validate` keeps today's check: the ping adds at least a tick.
@@ -124,7 +124,7 @@ func (t Track) AppendRows(dst []past.Row, before uint64) []past.Row // oldest fi
 - **Rejected:** per-action caps: the same drawn frame would give different results per action.
 
 ```go
-package past // track/past: imports box2d, interact, physics/timestep and std only
+package past // history/past: imports box2d, interact, physics/timestep and std only
 
 // Window is how far back an actor's view may be: what an honest view lags, added up.
 type Window struct {
@@ -137,9 +137,9 @@ func (w Window) Ticks() uint64                           // timestep.Ticks of th
 func (w Window) KeptRows() int                           // Ticks(): the oldest view reads the row Ticks back
 func (w Window) Clamp(view float64, tick uint64) float64 // today's flight.Tuning.View, unchanged
 
-type Tuning struct{ Window Window `json:"window"` } // the track content
+type Tuning struct{ Window Window `json:"window"` } // the history content
 
-func (Tuning) JSONFile() string { return "track/tuning.json" }
+func (Tuning) JSONFile() string { return "history/tuning.json" }
 func (t Tuning) Validate() error
 
 // Row (Tick, Kind, Side, Center, Radius, Tags, Until: 64 B), RowTicks, AtView, along, lerp, Span and
@@ -148,17 +148,17 @@ func (t Tuning) Validate() error
 
 ### 5. One scene a tick, for every judge
 
-- **What:** `track.SceneSystem` builds `*past.Scene` once a tick. It runs in Update right after
+- **What:** `history.SceneSystem` builds `*past.Scene` once a tick. It runs in Update right after
   `echo.SpawnSystem` and before `ability.CastHookSystem`.
 - **How:**
-  - Per thing with `Track` and a shape: `Now` = the live row at T, tags at T (today's `seenAt` row);
+  - Per thing with `History` and a shape: `Now` = the live row at T, tags at T (today's `seenAt` row);
     `From` = its row at T − 1, or `Now`; `To` = `Now`; its kept rows, oldest first.
   - One tree box per thing over every kept row, `Now`, `From` and `To`, padded by the largest radius
     (today's `Reach.Add`). Category = its kind. Inserted in ID order. `Reset` destroys last tick's
     proxies, which keeps the node pool.
   - Per Body with an `InputQueue` and a frame: `AddClient(id, serial, q.View(T))`, clamped once.
   - After `echo.SpawnSystem`, so a just-spawned Echo is in it, as `reachOf` saw it today. Nothing
-    between it and the judges moves a tracked thing: in Update only spawn sets a Body's Transform.
+    between it and the judges moves a recorded thing: in Update only spawn sets a Body's Transform.
   - Derived, never saved: after a restore the first tick builds it. The shared pointer is wired like
     the physics plugin: the one place the leaf rule bends, said once in CLAUDE.md.
 - **Why:** a broad phase over the whole window (Overwatch's union volume, lightyear's envelope, Fusion's
@@ -170,7 +170,7 @@ func (t Tuning) Validate() error
   - Whole-world clones (Unity NfE) or a second posed `box2d.World`: O(scene) a tick, static poses only.
 
 ```go
-// Thing is one tracked thing in a scene.
+// Thing is one recorded thing in a scene.
 type Thing struct {
 	ID        uint32
 	Serial    uint64
@@ -366,7 +366,7 @@ type Content struct {
 	Abilities cast.Tuning
 	Shots     flight.Tuning
 	Effects   status.Tuning
-	Track     past.Tuning // the window: clamp, ring size, render clock
+	History     past.Tuning // the window: clamp, ring size, render clock
 }
 
 type Sight struct{ ID uint32; Serial uint64; past.Row } // past.Row, was flight.Row
@@ -386,7 +386,7 @@ missing field as zero (verified in world-engine's schema decode).
 | `interact.Unfavored` tag | a movement or a barrier whose content is not favored | Rule 2 (change 7): judged now. Its content lists the tag (an effect kind's `tags`). The scene keeps each thing's newest unfavored tick, so the check is O(1). |
 | `Row.Seen` team bits | the first vision feature | The recorder asks `netsync.seenBy`; the sync sends what `Seen` allows. Rule 2: a thing not sent to the actor's team is judged now (Source rewinds only what was sent). |
 | `Row.Points [8]box2d.Vec2`, `Row.Count uint8` | the first non-circle barrier (F19) | Local to `Center`, `Radius` its rounding. `Cast` and `Overlap` use them in the same frame. `TargetState.Points` is sent only when not empty. |
-| A neutral `Side` | the first thing with no Team or Owner | The record reads Team and Owner only when present; `Relation` returns `Neutral`. Today a tracked thing needs both. |
+| A neutral `Side` | the first thing with no Team or Owner | The record reads Team and Owner only when present; `Relation` returns `Neutral`. Today a recorded thing needs both. |
 
 - **Unfavored and exact prediction:** the predictor applies rule 2 to the rows it has. When the tag
   sits in rows it doesn't have yet (the last ping and queue), it predicts a hit the server won't give.
@@ -436,18 +436,18 @@ timing follows the shooter, by at most the window (0.25 s).
 | Heal on your own Echo | No | A filter: your Echo is present and predicted. An ally picked by aim is acquisition. |
 | AoE placed at the aim | Placement no; burst yes | Placement: the frame's point, map checked now. Burst: `Overlap(a, 0, area shape, ...)`. |
 | Zone pulses, anti-camp, pickups | No | Live `OverlapShape` (`area`). Contested grabs resolve in sorted order. |
-| Barrier as a target | Yes, as a thing (or now: decision 4) | Its constructor adds `Track{}`; a non-circle one needs the row shape |
+| Barrier as a target | Yes, as a thing (or now: decision 4) | Its constructor adds `History{}`; a non-circle one needs the row shape |
 | Knockback, slow, stun on hit | The hit only | Outcomes, now; direction from the contact |
 | Own walk, dash, blink, landing | No | The mover against the live map. A blink sets `Row.Jump`. |
 | Echo-Swap | No | Your Echo is present. It sets `Jump` for your Body. Its path rewind is `PathHistory`, unrelated. |
 | Body blocks movement; damage, heals, death, immunity | No | The live mover; their resolvers, now |
 | Vision (`seenBy`) | No | Live, per viewer team; later it fills `Row.Seen` |
-| Shot vs shot | No | Shots keep no track |
-| NPCs, summons, turrets, bots (labelled stress cases only) | Targets yes; actors present | The constructor adds `Track`. AI uses `Present`. A bot that sends input frames is a client. |
+| Shot vs shot | No | Shots keep no history |
+| NPCs, summons, turrets, bots (labelled stress cases only) | Targets yes; actors present | The constructor adds `History`. AI uses `Present`. A bot that sends input frames is a client. |
 
 ## Costs
 
-T = tracked things, W = `KeptRows` (5 at 20 Hz, 15 at 60 Hz), P = clients, K = candidates per query.
+T = recorded things, W = `KeptRows` (5 at 20 Hz, 15 at 60 Hz), P = clients, K = candidates per query.
 
 | Piece | Today | Design | Big-O per tick |
 |---|---|---|---|
@@ -480,33 +480,33 @@ moves only if its text moves.
 | Step | Purge | Behaviour | Recordings / fixtures |
 |---|---|---|---|
 | 1. Pure core and content | No | None | Digests same; view fixture same; SimVersion changes |
-| 2. `track` feature: record and sync | **WORLD PURGE** | None | Digests same; `target_sync` wire fixture same |
+| 2. `history` feature: record and sync | **WORLD PURGE** | None | Digests same; `target_sync` wire fixture same |
 | 3. Scene, actor, query service, predictor mirror | No | Own Body tags at the view (invisible) | Digests same; `body_sync` fixture regenerated |
 | 4. PostUpdate | No | None | Same |
 | 5. Client: one timeline, draw-own by identity | No | None | Same |
 
 **Step 1: pure core and content.**
-- `track/past` gets the view rule from `flight` (`Row` to `Across`), and `Window` from `flight.Rewind`,
-  `RewindTicks`, `KeptRows` and `View`. Track content holds the window; projectile content loses
+- `history/past` gets the view rule from `flight` (`Row` to `Across`), and `Window` from `flight.Rewind`,
+  `RewindTicks`, `KeptRows` and `View`. History content holds the window; projectile content loses
   `rewind`. The catalog, `predict.Load`, the wasm `interpolationSeconds` and the pinned `recorded`
   content follow.
 - Tests: the three view tests move to a `past` view test (it mirrors the moved source).
   `TestViewFixture` calls `past.AtView`. `TestBadContentFailsTheBoot` adds a bad window. The client
-  predictor test reads track content.
+  predictor test reads history content.
 - Mutants re-pointed (paths only): 6-G1, 6-G2, 6-G3, F2-A1, F2-A2, F2-A3 (view rule); 6-G4, X6-G3,
   F9-S1, F9-V1 (window); F9-W1 (wasm interpolation).
 
-**Step 2: the `track` feature. WORLD PURGE.**
-- `track` gets `RecordSystem` (from `HistorySystem`), `SyncSystem` and `TargetSync` (same wire name).
-  `track/component` gets `Track` (the ring). The Body and Echo constructors hold
-  `trackcomp.Track{Predicted: true}`; `TargetHistory` goes. `seenAt` and `reachOf` read `Track` for
-  one step. The client decoder moves to `game/track`.
-- **Purge reason:** the component name changes from `target_history` to `track`, and a restore fails
-  on an unknown name an entity uses (verified). F3's purge already landed (commit 1c0e968), so there is
+**Step 2: the `history` feature. WORLD PURGE.**
+- `history` gets `RecordSystem` (from `HistorySystem`), `SyncSystem` and `TargetSync` (same wire name).
+  `history/component` gets `History` (the ring). The Body and Echo constructors hold
+  `historycomp.History{Predicted: true}`; `TargetHistory` goes. `seenAt` and `reachOf` read `History` for
+  one step. The client decoder moves to `game/history`.
+- **Purge reason:** the component name changes from `target_history` to `history` (by way of `track`),
+  and a restore fails on an unknown name an entity uses (verified). F3's purge already landed (commit 1c0e968), so there is
   nothing to bundle with. Keeping the old name forever was rejected as a lasting mismatch.
-- Tests: `TestTargetHistoryIsWhatSyncsShow` becomes `TestTrackIsWhatSyncsShow`, in a new server test
+- Tests: `TestTargetHistoryIsWhatSyncsShow` becomes `TestHistoryIsWhatSyncsShow`, in a new server test
   file that mirrors the new feature. It adds the ring size at both rates, a window change, and "every
-  `Track` holder is in the sync". The harness's `rowOf` and `echoOf` re-point.
+  `History` holder is in the sync". The harness's `rowOf` and `echoOf` re-point.
 - Mutants re-pointed: 12-G1, 12-G2, 12-G3, 6-G5 (record); 12-G4, 12-G12 (sync). New: ring slot off by
   one; a resize drops a row.
 
@@ -528,7 +528,7 @@ moves only if its text moves.
 
 **Step 4: PostUpdate. No purge.**
 - `RecordSystem`, the five syncs and `DeathSystem` register with `cardinal.WithHook(cardinal.PostUpdate)`.
-- New mutant: `RecordSystem` back in Update before `FlightSystem`. `TestTrackIsWhatSyncsShow` catches it.
+- New mutant: `RecordSystem` back in Update before `FlightSystem`. `TestHistoryIsWhatSyncsShow` catches it.
 
 **Step 5: client. No purge.**
 - One targets timeline keyed by serial; Body and Echo views filter by kind; draw-own by `You.Body` and
@@ -552,7 +552,7 @@ non-circle barrier). Each adds its tests to the existing files and its mutants t
   still the server's. So no Overwatch-style "stop predicting at 220 ms" ladder: ours isn't wrong there.
 - **Unfavored and hidden things are never predicted.** Their hits come with the next body_sync.
 - **The map is never rewound.** A wall that moves or breaks would need rows of its own.
-- **No rotating sweeps** until a user needs `TimeOfImpact`. **No shot vs shot:** shots keep no track.
+- **No rotating sweeps** until a user needs `TimeOfImpact`. **No shot vs shot:** shots keep no history.
 - **The broad phase is the query's box.** A long diagonal ray among many things over-collects. Bench with
   the first hitscan; the tree's own `RayCast` is the drop-in.
 - **Only shots can show a hit on the target where each screen draws it.** A new judge's sync must carry
@@ -600,14 +600,14 @@ Under `shards/game/` unless they start with `client/`, `docs/` or `pkg/` (world-
 
 | What | Path (planned paths are new) |
 |---|---|
-| Pure core | `internal/track/past/view.go` (from `internal/projectile/flight/view.go`), `window.go`, `scene.go`, with `view_test.go`, `scene_test.go` |
-| Leaf | `internal/track/component/track.go` (replaces `internal/projectile/component/target_history.go`) |
-| Feature | `internal/track/record_system.go` (from `internal/projectile/history_system.go`), `scene_system.go`, `sync_system.go`, `target_sync_event.go` (from `internal/projectile/`), `register.go`, `doc.go`, `tuning.go` |
-| Content | `content/track/tuning.json` (from `content/projectile/tuning.json` `rewind`) |
+| Pure core | `internal/history/past/view.go` (from `internal/projectile/flight/view.go`), `window.go`, `scene.go`, with `view_test.go`, `scene_test.go` |
+| Leaf | `internal/history/component/history.go` (replaces `internal/projectile/component/target_history.go`) |
+| Feature | `internal/history/record_system.go` (from `internal/projectile/history_system.go`), `scene_system.go`, `sync_system.go`, `target_sync_event.go` (from `internal/projectile/`), `register.go`, `doc.go`, `tuning.go` |
+| Content | `content/history/tuning.json` (from `content/projectile/tuning.json` `rewind`) |
 | Changed | `internal/projectile/flight/flight.go`, `tuning.go`, `internal/projectile/flight_system.go`, `internal/ability/component/ability_cast_event.go`, `internal/ability/cast_system.go`, `internal/player/spawn_system.go`, `internal/echo/spawn_system.go`, `internal/player/body_sync_event.go`, `internal/predict/predict.go`, `predictor/main.go`, `main.go` |
 | Input (unchanged) | `internal/player/component/input.go`, `internal/player/input_system.go` |
-| Client | `client/src/game/track/target_sync_event.ts` (from `client/src/game/projectile/`), `client/src/game/player/local_player.ts`, `body_view.ts`, `client/src/game/echo/echo_view.ts`, `client/src/game/ui/hud.ts`, `client/src/engine/render/entity_views.ts` |
-| Tests, fixtures | `main_test.go`, `projectile_test.go`, `prediction_test.go`, `wire_test.go`, new `track_test.go`; `testdata/prediction-20hz.txt`, `prediction-60hz.txt`, `view.json`, `wire/target_sync.msgpack`, `wire/body_sync.msgpack`; `scripts/mutate/mutants.json` |
+| Client | `client/src/game/history/target_sync_event.ts` (from `client/src/game/projectile/`), `client/src/game/player/local_player.ts`, `body_view.ts`, `client/src/game/echo/echo_view.ts`, `client/src/game/ui/hud.ts`, `client/src/engine/render/entity_views.ts` |
+| Tests, fixtures | `main_test.go`, `projectile_test.go`, `prediction_test.go`, `wire_test.go`, new `history_test.go`; `testdata/prediction-20hz.txt`, `prediction-60hz.txt`, `view.json`, `wire/target_sync.msgpack`, `wire/body_sync.msgpack`; `scripts/mutate/mutants.json` |
 | Docs | `docs/research/favor-the-shooter.md`, `foundation-review.md`, `system-architecture-options.md`; `CLAUDE.md` |
 | Engine facts | `pkg/box2d/dynamic_tree.go`, `distance.go`, `world_query.go` (overlap tolerance); `pkg/immutable/slice.go` (`With`); `pkg/cardinal/internal/ecs/world.go` (hooks, events); `pkg/cardinal/internal/schema/schema.go` (missing fields are zero); `pkg/cardinal/internal/ecs/world_state.go` (unknown names fail a restore) |
 

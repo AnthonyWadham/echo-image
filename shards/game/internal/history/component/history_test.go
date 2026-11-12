@@ -6,17 +6,17 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
-	"echo_image/shards/game/internal/track/past"
+	"echo_image/shards/game/internal/history/past"
 )
 
-// A track keeps each tick's row in its own slot, for as many ticks as it keeps. A window change keeps
+// A history keeps each tick's row in its own slot, for as many ticks as it keeps. A window change keeps
 // the rows the new ring spans, a ring is never read as a row it doesn't hold, and the rows before a tick
 // stop short of it.
-func TestTrackKeepsRowsByTick(t *testing.T) {
+func TestHistoryKeepsRowsByTick(t *testing.T) {
 	row := func(tick uint64) past.Row {
 		return past.Row{Tick: tick, Center: box2d.Vec2{X: float64(tick)}, Radius: 0.5, Until: 1}
 	}
-	ticks := func(tr Track, before uint64) []uint64 {
+	ticks := func(tr History, before uint64) []uint64 {
 		var got []uint64
 		for _, r := range tr.AppendRows(nil, before) {
 			if r != row(r.Tick) {
@@ -26,7 +26,7 @@ func TestTrackKeepsRowsByTick(t *testing.T) {
 		}
 		return got
 	}
-	check := func(what string, tr Track, keep int, before uint64, want ...uint64) {
+	check := func(what string, tr History, keep int, before uint64, want ...uint64) {
 		t.Helper()
 		if got := ticks(tr, before); tr.Rows.Len() != keep || !slices.Equal(got, want) {
 			t.Errorf("%s: %d slots holding ticks %v, want %d holding %v", what, tr.Rows.Len(), got, keep, want)
@@ -37,9 +37,9 @@ func TestTrackKeepsRowsByTick(t *testing.T) {
 			}
 		}
 	}
-	first := Track{}.Record(row(6), 5)
+	first := History{}.Record(row(6), 5)
 	check("sized at its first row", first, 5, 7, 6)
-	var tr Track
+	var tr History
 	for tick := range uint64(8) {
 		tr = tr.Record(row(tick), 5)
 	}

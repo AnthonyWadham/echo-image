@@ -16,7 +16,7 @@ type EchoSync struct {
 // Name is the event name.
 func (EchoSync) Name() string { return "echo_sync" }
 
-// EchoState is what an Echo's row in track.TargetSync lacks: whose it is and its health. Its row has
+// EchoState is what an Echo's row in history.TargetSync lacks: whose it is and its health. Its row has
 // its owner, team, spot, size, tags and when it died in the tick.
 type EchoState struct {
 	EntityID uint32

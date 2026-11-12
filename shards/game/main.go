@@ -14,14 +14,14 @@ import (
 	"echo_image/shards/game/internal/combat"
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/effect"
+	"echo_image/shards/game/internal/history"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/physics/timestep"
 	"echo_image/shards/game/internal/player"
 	"echo_image/shards/game/internal/projectile"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	"echo_image/shards/game/internal/track"
-	"echo_image/shards/game/internal/track/past"
 )
 
 func main() {
@@ -57,7 +57,7 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	echo.RegisterTypes(world)
 	ability.RegisterTypes(world)
 	projectile.RegisterTypes(world)
-	track.RegisterTypes(world)
+	history.RegisterTypes(world)
 	combat.RegisterTypes(world)
 	effect.RegisterTypes(world)
 	area.RegisterTypes(world)
@@ -100,10 +100,10 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// echo.SpawnSystem.
 	world.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})
 
-	// Scene (Update, after echo.SpawnSystem, before every judge): every tracked thing over the window, and
+	// Scene (Update, after echo.SpawnSystem, before every judge): every recorded thing over the window, and
 	// each client's view, once a tick. Shots, and every later judge, query it.
-	scene := past.NewScene(c.track.Window)
-	world.RegisterSystem(&track.SceneSystem{Scene: scene})
+	scene := past.NewScene(c.history.Window)
+	world.RegisterSystem(&history.SceneSystem{Scene: scene})
 
 	// Ability hooks (Update): each cast runs its ability's hook, which asks the features that own the
 	// state for changes with intents (a shot to launch, a dash's forced move). Before every receiver of
@@ -138,16 +138,16 @@ func registerWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// DeathSystem, the one system here that changes the world.
 	post := cardinal.WithHook(cardinal.PostUpdate)
 
-	// Tracks (PostUpdate, first): each records what this tick's syncs show of it, so a predicted shot
+	// Histories (PostUpdate, first): each records what this tick's syncs show of it, so a predicted shot
 	// meets it at its client's view.
-	world.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)
+	world.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)
 
 	// Client sync (PostUpdate): each feature sends each player this tick's final state it may see.
 	world.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()}, post)
 	world.RegisterSystem(&echo.SyncSystem{}, post)
 	world.RegisterSystem(&ability.SyncSystem{Tuning: c.abilities}, post)
 	world.RegisterSystem(&projectile.SyncSystem{}, post)
-	world.RegisterSystem(&track.SyncSystem{}, post)
+	world.RegisterSystem(&history.SyncSystem{}, post)
 
 	// Deaths (PostUpdate, last): what died this tick goes, after each sync sent it once more.
 	world.RegisterSystem(&combat.DeathSystem{}, post)

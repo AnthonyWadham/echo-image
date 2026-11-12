@@ -1,20 +1,20 @@
-package track
+package history
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/shards/game/internal/history/component"
+	"echo_image/shards/game/internal/history/past"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	"echo_image/shards/game/internal/track/component"
-	"echo_image/shards/game/internal/track/past"
 )
 
-// sceneRow is a tracked thing a scene holds.
+// sceneRow is a recorded thing a scene holds.
 type sceneRow struct {
 	Spawn     ref.Spawn
-	Track     component.Track
+	History   component.History
 	Transform physics2d.Transform2D
 	Body      physics2d.PhysicsBody2D
 	Team      team.Team
@@ -28,9 +28,9 @@ type clientRow struct {
 }
 
 // SceneSystem (Update, after echo.SpawnSystem, before every judge) builds this tick's Scene: each
-// tracked thing as it is now, with its tags now, and its kept rows, and each client's view. A thing
+// recorded thing as it is now, with its tags now, and its kept rows, and each client's view. A thing
 // moves from its row a tick ago to now, as its owner's client draws it if it predicts it. Nothing
-// between it and the judges moves a tracked thing. O(T·W + T log T + P log P).
+// between it and the judges moves a recorded thing. O(T·W + T log T + P log P).
 type SceneSystem struct {
 	Scene *past.Scene
 	kept  []past.Row
@@ -43,7 +43,7 @@ func (s *SceneSystem) Run(w *cardinal.World) {
 		if e.Get[physics2d.PhysicsBody2D]().Shapes.Len() == 0 {
 			continue
 		}
-		tr, now := e.Get[component.Track](), rowOf(e, tick)
+		tr, now := e.Get[component.History](), rowOf(e, tick)
 		now.Tags = tagsAt(e, tick)
 		from := now.Center
 		if prev, ok := tr.At(tick - 1); ok {

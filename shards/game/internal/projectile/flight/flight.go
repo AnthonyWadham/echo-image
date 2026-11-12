@@ -1,7 +1,7 @@
 // Package flight is the Cardinal-free core of shots: the shot types, the rules for what a shot does on
 // meeting each thing, and one tick of a shot's flight. projectile.FlightSystem flies every shot with
 // it, and the client predictor (internal/predict) flies your own shots with the same code. It imports
-// only box2d, interact, track/past and the standard library, so it builds for wasm.
+// only box2d, interact, history/past and the standard library, so it builds for wasm.
 package flight
 
 import (

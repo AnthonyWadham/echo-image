@@ -6,12 +6,12 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/ref"
 	"echo_image/shards/game/internal/team"
-	"echo_image/shards/game/internal/track/past"
 )
 
 // FlightSystem (Update, after LaunchSystem, before combat.DamageResolveSystem) moves every shot one
@@ -22,12 +22,12 @@ import (
 // component.ShotEnded: where, when in the tick and on what. A shot launched this tick moves this tick,
 // so its path starts at the shooter.
 //
-// A shot meets the map now, and each tracked thing as its actor saw it: a predicted shot at its caster's
+// A shot meets the map now, and each recorded thing as its actor saw it: a predicted shot at its caster's
 // view, while that caster is still the one its Cause names, any other as screens draw this tick, as the
 // client's predictor does. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things, R rules.
 type FlightSystem struct {
 	Tuning  ProjectileTuning
-	Scene   *past.Scene // this tick's tracked things, as track.SceneSystem built it
+	Scene   *past.Scene // this tick's recorded things, as history.SceneSystem built it
 	Physics *physics2d.Plugin
 }
 

@@ -9,7 +9,7 @@ import (
 	"echo_image/shards/game/internal/interact"
 )
 
-// Thing is one tracked thing in a scene.
+// Thing is one recorded thing in a scene.
 type Thing struct {
 	ID        uint32
 	Serial    uint64
@@ -53,7 +53,7 @@ func compareContacts(a, b Contact) int {
 		cmp.Compare(a.Serial, b.Serial))
 }
 
-// Scene is the tracked things one tick's judges meet: each one's rows over the window, one Box2D tree
+// Scene is the recorded things one tick's judges meet: each one's rows over the window, one Box2D tree
 // box around every spot a view can place it at, and each client's view. It is built once a tick (Reset,
 // Add, AddClient, Build), then every judge queries it. It is derived, never saved, and not safe for
 // concurrent use.

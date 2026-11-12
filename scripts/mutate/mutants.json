@@ -173,7 +173,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/record_system.go",
+     "file": "shards/game/internal/history/record_system.go",
      "old": "\t\t\trow.Until = s.died[i].Until\n",
      "new": "\t\t\t_ = s.died[i].Until\n"
     }
@@ -185,7 +185,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/record_system.go",
+     "file": "shards/game/internal/history/record_system.go",
      "old": "\t\tKind:   interact.Kind(shape.CategoryBits),\n",
      "new": ""
     }
@@ -197,7 +197,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/record_system.go",
+     "file": "shards/game/internal/history/record_system.go",
      "old": "\t\tSide:   team.SideOf(e),\n",
      "new": ""
     }
@@ -209,7 +209,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/sync_system.go",
+     "file": "shards/game/internal/history/sync_system.go",
      "old": "Kind: r.Kind, Owner: r.Side.Owner,",
      "new": "Kind: r.Kind, Owner: uint32(e.ID()),"
     }
@@ -222,8 +222,8 @@
    "edits": [
     {
      "file": "shards/game/internal/echo/spawn_system.go",
-     "old": "\te.Set(trackcomp.Track{Predicted: true})\n",
-     "new": "\te.Set(trackcomp.Track{})\n"
+     "old": "\te.Set(historycomp.History{Predicted: true})\n",
+     "new": "\te.Set(historycomp.History{})\n"
     }
    ]
   },
@@ -299,8 +299,8 @@
     },
     {
      "file": "shards/game/internal/projectile/flight/view.go",
-     "old": "\t\"echo_image/shards/game/internal/track/past\"\n",
-     "new": "\t\"echo_image/shards/game/internal/interact\"\n\t\"echo_image/shards/game/internal/track/past\"\n"
+     "old": "\t\"echo_image/shards/game/internal/history/past\"\n",
+     "new": "\t\"echo_image/shards/game/internal/interact\"\n\t\"echo_image/shards/game/internal/history/past\"\n"
     }
    ]
   },
@@ -310,7 +310,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/sync_system.go",
+     "file": "shards/game/internal/history/sync_system.go",
      "old": "\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n",
      "new": "\t\tif !ok || r.Until < 1 {\n\t\t\tcontinue\n\t\t}\n"
     }
@@ -322,7 +322,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/component/track.go",
+     "file": "shards/game/internal/history/component/history.go",
      "old": "\tt.Rows = t.Rows.With(int(r.Tick%uint64(keep)), r)",
      "new": "\tt.Rows = t.Rows.With(int((r.Tick+1)%uint64(keep)), r)"
     }
@@ -334,7 +334,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/component/track.go",
+     "file": "shards/game/internal/history/component/history.go",
      "old": "for tick := r.Tick - min(r.Tick, uint64(keep-1)); tick < r.Tick; tick++ {",
      "new": "for tick := r.Tick - min(r.Tick, uint64(keep-2)); tick < r.Tick; tick++ {"
     }
@@ -346,7 +346,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/component/track.go",
+     "file": "shards/game/internal/history/component/history.go",
      "old": "rows := cardinal.SliceOf(r).Repeat(keep)",
      "new": "rows := cardinal.SliceOf(past.Row{}).Repeat(keep)"
     }
@@ -358,7 +358,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/component/track.go",
+     "file": "shards/game/internal/history/component/history.go",
      "old": "uint64(t.Rows.Len())); tick < before; tick++ {",
      "new": "uint64(t.Rows.Len())); tick <= before; tick++ {"
     }
@@ -366,16 +366,16 @@
   },
   {
    "id": "LC2-S1",
-   "breaks": "target_sync sends each tracked thing twice",
+   "breaks": "target_sync sends each recorded thing twice",
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/sync_system.go",
+     "file": "shards/game/internal/history/sync_system.go",
      "old": "\t\ttargets.Add(e, netsync.Everyone, TargetState{\n",
      "new": "\t\tfor range 2 {\n\t\ttargets.Add(e, netsync.Everyone, TargetState{\n"
     },
     {
-     "file": "shards/game/internal/track/sync_system.go",
+     "file": "shards/game/internal/history/sync_system.go",
      "old": "Until: r.Until,\n\t\t})\n",
      "new": "Until: r.Until,\n\t\t})\n\t\t}\n"
     }
@@ -387,7 +387,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\tif !ok || s.clients[i].serial != serial {\n",
      "new": "\tif !ok {\n"
     }
@@ -399,7 +399,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "View: max(float64(s.tick)-1, 0)}",
      "new": "View: float64(s.tick)}"
     }
@@ -411,7 +411,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "s.tick, s.things, s.rows, s.clients = tick, s.things[:0], s.rows[:0], s.clients[:0]",
      "new": "s.tick, s.rows, s.clients = tick, s.rows[:0], s.clients[:0]"
     }
@@ -423,7 +423,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "if a.Predicted && t.Predicted && t.Now.Side.Owner == a.Side.Owner {",
      "new": "if a.Predicted && t.Predicted {"
     }
@@ -435,7 +435,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "cmp.Compare(a.Rank, b.Rank), cmp.Compare(a.ID, b.ID),\n\t\tcmp.Compare(a.Serial, b.Serial))",
      "new": "cmp.Compare(a.Rank, b.Rank))"
     }
@@ -447,7 +447,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\tif a < 0 { // it showed before q began: from where it was then\n",
      "new": "\tif false {\n"
     }
@@ -459,7 +459,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\t\tif q.From < sp.Start || q.From > sp.End {\n",
      "new": "\t\tif false {\n"
     }
@@ -471,7 +471,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\t\tif t.Predicted {\n\t\t\tlo, hi = ",
      "new": "\t\tif false {\n\t\t\tlo, hi = "
     }
@@ -507,7 +507,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\ts.found = nil // a meet that casts again gets its own\n",
      "new": ""
     }
@@ -519,7 +519,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\ts.found = found[:0]\n",
      "new": ""
     }
@@ -531,7 +531,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "s.tree.Query(q.box(), uint64(q.Kinds), collect, s)",
      "new": "s.tree.Query(q.box(), ^uint64(0), collect, s)"
     }
@@ -543,7 +543,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "t.proxy = s.tree.CreateProxy(box, uint64(t.Now.Kind), uint64(i))",
      "new": "t.proxy = s.tree.CreateProxy(box, ^uint64(0), uint64(i))"
     }
@@ -555,7 +555,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "slices.SortFunc(out[n:], compareContacts)",
      "new": "slices.SortFunc(out[min(n, 0):], compareContacts)"
     }
@@ -573,8 +573,8 @@
     },
     {
      "file": "shards/game/main.go",
-     "old": "\tworld.RegisterSystem(&track.SceneSystem{Scene: scene})\n",
-     "new": "\tworld.RegisterSystem(&track.SceneSystem{Scene: scene})\n\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n"
+     "old": "\tworld.RegisterSystem(&history.SceneSystem{Scene: scene})\n",
+     "new": "\tworld.RegisterSystem(&history.SceneSystem{Scene: scene})\n\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n"
     }
    ]
   },
@@ -584,7 +584,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/scene_system.go",
+     "file": "shards/game/internal/history/scene_system.go",
      "old": "\t\tif view, ok := e.Get[playercomp.InputQueue]().View(tick); ok {\n",
      "new": "\t\tif view, _ := e.Get[playercomp.InputQueue]().View(tick); true {\n"
     }
@@ -633,7 +633,7 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\tp.tracked = slices.DeleteFunc(p.tracked, func(t tracked) bool { return t.last+keep <= p.newest })\n",
+     "old": "\tp.recorded = slices.DeleteFunc(p.recorded, func(t recorded) bool { return t.last+keep <= p.newest })\n",
      "new": ""
     }
    ],
@@ -646,13 +646,13 @@
    "edits": [
     {
      "file": "shards/game/main.go",
-     "old": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n",
+     "old": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n",
      "new": ""
     },
     {
      "file": "shards/game/main.go",
      "old": "\tworld.RegisterSystem(&projectile.FlightSystem{",
-     "new": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window})\n\tworld.RegisterSystem(&projectile.FlightSystem{"
+     "new": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window})\n\tworld.RegisterSystem(&projectile.FlightSystem{"
     }
    ]
   },
@@ -697,8 +697,8 @@
     },
     {
      "file": "shards/game/main.go",
-     "old": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n",
-     "new": "\tworld.RegisterSystem(&track.RecordSystem{Window: c.track.Window}, post)\n\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects}, cardinal.WithHook(cardinal.PostUpdate))\n"
+     "old": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n",
+     "new": "\tworld.RegisterSystem(&history.RecordSystem{Window: c.history.Window}, post)\n\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects}, cardinal.WithHook(cardinal.PostUpdate))\n"
     }
    ]
   },
@@ -1066,7 +1066,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\t\trows := s.rows[t.first : t.first+t.count]\n",
      "new": "\t\trows := s.rows[t.first+t.count-1 : t.first+t.count]\n"
     }
@@ -1078,7 +1078,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "max(radius, r.Radius)",
      "new": "t.Now.Radius"
     }
@@ -1090,7 +1090,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\tr := box2d.Vec2{X: q.Shape.Radius, Y: q.Shape.Radius}\n",
      "new": "\tr := box2d.Vec2{}\n"
     }
@@ -1102,7 +1102,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\t\trows := s.rows[t.first : t.first+t.count]\n",
      "new": "\t\trows := s.rows[t.first : t.first+max(t.count-1, 1)]\n"
     }
@@ -1114,7 +1114,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/scene_system.go",
+     "file": "shards/game/internal/history/scene_system.go",
      "old": "From: from, To: now.Center}, s.kept)",
      "new": "From: from, To: now.Center}, nil)"
     }
@@ -1126,7 +1126,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/scene_system.go",
+     "file": "shards/game/internal/history/scene_system.go",
      "old": "\t\t\tfrom = prev.Center\n",
      "new": "\t\t\tfrom, now.Center = prev.Center, prev.Center\n"
     }
@@ -1138,7 +1138,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/view.go",
+     "file": "shards/game/internal/history/past/view.go",
      "old": "t := view - (math.Ceil(view) - 1)",
      "new": "t := view - math.Floor(view)"
     }
@@ -1150,7 +1150,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/view.go",
+     "file": "shards/game/internal/history/past/view.go",
      "old": "b := uint64(math.Ceil(view))",
      "new": "b := uint64(math.Floor(view)) + 1"
     }
@@ -1162,7 +1162,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/window.go",
+     "file": "shards/game/internal/history/past/window.go",
      "old": "newest := max(float64(tick)-2, 1)",
      "new": "newest := max(float64(tick)-1, 1)"
     }
@@ -1174,7 +1174,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/window.go",
+     "file": "shards/game/internal/history/past/window.go",
      "old": "return w.Ticks()",
      "new": "return w.Ticks() - 1"
     }
@@ -1186,7 +1186,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/record_system.go",
+     "file": "shards/game/internal/history/record_system.go",
      "old": ".KeptRows())",
      "new": ".KeptRows()-1)"
     }
@@ -1199,8 +1199,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "synced: make([]uint64, content.Track.Window.KeptRows())}",
-     "new": "synced: make([]uint64, content.Track.Window.KeptRows()-1)}"
+     "old": "synced: make([]uint64, content.History.Window.KeptRows())}",
+     "new": "synced: make([]uint64, content.History.Window.KeptRows()-1)}"
     }
    ]
   },
@@ -1609,7 +1609,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\t\t\tfirst.ID, first.Serial = t.ID, t.Serial\n",
      "new": "\t\t\tfirst.ID = t.ID\n"
     }
@@ -1621,7 +1621,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/scene_system.go",
+     "file": "shards/game/internal/history/scene_system.go",
      "old": "Serial: e.Get[ref.Spawn]().Serial, Now: now,",
      "new": "Now: now,"
     }
@@ -1646,8 +1646,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "i, ok := slices.BinarySearchFunc(p.tracked, s.Serial, func(t tracked, serial uint64) int {\n\t\t\treturn cmp.Compare(t.serial, serial)",
-     "new": "i, ok := slices.BinarySearchFunc(p.tracked, s.ID, func(t tracked, id uint32) int {\n\t\t\treturn cmp.Compare(t.id, id)"
+     "old": "i, ok := slices.BinarySearchFunc(p.recorded, s.Serial, func(t recorded, serial uint64) int {\n\t\t\treturn cmp.Compare(t.serial, serial)",
+     "new": "i, ok := slices.BinarySearchFunc(p.recorded, s.ID, func(t recorded, id uint32) int {\n\t\t\treturn cmp.Compare(t.id, id)"
     }
    ]
   },
@@ -1658,8 +1658,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "tracked{id: s.ID, serial: s.Serial,",
-     "new": "tracked{id: s.ID, serial: uint64(s.ID),"
+     "old": "recorded{id: s.ID, serial: s.Serial,",
+     "new": "recorded{id: s.ID, serial: uint64(s.ID),"
     }
    ]
   },
@@ -1885,8 +1885,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "View: p.content.Track.Window.Clamp(view, s.Tick), Predicted: true}",
-     "new": "View: p.content.Track.Window.Clamp(view, p.start+1), Predicted: true}"
+     "old": "View: p.content.History.Window.Clamp(view, s.Tick), Predicted: true}",
+     "new": "View: p.content.History.Window.Clamp(view, p.start+1), Predicted: true}"
     }
    ]
   },
@@ -1980,7 +1980,7 @@
    "check": "go60",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/window.go",
+     "file": "shards/game/internal/history/past/window.go",
      "old": "timestep.Ticks(w.Seconds())",
      "new": "timestep.TicksAt(w.Seconds(), 20)"
     }
@@ -2542,7 +2542,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/window.go",
+     "file": "shards/game/internal/history/past/window.go",
      "old": "func (w Window) Seconds() float64 { return w.InterpolationSeconds + w.QueueSeconds + w.PingSeconds }",
      "new": "func (w Window) Seconds() float64 { return w.PingSeconds }"
     }
@@ -2554,7 +2554,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/window.go",
+     "file": "shards/game/internal/history/past/window.go",
      "old": "w.Ticks() < uint64(timestep.Ticks(w.InterpolationSeconds+w.QueueSeconds))+1",
      "new": "w.Ticks() < 1"
     }
@@ -2579,7 +2579,7 @@
    "edits": [
     {
      "file": "shards/game/predictor/main.go",
-     "old": "\t\t\treturn rules.Track.Window.InterpolationSeconds\n",
+     "old": "\t\t\treturn rules.History.Window.InterpolationSeconds\n",
      "new": "\t\t\treturn 0.1\n"
     }
    ]
@@ -3081,7 +3081,7 @@
     },
     {
      "file": "client/src/game/echo/echo_view.ts",
-     "old": "import { EchoKind } from '../track/target_sync_event'\n",
+     "old": "import { EchoKind } from '../history/target_sync_event'\n",
      "new": ""
     }
    ]
@@ -3140,7 +3140,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/view.go",
+     "file": "shards/game/internal/history/past/view.go",
      "old": "To: along(older, hasOlder, newer, end-d)}",
      "new": "To: along(older, hasOlder, newer, start-d)}"
     }
@@ -3152,7 +3152,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/view.go",
+     "file": "shards/game/internal/history/past/view.go",
      "old": "start, end := max(d, 0), min(d+newer.Until, 1)",
      "new": "start, end := max(d, 0), min(d+1, 1)"
     }
@@ -3164,7 +3164,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/view.go",
+     "file": "shards/game/internal/history/past/view.go",
      "old": "\tfor i := range spans {\n\t\tb := first + uint64(i)",
      "new": "\tfor i := range spans[:1] {\n\t\tb := first + uint64(i)"
     }
@@ -3176,7 +3176,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "Translation: box2d.Sub(box2d.Sub(lerp(q.Start, q.End, b), from), box2d.Sub(to, center)),",
      "new": "Translation: box2d.Sub(lerp(q.Start, q.End, b), from),"
     }
@@ -3188,7 +3188,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "\tr.Center = lerp(center, to, out.Fraction)\n",
      "new": "\tr.Center = center\n"
     }
@@ -3200,7 +3200,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "return q.castAt(sp.Row, meet, center, sp.To, a, b, min((1-a)/(b-a), 1))",
      "new": "return q.castAt(sp.Row, meet, center, sp.To, a, b, 1)"
     }
@@ -3212,7 +3212,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/past/scene.go",
+     "file": "shards/game/internal/history/past/scene.go",
      "old": "View: max(float64(s.tick)-1, 0)}",
      "new": "View: max(float64(s.tick)-2, 0)}"
     }
@@ -3224,7 +3224,7 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/track/scene_system.go",
+     "file": "shards/game/internal/history/scene_system.go",
      "old": "\t\t\tfrom = prev.Center\n",
      "new": "\t\t\t_ = prev\n"
     }

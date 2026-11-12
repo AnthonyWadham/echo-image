@@ -1,4 +1,4 @@
-package track
+package history
 
 import (
 	"cmp"
@@ -10,15 +10,15 @@ import (
 
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
+	"echo_image/shards/game/internal/history/component"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/team"
-	"echo_image/shards/game/internal/track/component"
-	"echo_image/shards/game/internal/track/past"
 )
 
-// recordRow is a thing that keeps its track.
+// recordRow is a thing that keeps its history.
 type recordRow struct {
-	Track     component.Track
+	History   component.History
 	Transform physics2d.Transform2D
 	Body      physics2d.PhysicsBody2D
 	Team      team.Team
@@ -26,7 +26,7 @@ type recordRow struct {
 }
 
 // RecordSystem (PostUpdate, first, so after every writer) records this tick's row of every
-// tracked thing, which is what this tick's syncs show of it. Judges meet it by its rows, at the view
+// recorded thing, which is what this tick's syncs show of it. Judges meet it by its rows, at the view
 // their client drew, and SyncSystem sends them. It keeps those of every view the window allows
 // (KeptRows), each written in place: O(T log D + D log D) for T things and D deaths.
 type RecordSystem struct {
@@ -49,7 +49,7 @@ func (s *RecordSystem) Run(w *cardinal.World) {
 		}); ok {
 			row.Until = s.died[i].Until
 		}
-		e.Set(e.Get[component.Track]().Record(row, keep))
+		e.Set(e.Get[component.History]().Record(row, keep))
 	}
 }
 

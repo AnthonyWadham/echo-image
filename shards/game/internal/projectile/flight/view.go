@@ -3,11 +3,11 @@ package flight
 import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
-	"echo_image/shards/game/internal/track/past"
+	"echo_image/shards/game/internal/history/past"
 )
 
 // Fly flies f, a shot of type def that actor a fired, one tick of dt seconds. It meets the map in world
-// as it is, and each tracked thing in scene as a saw it (past.Scene.Cast); with no scene, it meets no
+// as it is, and each recorded thing in scene as a saw it (past.Scene.Cast); with no scene, it meets no
 // thing. It returns f after the tick, or over=true and how it ended in it: at its range, or at the
 // first thing on its path that its rules don't pass. A shot launched this tick flies this tick, so its
 // path starts at the shooter.

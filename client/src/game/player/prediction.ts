@@ -1,7 +1,7 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { blend } from '../../engine/render/entity_views'
 import type { Spot } from '../../engine/render/entity_views'
-import type { TargetSync } from '../track/target_sync_event'
+import type { TargetSync } from '../history/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor } from './predictor'

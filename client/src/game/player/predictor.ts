@@ -1,6 +1,6 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
-import type { TargetSync } from '../track/target_sync_event'
+import type { TargetSync } from '../history/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
 import wasmUrl from './predictor.wasm?url'
@@ -55,7 +55,7 @@ export interface Stepped {
 export interface Predictor {
   /** The sim it runs: the SimVersion a shard built from the same tree sends. */
   readonly version: string
-  /** How far behind the newest tick to draw others: the content's, which the server's track window allows. */
+  /** How far behind the newest tick to draw others: the content's, which the server's history window allows. */
   readonly interpolationSeconds: number
   /** Starts over from your Body as a body_sync left it. */
   reset(sync: BodySync): void

@@ -6,12 +6,12 @@ import (
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/effect/status"
+	"echo_image/shards/game/internal/history"
+	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/player"
 	playercomp "echo_image/shards/game/internal/player/component"
 	"echo_image/shards/game/internal/projectile"
-	"echo_image/shards/game/internal/track"
-	"echo_image/shards/game/internal/track/past"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -91,10 +91,10 @@ func TestWireFixtures(t *testing.T) {
 				OffsetY: 0.125},
 		)}},
 		{"projectile_sync_empty", projectile.ProjectileSync{Tick: 9}},
-		{"target_sync", track.TargetSync{Tick: 9007199254740993, Targets: cardinal.SliceOf(
-			track.TargetState{EntityID: 0, Serial: 1, Kind: interact.Body, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5,
+		{"target_sync", history.TargetSync{Tick: 9007199254740993, Targets: cardinal.SliceOf(
+			history.TargetState{EntityID: 0, Serial: 1, Kind: interact.Body, Owner: 0, Team: 0, X: 1.5, Y: -2, Radius: 0.5,
 				Tags: interact.Stunned | interact.CC, Until: 1},
-			track.TargetState{EntityID: 4, Serial: 18446744073709551615, Kind: interact.Echo, Owner: 2, Team: 1, X: 3,
+			history.TargetState{EntityID: 4, Serial: 18446744073709551615, Kind: interact.Echo, Owner: 2, Team: 1, X: 3,
 				Y: -1.25, Radius: 0.5, Until: 0.625},
 		)}},
 		{"input", in},

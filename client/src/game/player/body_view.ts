@@ -3,8 +3,8 @@ import type { Object3D } from 'three'
 import { White, lit, mix } from '../../engine/render/color'
 import { EntityViews } from '../../engine/render/entity_views'
 import { TeamLooks } from '../team/team_look'
-import { BodyKind } from '../track/target_sync_event'
-import type { TargetState } from '../track/target_sync_event'
+import { BodyKind } from '../history/target_sync_event'
+import type { TargetState } from '../history/target_sync_event'
 import type { LocalPlayer } from './local_player'
 
 const geometry = new SphereGeometry(1, 32, 16) // shared, and scaled to each Body's Radius
