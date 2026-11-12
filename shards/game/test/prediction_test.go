@@ -581,7 +581,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 			launch := p.Peek(m[0], m[1])
 			k := 0.0
 			for range 20 {
-				lead = box2d.Vec2{X: b.X - launch.X, Y: b.Y + walk*(k+1-lag) - launch.Y}
+				lead = box2d.Vec2{X: b.X - launch.X, Y: b.Y + float64(walk*(k+1-lag)) - launch.Y}
 				k = math.Hypot(lead.X, lead.Y)/step - 0.5
 			}
 			f = frameAt(i)
