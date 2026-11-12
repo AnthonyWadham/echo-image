@@ -150,20 +150,23 @@ func (s *Scene) Cast(a Actor, q Query, meet Meet, out []Contact) []Contact {
 	n := len(out)
 	s.found = s.found[:0]
 	s.tree.Query(q.box(), uint64(q.Kinds), collect, s)
-	for _, i := range s.found {
+	found := s.found
+	s.found = nil // a meet that casts again gets its own
+	for _, i := range found {
 		t := &s.things[i]
 		var first Contact
-		found := false
+		met := false
 		for _, sp := range s.spans(a, t) {
-			if c, ok := q.cast(sp, meet); ok && (!found || c.Before(first)) {
-				first, found = c, true
+			if c, ok := q.cast(sp, meet); ok && (!met || c.Before(first)) {
+				first, met = c, true
 			}
 		}
-		if found {
+		if met {
 			first.ID, first.Serial = t.ID, t.Serial
 			out = append(out, first)
 		}
 	}
+	s.found = found[:0]
 	slices.SortFunc(out[n:], compareContacts)
 	return out
 }

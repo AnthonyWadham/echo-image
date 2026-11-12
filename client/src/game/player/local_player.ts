@@ -86,14 +86,11 @@ export class LocalPlayer {
   }
 
   /** Whether serial names your Body. */
-  owns(serial: bigint): boolean {
+  isYou(serial: bigint): boolean {
     return serial === this.#own.body
   }
 
-  /**
-   * Where to draw the thing with serial if you predict it: your Body or your Echo, while playing. Its
-   * serial says, never its kind or owner: an Echo of yours that isn't your Echo now is drawn from its rows.
-   */
+  /** Where to draw serial's thing while playing, if it is your Body or Echo: by serial, never kind or owner. */
   drawnOwn(serial: bigint): Vec2 | undefined {
     if (serial === this.#own.body) return this.drawn
     if (serial === this.#own.echo) return this.drawnEcho

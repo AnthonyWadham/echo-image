@@ -17,10 +17,10 @@ import (
 	"echo_image/shards/game/internal/track/past"
 )
 
-// Each Body and Echo is tracked, as its client predicts it. Its track keeps the rows every view the
-// window allows is drawn from, one per tick in a ring of KeptRows, and its newest row is what this
-// tick's target_sync shows of it: what screens draw, and what predictors place it by, as the server's
-// shots meet it. The sync shows every Body and Echo; body_sync and echo_sync send only what rows lack.
+// Each tracked thing is in each tick's target_sync, and only those. Its track keeps the rows every view
+// the window allows is drawn from, one per tick in a ring of KeptRows, and its newest row is what the
+// sync shows of it: what screens draw, and what predictors place it by, as the server's shots meet it.
+// Each Body and Echo is predicted by its client; body_sync and echo_sync send only what rows lack.
 func TestTrackIsWhatSyncsShow(t *testing.T) {
 	w, _, bob, fx := fxDuel(t)
 	fx.effect(yourBody(t, bodiesFor(t, w, "bob")), effectcomp.EffectIntent{Kind: "stun", Ticks: 3})
@@ -29,10 +29,9 @@ func TestTrackIsWhatSyncsShow(t *testing.T) {
 	check := func(what string, tr trackcomp.Track, want past.Row, full bool) {
 		t.Helper()
 		rows := tr.AppendRows(nil, want.Tick+1)
-		if !tr.Predicted || tr.Rows.Len() != keep || len(rows) == 0 || full && len(rows) != keep ||
-			rows[len(rows)-1] != want {
-			t.Fatalf("%s: predicted %v, %d slots, %d rows ending %v, want predicted, %d of each, ending %+v", what,
-				tr.Predicted, tr.Rows.Len(), len(rows), rows[max(len(rows)-1, 0):], keep, want)
+		if tr.Rows.Len() != keep || len(rows) == 0 || full && len(rows) != keep || rows[len(rows)-1] != want {
+			t.Fatalf("%s: %d slots, %d rows ending %v, want %d of each, ending %+v", what, tr.Rows.Len(), len(rows),
+				rows[max(len(rows)-1, 0):], keep, want)
 		}
 		for i, r := range rows {
 			if r.Tick != want.Tick-uint64(len(rows)-1-i) {
@@ -40,18 +39,30 @@ func TestTrackIsWhatSyncsShow(t *testing.T) {
 			}
 		}
 	}
+	predicted := func(what string, serial uint64) {
+		t.Helper()
+		if r := rowOf(t, w, "alice", serial); !w.Entity(cardinal.EntityID(r.EntityID)).Get[trackcomp.Track]().Predicted {
+			t.Fatalf("%s %d isn't predicted", what, r.EntityID)
+		}
+	}
+	type tracked struct{ Track trackcomp.Track }
 	for i := range keep + 4 {
 		bob.move(0, 1) // stunned at first, then he walks
 		w.Tick()
 		bodies, echoes := bodiesFor(t, w, "alice"), sentTo[echo.EchoSync](t, w, "alice")
 		targets := sentTo[track.TargetSync](t, w, "alice")
-		if targets.Tick != bodies.Tick || targets.Targets.Len() != bodies.Bodies.Len()+echoes.Echoes.Len() {
-			t.Fatalf("target_sync %+v, want tick %d's %d Bodies and Echoes", targets, bodies.Tick,
-				bodies.Bodies.Len()+echoes.Echoes.Len())
-		}
+		sent := map[uint32]track.TargetState{}
 		for s := range targets.Targets.Values() {
+			sent[s.EntityID] = s
+		}
+		held := 0
+		for e := range w.Contains[tracked]().Iter() {
+			held++
+			s, ok := sent[uint32(e.ID())]
+			if !ok {
+				t.Fatalf("tick %d: target_sync lacks tracked thing %d", targets.Tick, e.ID())
+			}
 			stunned = stunned || s.Kind == interact.Body && s.Tags&interact.Stunned != 0
-			e := w.Entity(cardinal.EntityID(s.EntityID))
 			check(fmt.Sprintf("target %d", s.EntityID), e.Get[trackcomp.Track](), past.Row{Tick: targets.Tick,
 				Kind: s.Kind, Side: interact.Side{Owner: s.Owner, Team: s.Team}, Center: box2d.Vec2{X: s.X, Y: s.Y},
 				Radius: s.Radius, Tags: s.Tags, Until: s.Until}, i >= keep)
@@ -59,11 +70,14 @@ func TestTrackIsWhatSyncsShow(t *testing.T) {
 				t.Fatalf("target_sync sent %+v, want its serial and owner", s)
 			}
 		}
+		if targets.Tick != bodies.Tick || len(sent) != held {
+			t.Fatalf("target_sync %+v, want tick %d's %d tracked things", targets, bodies.Tick, held)
+		}
 		for b := range bodies.Bodies.Values() { // what the rows lack, of each
-			rowOf(t, w, "alice", b.Serial)
+			predicted("Body", b.Serial)
 		}
 		for e := range echoes.Echoes.Values() {
-			rowOf(t, w, "alice", e.Serial)
+			predicted("Echo", e.Serial)
 		}
 	}
 	if !stunned {

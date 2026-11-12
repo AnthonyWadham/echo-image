@@ -6,9 +6,9 @@ import (
 	"echo_image/shards/game/internal/interact"
 )
 
-// TargetSync is one player's view of the tracked things this tick, each as its row: the record screens
-// draw it from and shots meet it by. Sent every tick and complete: a target missing from it is gone or hidden. One that died in the
-// tick is in it once more, with when. The client's predictor reads only this to place targets.
+// TargetSync is one player's view of the tracked things this tick, each as its row: what screens draw
+// and shots meet. Sent every tick and complete: a target missing from it is gone or hidden. One that
+// died in the tick is in it once more, with when. The client's predictor places targets from it alone.
 type TargetSync struct {
 	Tick    uint64
 	Targets cardinal.Slice[TargetState]

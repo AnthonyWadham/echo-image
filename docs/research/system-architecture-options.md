@@ -122,7 +122,7 @@ var Kinds = map[string]Kind{"bolt": {Step: linear, Hit: stop}, "bouncer": {Step:
 | Case | Fit |
 |---|---|
 | Bolt | `Kinds["bolt"]` = linear + stop. |
-| Homing | A new kind entry that reuses the shared `track` and `stop` helpers. |
+| Homing | A new kind entry that reuses the shared `steer` and `stop` helpers. |
 | Bounce | A new kind entry with a `bounce` hit func. |
 | Dash | `ability.Casts["dash"]` emits `EffectIntent`. |
 | Echo-Swap | `ability.Casts["echo_swap"]` emits 2 `TeleportIntent`s. |

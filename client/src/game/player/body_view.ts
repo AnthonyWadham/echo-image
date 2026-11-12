@@ -19,7 +19,7 @@ export function newBodyViews(scene: Object3D, player: LocalPlayer): EntityViews<
   const looks = new TeamLooks((c) => ({ body: lit(c), you: lit(mix(c, White, 0.5)) }))
   const material = (b: TargetState) => {
     const look = looks.get(b.Team)
-    return player.owns(b.Serial) ? look.you : look.body
+    return player.isYou(b.Serial) ? look.you : look.body
   }
   return new EntityViews(
     scene,

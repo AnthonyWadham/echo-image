@@ -28,7 +28,7 @@ every blocker the two critiques raised.
 | `track/past` | new, pure (wasm) | `Row`, the view rule, `Window`, `Scene`, `Actor`, `Query`, `Contact`, `Cast`, `Overlap`, `Pose` |
 | `projectile/flight` | shrinks | shot types, meet rules, `Fly` on top of `past` |
 | `projectile` | shrinks | launch and flight only; no history, no target sync, no player import |
-| `predict` | changed | a per-serial mirror of the record; a scene only on steps with a shot |
+| `predict` | changed | a per-serial mirror of the record; a scene when a step's first judge looks |
 | client `game/track` | moved | the `target_sync` decoder (from `game/projectile`) |
 
 ## Problems
@@ -181,12 +181,11 @@ type Thing struct {
 
 type Scene struct{ /* tick, window, things, rows, clients, tree, scratch: all private */ }
 
-func NewScene() *Scene
-func (s *Scene) Reset(tick uint64, w Window)                      // empty for tick; keeps its memory
+func NewScene(w Window) *Scene                                    // w holds its clients' views
+func (s *Scene) Reset(tick uint64)                                // empty for tick; keeps its memory
 func (s *Scene) Add(t Thing, kept []Row)                          // kept: rows before Now, oldest first
 func (s *Scene) AddClient(id uint32, serial uint64, view float64) // held by Window.Clamp
 func (s *Scene) Build()                                           // sort by ID; one tree box per thing
-func (s *Scene) Tick() uint64
 ```
 
 ### 6. Actors: a client's view, or present
@@ -345,16 +344,17 @@ next, end, over := tuning.Fly(world, def, f, a, s.Scene, physics.SecondsPerTick)
 ### 10. The predictor mirrors the record
 
 - **What:** the predictor keeps the record per serial, as the shard keeps it per thing, and builds the
-  same `past.Scene` only on steps with a shot in flight or launched.
+  same `past.Scene` when a step's first judge looks.
 - **How:**
   - `See` writes each synced row into its serial's ring (slot `tick % KeptRows`). Serials sit in a
     slice sorted by serial, with a binary-search insert. No Go map, so no map iteration (F36). A serial
     absent for `KeptRows` ticks is dropped. A small ring of synced ticks keeps today's blind check.
-  - On a shot step: `Reset`, then one `Thing` per serial in the newest sync with `Until ≥ 1` (today's
-    rule). `Now` is its newest synced row. `Predicted` is `State.Owns(id, serial)`: your Body
-    (`id == Body`) or your Echo (`serial == EchoSerial`). Their `From`/`To` are what the step predicted.
+  - When a step's first judge looks: `Reset`, then one `Thing` per serial in the newest sync with
+    `Until ≥ 1` (today's rule). `Now` is its newest synced row. `Predicted` marks your Body
+    (`id == Body`) and your Echo (`serial == EchoSerial`). Their `From`/`To` are what the step predicted.
   - The actor is `Actor{you, Window.Clamp(f.ViewTick, s.Tick), true}`. Blind (forces a replay) only
-    when a favored shot flies and the syncs for its view are missing, as today.
+    when a judge looks and the syncs for its view are missing. One call gives the scene and the mark,
+    so a new judge (melee, hitscan) can't skip it; a list of today's judges could.
   - `YouState` gains `EchoSerial`, so your Echo is found by identity, not by kind.
 - **Why:** history built from replicated state, on each peer (Netick, Unity `ClientHistorySize`).
   The same rows and the same code give the server's bits.
@@ -371,7 +371,6 @@ type Content struct {
 
 type Sight struct{ ID uint32; Serial uint64; past.Row } // past.Row, was flight.Row
 
-func (s State) Owns(id uint32, serial uint64) bool // your Body or your Echo
 func (p *Predictor) See(tick uint64, sights []Sight)  // O(T log T); 0 allocations warm
 func (p *Predictor) Forget()
 ```
@@ -466,7 +465,8 @@ T = tracked things, W = `KeptRows` (5 at 20 Hz, 15 at 60 Hz), P = clients, K = c
   24 things that is 384 rows (about 25 KB) a tick. 100 stress-case things: 1,600 rows (about 100 KB).
 - **No O(P²):** each system visits each thing once. Queries touch only tree candidates.
 - **Wasm:** today every step and replay builds a map and a tree, even with no shot. Design: 0 on idle
-  steps; O(T·W + T log T), 0 allocs warm, on a shot step (**estimate** tens of µs at 15-25× native).
+  steps; O(T·W + T log T), 0 allocs warm, on a step a judge looks (**estimate** tens of µs at 15-25×
+  native).
   `See` is O(T log T). The JS decode of `target_sync` (~180 µs per 12 things, F12) still dominates.
 
 ## Migration
@@ -512,7 +512,7 @@ moves only if its text moves.
 
 **Step 3: scene, actor, query service, predictor mirror. No purge.**
 - Changes 5-10 land: the scene and `SceneSystem`, actors and `Cause.CasterSerial`, placement, `Cast`,
-  the new `Fly` and `End.View`, and the predictor mirror with `State.Owns` and `YouState.EchoSerial`.
+  the new `Fly` and `End.View`, and the predictor mirror with `YouState.EchoSerial`.
   `viewOf`, `seenAt`, `reachOf`, `Reach`, `Seen`, `Sights`, `sights` and the `seen` map go.
 - The one behaviour change: own Body tags and life at the view. No shipped or recorded rule can see it.
 - Tests: the `Fly` tests build a `past.Scene`. `TestFlyMeetsEachTargetAsTheTickShowsIt`'s sweep also adds
@@ -558,7 +558,6 @@ non-circle barrier). Each adds its tests to the existing files and its mutants t
 - **Only shots can show a hit on the target where each screen draws it.** A new judge's sync must carry
   `TargetSerial` and `Offset` like `ProjectileState` does.
 - **Hidden info leaks through shot ends** (F38) until `seenBy` is real.
-- **The scene is not re-entrant.** A `Meet` must not query it.
 - **NPCs, turrets and bots are stress cases only.** No content adds them.
 
 ## Decisions for Anthony

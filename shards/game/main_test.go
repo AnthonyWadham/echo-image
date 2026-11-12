@@ -17,6 +17,10 @@ import (
 	"echo_image/shards/game/internal/track"
 	"encoding/json"
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"math"
 	"slices"
 	"strings"
@@ -419,6 +423,45 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 	}
 	if _, err := loadCatalog(content.FS); err != nil {
 		t.Fatalf("the shipped content fails: %v", err)
+	}
+}
+
+// Every recorder and sync reads the tick's final state: main.go registers each in PostUpdate, after
+// every writer, from track.RecordSystem to combat.DeathSystem, the one system there that changes the
+// world.
+func TestReadersRunInPostUpdate(t *testing.T) {
+	file, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := func(name string) bool {
+		return strings.HasSuffix(name, ".RecordSystem") || strings.HasSuffix(name, ".SyncSystem")
+	}
+	var post []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if fn, ok := call.Fun.(*ast.SelectorExpr); !ok || fn.Sel.Name != "RegisterSystem" {
+			return true
+		}
+		name, _, _ := strings.Cut(strings.TrimPrefix(types.ExprString(call.Args[0]), "&"), "{")
+		switch {
+		case len(call.Args) > 1 && types.ExprString(call.Args[1]) == "post":
+			post = append(post, name)
+		case reader(name) || name == "combat.DeathSystem":
+			t.Errorf("%s runs before PostUpdate", name)
+		}
+		return true
+	})
+	if len(post) < 2 || post[0] != "track.RecordSystem" || post[len(post)-1] != "combat.DeathSystem" {
+		t.Fatalf("PostUpdate runs %v, want track.RecordSystem first and combat.DeathSystem last", post)
+	}
+	for _, name := range post[1 : len(post)-1] {
+		if !reader(name) {
+			t.Errorf("%s runs in PostUpdate, where only recorders and syncs come before DeathSystem", name)
+		}
 	}
 }
 

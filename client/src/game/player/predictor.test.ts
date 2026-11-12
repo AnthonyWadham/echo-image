@@ -91,6 +91,7 @@ test('agrees with a body_sync only where its own step left your Body', () => {
   const [s, next] = [run[0]!, run[1]!] // the server applied s's frame, with no surprise
   for (const [sync, agrees] of [
     [{ ...next.Sync, You: { ...next.Sync.You, X: next.Sync.You.X + 1e-9 } }, false],
+    [{ ...next.Sync, You: { ...next.Sync.You, EchoSerial: next.Sync.You.EchoSerial + 1n } }, false],
     [next.Sync, true],
   ] as const) {
     predictor.forget()

@@ -22,11 +22,9 @@ import (
 // component.ShotEnded: where, when in the tick and on what. A shot launched this tick moves this tick,
 // so its path starts at the shooter.
 //
-// A shot meets the map now, and each tracked thing in the scene as its actor saw it: a predicted shot as
-// its caster's client drew the tick, while that caster is still the one its Cause names, and any other
-// (an Echo's) as every screen draws this tick. That is what the client's predictor flies it against, so
-// a hit on screen is a hit on the server. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things
-// found and R rules.
+// A shot meets the map now, and each tracked thing as its actor saw it: a predicted shot at its caster's
+// view, while that caster is still the one its Cause names, any other as screens draw this tick, as the
+// client's predictor does. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things, R rules.
 type FlightSystem struct {
 	Tuning  ProjectileTuning
 	Scene   *past.Scene // this tick's tracked things, as track.SceneSystem built it

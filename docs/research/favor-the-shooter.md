@@ -145,15 +145,17 @@ the claim model (problem 3).
 ### 7. The predictor flies your shots the same way
 
 - **What:** the predictor keeps each thing's rows from the target syncs, by serial, as the server keeps
-  its `Track`, and builds the same `past.Scene` on a step with a shot. A thing that died in the newest
-  sync's tick is gone on the server before your next frame, so the scene leaves it out.
+  its `Track`, and builds the same `past.Scene` when a step's first judge looks (today, your shots). A
+  thing that died in the newest sync's tick is gone on the server before your next frame, so the scene
+  leaves it out.
 - **How:**
   - It keeps as many ticks of rows as the server keeps (`KeptRows`), in a ring per serial: no map. A
     sync older than those is dropped, even one that comes late.
-  - A step with a shot builds the scene from the rows, your Body and Echo as it predicts them, and
-    acts at the frame's view, held by the same `Window.Clamp`. Then it flies your shots with
-    `flight.Fly`. A step with no shot builds nothing.
-  - A view without its ticks' syncs builds no scene, and your shot flies on: that step replays.
+  - A judge gets the scene from the step's one `look`, built the first time: the rows, your Body and
+    Echo as it predicts them, and the frame's view, held by the same `Window.Clamp`. Your shots then fly
+    with `flight.Fly`. A step whose judges never look builds nothing.
+  - A view without its ticks' syncs builds no scene, and your shot flies on. A judge that looked then
+    makes the step blind, and it replays.
   - A replay after a body_sync is the same step, so it ends a shot where the first step did.
 - **Why:** the same rows, rule and cast as the server.
 
@@ -192,6 +194,22 @@ the claim model (problem 3).
 
 - `Projectile` gains `Predicted` (and `Prev`, its start-of-tick point, 2026-10-31), and `InputFrame`
   (kept in `InputQueue`) loses `Claims`, so running this needs one `world purge`.
+
+## View vs now
+
+| Field | Judged | Why |
+|---|---|---|
+| Map (walls, bounds) | Now: a live Box2D cast | Static |
+| Others' geometry (center, radius) | At the view | What the screen drew |
+| Motion inside the tick | Views v to v + 1 (`Across`) | A frame's shot flies a tick while the view moves a tick |
+| Kind, side | Rows at the view | Static per thing |
+| Existence | Alive now **and** shown at the view (`Until`) | No hits on the dead or the undrawn |
+| Hit-rule tags (`pass`, `stop`, payload filters) | At the view | Drawn and judged alike; bit-exact |
+| Defensive outcomes (invulnerable, shields) | Now, in combat's resolver | The victim's defence wins |
+| Damage, heals, effects, death | Now, in their resolvers | Never predicted |
+| Your own predicted things | Position: as predicted. Tags and life: at the view | As your screen draws them |
+| Unfavored and hidden things (later) | Now | Not favored across escapes; only what was sent |
+| The action itself (shot origin) | Now | It is the actor's own predicted state |
 
 ## Limits
 

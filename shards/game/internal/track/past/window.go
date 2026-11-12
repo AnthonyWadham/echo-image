@@ -30,11 +30,9 @@ func (w Window) Ticks() uint64 { return uint64(timestep.Ticks(w.Seconds())) }
 // judged (Across) from the row Ticks back and newer.
 func (w Window) KeptRows() uint64 { return w.Ticks() }
 
-// Clamp is the view an action a client predicts is judged at on tick: the one its client drew, held to
-// those whose tick's views (Across) are drawn from the rows kept by then, Ticks before tick up to
-// tick - 2, whose views run to the newest row (and 1 at least, as rows start at tick 0). An older view
-// is judged at the oldest, so a high ping must lead its shots but still hits. A newer one, or one that
-// isn't a number, is judged at the newest.
+// Clamp is the view a client's predicted action is judged at on tick: its client's, held to those the
+// kept rows draw (Across), Ticks back to tick - 2, and 1 at least. An older view is judged at the oldest,
+// so a high ping leads its shots but still hits; a newer one, or NaN, at the newest.
 func (w Window) Clamp(view float64, tick uint64) float64 {
 	newest := max(float64(tick)-2, 1)
 	if !(view <= newest) {

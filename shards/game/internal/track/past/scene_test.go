@@ -139,6 +139,59 @@ func TestSceneCastSortsContacts(t *testing.T) {
 	}
 }
 
+// Cast meets only its query's kinds, and appends: what out held stays first, as it was.
+func TestSceneCastAppendsTheKindsItMeets(t *testing.T) {
+	s := NewScene(sceneWindow)
+	s.Reset(10)
+	s.Add(still(1, interact.Side{Owner: 9, Team: 2}, box2d.Vec2{}, 10)) // an Echo
+	body, kept := still(2, interact.Side{Owner: 9, Team: 2}, box2d.Vec2{X: 0.5}, 10)
+	for i := range kept {
+		kept[i].Kind = interact.Body
+	}
+	body.Now.Kind = interact.Body
+	s.Add(body, kept)
+	s.Build()
+	q := circle(box2d.Vec2{}, 0.1)
+	q.Kinds = interact.Body
+	held := Contact{ID: 99, Fraction: 0.9}
+	got := s.Cast(Actor{Side: interact.Side{Owner: 1, Team: 1}, View: 8}, q, meetAll, []Contact{held})
+	if len(got) != 2 || got[0] != held || got[1].ID != 2 {
+		t.Errorf("a Body-only cast after %+v: contacts %+v, want it, then the Body (2) alone", held, got)
+	}
+}
+
+// A meet may cast the scene again: each cast still meets what it crosses.
+func TestSceneCastNests(t *testing.T) {
+	s := NewScene(sceneWindow)
+	s.Reset(10)
+	for _, x := range []float64{-2, 0, 2, 4} {
+		s.Add(still(uint32(x+10), interact.Side{Owner: 9, Team: 2}, box2d.Vec2{X: x}, 10))
+	}
+	s.Build()
+	a := Actor{Side: interact.Side{Owner: 1, Team: 1}, View: 8}
+	ids := func(cs []Contact) (ids []uint32) {
+		for _, c := range cs {
+			ids = append(ids, c.ID)
+		}
+		return ids
+	}
+	var inner []uint32
+	meet := func(Row) (int, bool) {
+		if inner == nil { // e.g. a rule that asks what is near the thing
+			q := circle(box2d.Vec2{X: 1.5}, 0.1)
+			q.End = box2d.Vec2{X: 4.5}
+			inner = ids(s.Cast(a, q, meetAll, nil))
+		}
+		return 0, true
+	}
+	q := circle(box2d.Vec2{X: -3}, 0.1)
+	q.End = box2d.Vec2{X: 5}
+	if outer := ids(s.Cast(a, q, meet, nil)); !slices.Equal(outer, []uint32{8, 10, 12, 14}) ||
+		!slices.Equal(inner, []uint32{12, 14}) {
+		t.Errorf("contacts %v, and %v from a cast in its meet; want 8 10 12 14, and 12 14", outer, inner)
+	}
+}
+
 // A query over part of the tick meets a thing only where that part shows it: one that crossed it
 // before is passed, one that crosses it then is met as it moves, and an instant meets each thing where
 // that instant shows it.

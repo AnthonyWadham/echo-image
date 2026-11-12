@@ -49,9 +49,9 @@ one is the *what*.
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
   It stamps the wasm with the tree's sim version (see client sync), so after a Go or content change
   that reaches the shard, restart `bun run dev` too.
-- **world-engine is pinned** in `go.mod` to `v0.22.0-beta`, the commit of PR #1109 (codegen
-  reverted). To move it: `go get github.com/argus-labs/world-engine@<commit or tag>`. No
-  `vendor/`: the shard's Docker build downloads modules itself.
+- **world-engine is pinned** in `go.mod`: that line is the version, so no doc repeats it. To move it:
+  `go get github.com/argus-labs/world-engine@<commit or tag>`, in a commit of its own that says why.
+  No `vendor/`: the shard's Docker build downloads modules itself.
 - **Toolchain:** go.mod's go line (1.27.1) is the Go the shard's Docker build runs (the world CLI's
   golang image), and `SimVersion` hashes the release. `predictor.mjs` builds with exactly that Go
   (`GOTOOLCHAIN`), whatever is installed. Bump it with the CLI's image.
@@ -167,8 +167,8 @@ effect/status}`).
 `netsync` imports only `team` and `player/component`, so any feature can sync through it. Every
 `component` leaf and `team` import only cardinal (and the physics2d component types; effect's leaf
 also imports `effect/status`, ability's imports `ability/cast` for `Cooldown`, team imports `interact`,
-combat's and projectile's leaves import ability's leaf for `Cause`, and track's imports
-`track/past` for `Row`), so they're dependency *sinks*
+combat's and projectile's leaves import ability's leaf for `Cause`, projectile's imports
+`projectile/flight` for `End`, and track's imports `track/past` for `Row`), so they're dependency *sinks*
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
 `interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`, and
@@ -393,8 +393,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   - The first thing met ends the shot now, and a payload becomes a `DamageIntent`. History is never
     rewritten.
   - The predictor flies your shots with the same `flight.Fly` and `past.Scene`, built from the target
-    syncs only on a step with a shot, so it gets the server's bits: no margin. `End.View` is the view
-    each end was judged at, which `TestPredictionMatchesServer` compares.
+    syncs when a step's first judge looks, so it gets the server's bits: no margin. A judge that looks
+    without its view's syncs makes the step blind, which forces a replay. `End.View` is the view each
+    end was judged at, which `TestPredictionMatchesServer` compares.
   - Plan and limits: `docs/research/favor-the-shooter.md`.
 - **Contact reactions** (pickups, triggers; none exist yet): `physics2d` emits `ContactBegin/End` +
   `TriggerBegin/End` system events each tick (on PreUpdate). Blocking and sliding aren't reactions
@@ -516,7 +517,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   holds this tick's Echo poses when shots and areas query it (`TestShotMeetsEchoWhereItIsNow`). An
   Echo spawned this tick joins Box2D next tick.
 - **`track.SceneSystem` runs in Update after `echo.SpawnSystem`, before `ability.CastHookSystem`,** so
-  a just-spawned Echo is in this tick's scene and every judge after it reads one scene. Nothing between
+  a just-spawned Echo is in this tick's scene (`TestShotMeetsAnEchoTheTickItSpawns`) and every judge
+  after it reads one scene. Nothing between
   them moves a tracked thing. The scene is derived, never saved: main.go hands the one `*past.Scene`
   to `track.SceneSystem` and to each judge (`projectile.FlightSystem`), as it does the physics plugin.
   That shared pointer is the one place the leaf rule bends.
@@ -527,7 +529,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   drops what is over by then, so a whole tick reads one status.
 - **Update writes the tick; PostUpdate reads it.** PostUpdate runs after every Update system, so no
   Update order can put a reader before a writer. A new writer goes in Update; a new recorder or sync
-  goes in PostUpdate (`cardinal.WithHook(cardinal.PostUpdate)`). System events (`Died`) still show there.
+  goes in PostUpdate (`cardinal.WithHook(cardinal.PostUpdate)`), which `TestReadersRunInPostUpdate`
+  checks in main.go. System events (`Died`) still show there.
 - **`track.RecordSystem` runs first in PostUpdate.** Each Body's and Echo's row is exactly what this
   tick's syncs show of it, its tags read for the next tick and its `Until` from its `Died`, so a
   predicted shot meets what its client drew. Judges run in Update, before it, so a view can use rows

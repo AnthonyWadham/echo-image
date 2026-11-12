@@ -1,4 +1,5 @@
 import { Group } from 'three'
+import type { Mesh } from 'three'
 import { describe, expect, test } from 'vitest'
 import { Timelines } from '../../engine/sync/timeline'
 import type { EchoState } from '../echo/echo_sync_event'
@@ -48,7 +49,7 @@ function predictor(seen: string[] = []): Predictor {
 const newPlayer = (timelines = new Timelines(0.1), seen: string[] = []) =>
   new LocalPlayer(timelines, session, predictor(seen))
 
-/** A body_sync at tick for you as Body 1 at (tick, 0), by default with only your Body's. */
+/** A body_sync at tick for you as Body 1 at (tick, 0), by default with only your Body's. A serial is its ID + 10. */
 const bodySync = (tick: number, ack = 0, bodies = [1]): BodySync => ({
   Tick: BigInt(tick),
   TickSeconds: 0.05,
@@ -78,7 +79,7 @@ const bodySync = (tick: number, ack = 0, bodies = [1]): BodySync => ({
     EchoPath: [],
   },
   Bodies: bodies.map((id) => ({
-    ...{ EntityID: id, Serial: BigInt(id), PlayerID: id, Nickname: `P${id}`, Champion: 'starter', Effects: [] },
+    ...{ EntityID: id, Serial: BigInt(id) + 10n, PlayerID: id, Nickname: `P${id}`, Champion: 'starter', Effects: [] },
   })),
 })
 
@@ -283,30 +284,30 @@ describe('LocalPlayer', () => {
   })
 })
 
-/** A target row of kind at (x, 0), owned by Body owner. */
-const row = (kind: bigint, serial: bigint, owner: number, x: number): TargetState => ({
-  ...{ EntityID: Number(serial), Serial: serial, Kind: kind, Owner: owner, Team: 0, X: x, Y: 0 },
+/** A target row of thing id (serial id + 10) of kind at (x, 0), owned by Body owner. */
+const row = (kind: bigint, id: number, owner: number, x: number): TargetState => ({
+  ...{ EntityID: id, Serial: BigInt(id) + 10n, Kind: kind, Owner: owner, Team: 0, X: x, Y: 0 },
   ...{ Radius: 0.5, Tags: 0n, Until: 1 },
 })
 
 describe('Body and Echo views', () => {
-  // Playing Body 1 (serial 1) at (100, 0), its Echo serial 5 predicted at (80, 0). Ticks 99 and 100
-  // hold Body 1, Body 2, your Echo, an older Echo of yours (serial 6) and Body 2's Echo, each at x = serial.
+  // Playing Body 1 (serial 11) at (100, 0), its Echo 5 (serial 15) predicted at (80, 0). Ticks 99 and 100
+  // hold Body 1, Body 2, your Echo, an older Echo of yours (6) and Body 2's Echo (7), each at x = its ID.
   function scene() {
     const timelines = new Timelines(0.1)
     const player = newPlayer(timelines)
     player.setConnected(true, { x: 0, y: 0 })
     const s = bodySync(100, 0, [1, 2])
-    s.You.EchoSerial = 5n
+    s.You.EchoSerial = 15n
     s.You.EchoDelay = 20
     s.You.EchoPath = [{ X: 80, Y: 0 }]
     player.onBodySync(s)
     const rows = [
-      row(BodyKind, 1n, 1, 1),
-      row(BodyKind, 2n, 2, 2),
-      row(EchoKind, 5n, 1, 5),
-      row(EchoKind, 6n, 1, 6),
-      row(EchoKind, 7n, 2, 7),
+      row(BodyKind, 1, 1, 1),
+      row(BodyKind, 2, 2, 2),
+      row(EchoKind, 5, 1, 5),
+      row(EchoKind, 6, 1, 6),
+      row(EchoKind, 7, 2, 7),
     ]
     for (const tick of [99n, 100n]) player.onTargetSync({ Tick: tick, Targets: rows })
     return player
@@ -324,26 +325,30 @@ describe('Body and Echo views', () => {
     expect(drawn(echoes)).toEqual([80, 6, 7])
   })
 
-  test('draws a newer Body that took your EntityID from its rows', () => {
+  test('draws a newer Body that took your EntityID from its rows, as any other Body', () => {
     const player = scene()
-    // By tick 101 your Body is gone and Body serial 8 has its EntityID; no body_sync says so yet.
-    player.onTargetSync({ Tick: 101n, Targets: [{ ...row(BodyKind, 8n, 1, 8), EntityID: 1 }] })
+    // By tick 101 your Body is gone and Body 8 (serial 18) has its EntityID; no body_sync says so yet.
+    player.onTargetSync({ Tick: 101n, Targets: [{ ...row(BodyKind, 8, 1, 8), EntityID: 1 }, row(BodyKind, 2, 2, 2)] })
     const bodies = new Group()
     newBodyViews(bodies, player).draw(100.5)
-    expect(drawn(bodies)).toEqual([8])
+    expect(drawn(bodies)).toEqual([8, 2])
+    const [newer, other] = bodies.children as Mesh[]
+    expect(newer?.material).toBe(other?.material) // not lighter, as yours is
   })
 
   test('says which thing you predict by its serial alone', () => {
     const player = scene()
-    expect([1n, 2n, 5n, 6n, 7n].map((s) => player.drawnOwn(s))).toEqual([
+    expect([11n, 12n, 15n, 16n, 17n, 1n, 5n].map((s) => player.drawnOwn(s))).toEqual([
       { x: 100, y: 0 },
       undefined,
       { x: 80, y: 0 },
       undefined,
       undefined,
+      undefined, // your Body's EntityID, not its serial
+      undefined,
     ])
-    expect([1n, 2n, 5n].map((s) => player.owns(s))).toEqual([true, false, false])
+    expect([11n, 12n, 15n, 1n].map((s) => player.isYou(s))).toEqual([true, false, false, false])
     player.setConnected(false, { x: 0, y: 0 })
-    expect([player.drawnOwn(1n), player.drawnOwn(5n), player.owns(1n)]).toEqual([undefined, undefined, false])
+    expect([player.drawnOwn(11n), player.drawnOwn(15n), player.isYou(11n)]).toEqual([undefined, undefined, false])
   })
 })

@@ -174,8 +174,8 @@
    "edits": [
     {
      "file": "shards/game/internal/track/record_system.go",
-     "old": "\t\t\trow.Until = until\n",
-     "new": "\t\t\t_ = until\n"
+     "old": "\t\t\trow.Until = s.died[i].Until\n",
+     "new": "\t\t\t_ = s.died[i].Until\n"
     }
    ]
   },
@@ -353,6 +353,18 @@
    ]
   },
   {
+   "id": "LC2-A1",
+   "breaks": "AppendRows includes the row of the tick it stops before",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/component/track.go",
+     "old": "uint64(t.Rows.Len())); tick < before; tick++ {",
+     "new": "uint64(t.Rows.Len())); tick <= before; tick++ {"
+    }
+   ]
+  },
+  {
    "id": "LC3-C1",
    "breaks": "Client ignores the serial",
    "check": "go",
@@ -473,6 +485,132 @@
    ]
   },
   {
+   "id": "LC3-N1",
+   "breaks": "a cast in a meet clobbers the outer cast's candidates",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/past/scene.go",
+     "old": "\ts.found = nil // a meet that casts again gets its own\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC3-M1",
+   "breaks": "a query meets every kind",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/past/scene.go",
+     "old": "s.tree.Query(q.box(), uint64(q.Kinds), collect, s)",
+     "new": "s.tree.Query(q.box(), ^uint64(0), collect, s)"
+    }
+   ]
+  },
+  {
+   "id": "LC3-M2",
+   "breaks": "every tree box holds every kind",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/past/scene.go",
+     "old": "t.proxy = s.tree.CreateProxy(box, uint64(t.Now.Kind), uint64(i))",
+     "new": "t.proxy = s.tree.CreateProxy(box, ^uint64(0), uint64(i))"
+    }
+   ]
+  },
+  {
+   "id": "LC3-A1",
+   "breaks": "Cast sorts the contacts out already held",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/past/scene.go",
+     "old": "slices.SortFunc(out[n:], compareContacts)",
+     "new": "slices.SortFunc(out[min(n, 0):], compareContacts)"
+    }
+   ]
+  },
+  {
+   "id": "LC3-E1",
+   "breaks": "the scene is built before echo.SpawnSystem: an Echo misses its first tick",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&track.SceneSystem{Scene: scene})\n",
+     "new": "\tworld.RegisterSystem(&track.SceneSystem{Scene: scene})\n\tworld.RegisterSystem(&echo.SpawnSystem{Tuning: c.echoes})\n"
+    }
+   ]
+  },
+  {
+   "id": "LC3-C2",
+   "breaks": "a Body with no applied frame of its session is a client",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/track/scene_system.go",
+     "old": "\t\tif view, ok := e.Get[playercomp.InputQueue]().View(tick); ok {\n",
+     "new": "\t\tif view, _ := e.Get[playercomp.InputQueue]().View(tick); true {\n"
+    }
+   ]
+  },
+  {
+   "id": "LC3-L1",
+   "breaks": "every step looks, judged or not: one without its view's syncs is blind",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tends := p.fly(asked.launches, f.Seq, look)\n",
+     "new": "\tlook()\n\tends := p.fly(asked.launches, f.Seq, look)\n"
+    }
+   ]
+  },
+  {
+   "id": "LC3-L2",
+   "breaks": "a judge that looks doesn't mark the step",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\t\tlooked = true\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC3-F1",
+   "breaks": "Forget keeps the synced ticks",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tfor i := range p.synced {\n\t\tp.synced[i] = math.MaxUint64\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC3-D1",
+   "breaks": "the predictor never drops a thing it stopped seeing",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tp.tracked = slices.DeleteFunc(p.tracked, func(t tracked) bool { return t.last+keep <= p.newest })\n",
+     "new": ""
+    }
+   ],
+   "survives": "only memory grows: a thing unseen for KeptRows ticks has no row at the newest tick, so no step places it"
+  },
+  {
    "id": "LC4-U1",
    "breaks": "RecordSystem back in Update before FlightSystem",
    "check": "go",
@@ -498,6 +636,23 @@
      "file": "shards/game/main.go",
      "old": "world.RegisterSystem(&combat.DeathSystem{}, post)",
      "new": "world.RegisterSystem(&combat.DeathSystem{})"
+    }
+   ]
+  },
+  {
+   "id": "LC4-S1",
+   "breaks": "player.SyncSystem back in Update, after effect.ResolveSystem",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()}, post)\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/main.go",
+     "old": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n",
+     "new": "\tworld.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})\n\tworld.RegisterSystem(&player.SyncSystem{Tuning: c.movement, SimVersion: echoimage.SimVersion()})\n"
     }
    ]
   },
@@ -546,6 +701,54 @@
      "file": "client/src/engine/render/entity_views.ts",
      "old": "        if (this.#shows && !this.#shows(s)) continue\n",
      "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC5-G1",
+   "breaks": "the client glue drops EchoSerial: your Echo is placed from its rows",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "      EchoSerial: String(EchoSerial),\n",
+     "new": "      EchoSerial: '0',\n"
+    }
+   ]
+  },
+  {
+   "id": "LC5-G2",
+   "breaks": "the wasm glue drops EchoSerial",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\tEchoSerial:  uint64Of(v.Get(\"EchoSerial\")),\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "LC5-O4",
+   "breaks": "your Body's look by EntityID: a newer Body with your ID is drawn lighter",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/body_view.ts",
+     "old": "return player.isYou(b.Serial) ? look.you : look.body",
+     "new": "return b.EntityID === player.you ? look.you : look.body"
+    }
+   ]
+  },
+  {
+   "id": "LC5-O5",
+   "breaks": "your Body's serial taken as its EntityID",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "this.#own = { body: this.me?.Serial,",
+     "new": "this.#own = { body: this.you === undefined ? undefined : BigInt(this.you),"
     }
    ]
   },

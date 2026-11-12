@@ -250,10 +250,10 @@ type Projectile struct {
 - **Consume:** a rule can use the area up for N seconds. The area itself sets `ReadyTick`, so a pickup needs no
   feature of its own.
 - **Placed things:** `area.PlaceSystem` is the one constructor for zones, barriers and pickups. Abilities place
-  them with an `AreaIntent`; the map places pickups. A barrier shots meet carries `TargetHistory`: shots judge
-  whatever keeps rows by its rows, whatever its kind, and `TargetSync` sends them. That target record is built
-  (2026-11-01); barriers aren't. A row is one circle: a box barrier first gives `flight.Row` a shape, cast by
-  that shape (F19 in foundation-review.md; a purge, as `TargetHistory` changes shape).
+  them with an `AreaIntent`; the map places pickups. A barrier shots meet carries a `Track` (track's leaf): every
+  judge meets a tracked thing by its rows in the tick's `past.Scene`, whatever its kind, and `TargetSync` sends
+  them. The track is built (2026-11-07); barriers aren't. A row is one circle: a box barrier first gives
+  `past.Row` a shape, cast by that shape (F19 in foundation-review.md; a purge, as `Track` changes shape).
 - **Anti-camp is its first user.** The Echo's constructor gives it an area with the `anticamp` rule. The warmup is
   the area's `Start`. A champion could carry a different rule.
 
@@ -400,17 +400,19 @@ player.DevSpawnSystem
 // Update
 mode.RoundSystem             // with round play
 echo.SpawnSystem             // on BodyClaimed or SpawnEchoIntent; gives the Echo its areas
+track.SceneSystem            // this tick's past.Scene: each tracked thing over the window, each client's view
 ability.CastHookSystem       // NOW, in DashSystem's place: OnCast → intents
 projectile.LaunchSystem      // every LaunchIntent, sorted; new shots move this tick
-projectile.FlightSystem      // meets rules → DamageIntent, EffectIntent, ShotHit; split children fly next tick
+projectile.FlightSystem      // meets rules in the scene → DamageIntent, EffectIntent, ShotHit; split children fly next tick
 ability.HitHookSystem        // with its first user
 area.PlaceSystem             // with its first user: AreaIntent → placed things, active next tick
 area.AreaSystem              // NOW (anti-camp): pulses → DamageIntent, HealIntent, EffectIntent, AreaMet
 combat.DamageResolveSystem   // immunity, damage, heals, deaths
 echo.EliminationSystem       // a dead Echo puts its owner out
 effect.ResolveSystem         // every EffectIntent; applies from next tick
-projectile.HistorySystem     // each target's row this tick
-// Sync, last: player, echo, ability, projectile, target rows (TargetSync), area, mode
+// PostUpdate: reads the tick's final state
+track.RecordSystem           // each tracked thing's row this tick
+// Sync: player, echo, ability, projectile, track (TargetSync), area, mode
 combat.DeathSystem           // removes what died, after the syncs sent it once more
 ```
 

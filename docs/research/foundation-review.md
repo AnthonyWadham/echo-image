@@ -719,6 +719,9 @@ Most severe first. F1-F27 are medium, F28-F39 low. No high finding survived the 
 
 **not generic**, medium. From `netcode-4, prediction-4 (glue part)`.
 
+**Status (2026-11-07):** open. Lag compensation moved `TargetSync` to `track` (same wire name) and added
+`You.EchoSerial` by hand at each site, now with a glue test. The paths below predate it.
+
 - **Where:** `shards/game/internal/projectile/target_sync_event.go:21`, `shards/game/internal/player/body_sync_event.go:64`, `shards/game/internal/echo/echo_sync_event.go:20`, `shards/game/internal/player/sync_system.go:72`, `client/src/main.ts:74`, `client/src/game/player/predictor.ts:94`, `shards/game/predictor/main.go:126`, `shards/game/internal/predict/predict.go:105`, `shards/game/main_test.go:2275`, `shards/game/internal/predict/predict.go:62-79`, `shards/game/predictor/main.go:126-183`, `client/src/game/player/predictor.ts:98-121`, `client/src/game/player/prediction.ts:55-59`
 - **What breaks:**
   - TargetSync sends each Body's and Echo's row. BodySync and EchoSync send the same spot, radius, team, tags and serial again.
@@ -762,6 +765,10 @@ Most severe first. F1-F27 are medium, F28-F39 low. No high finding survived the 
 ### F19. A non-circle or new target kind needs about 9 edits
 
 **not generic**, medium. From `prediction-4 (target shape part)`.
+
+**Status (2026-11-07):** kinds fixed, shape open. A thing is a target because it carries `Track`, and
+your own Body and Echo are one placement rule (`Track.Predicted`) on both sides. A row is still one
+circle. The code below moved to `track/past`.
 
 - **Where:** `shards/game/internal/predict/predict.go:204-212`, `shards/game/internal/predict/predict.go:236-249`, `shards/game/internal/projectile/flight_system.go:121-143`, `shards/game/internal/projectile/flight_system.go:165`, `shards/game/internal/projectile/flight/tuning.go:50-52`, `shards/game/internal/projectile/flight/view.go:14-22`, `shards/game/internal/projectile/flight/view.go:129-134`
 - **What breaks:**
@@ -829,6 +836,9 @@ Most severe first. F1-F27 are medium, F28-F39 low. No high finding survived the 
 
 **won't scale**, medium. From `prediction-5`.
 
+**Status (2026-11-07):** open, to land with the first teleport (`Row.Jump`). `AtView` moved to
+`track/past`, and `Scene.Build` now boxes every kept row.
+
 - **Where:** `shards/game/internal/projectile/flight/view.go:36-50`, `shards/game/internal/projectile/flight/view.go:74-82`, `client/src/engine/render/entity_views.ts:27-31`, `client/src/game/player/prediction.ts:31-34`
 - **What breaks:** AtView always slides between the two rows around a view, and Reach boxes span every kept row. Nothing marks a jump. When blink, spawn teleports or Echo-Swap land, a target that jumped 10 u is drawn sliding across the gap, and a predicted shot can hit it in the gap where it never was. The server agrees, because both sides use AtView, so it is consistent but wrong. The Echo path slides the same way.
 - **Measured:** Not probed: nothing teleports yet. From code: AtView lerps with no jump check (view.go:36-50); Reach.Add unions every kept row's box (view.go:74-82), so one jump makes a long box and extra candidates, which the pair cast then tests at the lerped pose. The client blend lerps too (entity_views.ts:27-31). A jump stays in the rows for KeptRows ticks (0.45 s at 20 Hz). Planned users: blink, spawn teleports, Echo-Swap (system-architecture-design.md:262, 328, 381; GDD.md:93).
@@ -859,6 +869,10 @@ Most severe first. F1-F27 are medium, F28-F39 low. No high finding survived the 
 ### F22. Stored entity IDs have no generation; a dead caster's ID names a new entity
 
 **not generic**, medium. From `ecs-1`.
+
+**Status (2026-11-07):** shots fixed, the rest open. `Cause.CasterSerial` and `Scene.Client`'s serial
+check judge a shot whose caster's ID now names another entity at the present view. `team.Owner.Body`
+and status `Entry.Source` still hold raw IDs; the engine fix stands.
 
 - **Where:** `shards/game/internal/team/team.go:28-30`, `shards/game/internal/ability/component/ability_cast_event.go:9`, `shards/game/internal/effect/status/status.go:40,105`, `shards/game/internal/projectile/flight_system.go:95,109`, `world-engine@v0.22.0-beta/pkg/cardinal/internal/ecs/world_state.go:16,128-131`
 - **What breaks:** Cardinal reuses a freed ID at once. team.Owner.Body, Projectile.Cause.Caster and status Entry.Source keep raw IDs across ticks. When the holder dies, its ID names the next new entity. Probe: a shot cast by Echo 5 kept Caster=5 after the Echo died; ID 5 was then a live shot. Harmless today: Bodies never die; only Bodies cast in play. Once a Body can go (a leave, a round rebuild), shots rewind to another player's view and credit them.

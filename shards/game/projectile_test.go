@@ -263,6 +263,31 @@ func TestViewNeverGoesBack(t *testing.T) {
 	}
 }
 
+// A client draws nothing until a frame of its session applies: after alice's client starts a new one
+// and sends no frame, her shot is judged as every screen draws the tick, and flies on past where her
+// older view drew bob.
+func TestShotOfAClientWithNoFrameIsJudgedNow(t *testing.T) {
+	w := cardinal.NewTestWorld(t, withContent(t, deepWindow)) // a view 0.4 s back
+	alice, bob := claim(t, w)
+	moveFor(w, bob, 0, -1, ticks(0.5)) // off his Echo
+	alice.back = 0.4 * physics.ServerTickRateHz
+	from, to := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
+	alice.fire(to.X-from.X, to.Y-from.Y)
+	w.Tick()
+	k := firstTouch(t, w, alice, math.Hypot(to.X-from.X, to.Y-from.Y), to.Radius)
+	alice.restart()
+	w.Command(alice.id, input(alice.session))
+	for i := 1; i <= k; i++ {
+		if i > k-ticks(0.35) {
+			bob.move(0, 1)
+		}
+		w.Tick()
+	}
+	if n := len(shots(t, w, "bob")); n != 1 {
+		t.Fatalf("%d shots left, want hers flying on past where her older view drew bob", n)
+	}
+}
+
 // A shot meets bob as alice's screen drew him across each of its ticks, sliding between his rows: he
 // dashes up across her shot's path, a unit a tick at any rate (test content). Drawn crossing it as her
 // shot's center passes him, he is hit; drawn 4 units up then, the shot passes under him and flies on.
@@ -556,6 +581,25 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	w.Tick()
 	if got := echoOf(t, w, "alice", body); got.HP != got.MaxHP-shot.Damage {
 		t.Fatalf("bob's Echo HP = %v, want %v: the shot missed where it is now", got.HP, got.MaxHP-shot.Damage)
+	}
+}
+
+// A shot no frame cast meets an Echo the tick it spawns: the scene is built after echo.SpawnSystem (test
+// content: a 2v2, and a shot that passes Bodies).
+func TestShotMeetsAnEchoTheTickItSpawns(t *testing.T) {
+	fx := &emitter{}
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, twoVsTwo, map[string]string{
+		"projectile/tuning.json": `{"shots": {"lance": {"speed": 15, "range": 20, "radius": 0.15, "damage": 10,
+			"meets": [{"kinds": ["body"], "do": "pass"}]}}}`,
+	}), fx))
+	claim(t, w)
+	b := yourBody(t, bodiesFor(t, w, "bob"))
+	// carol joins at (-3, 0), and her Echo spawns there as bob's lance flies up through her Body.
+	emit(fx, projectilecomp.LaunchIntent{Shot: "lance", Owner: cardinal.EntityID(b.EntityID), Team: b.Team,
+		From: physics2d.Vec2{X: -3, Y: -0.7}, Dir: physics2d.Vec2{Y: 1}})
+	join(t, w, "carol")
+	if got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "carol"))); got.HP != got.MaxHP-10 {
+		t.Fatalf("carol's new Echo HP = %v, want %v: the shot passed it the tick it spawned", got.HP, got.MaxHP-10)
 	}
 }
 

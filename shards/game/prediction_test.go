@@ -1007,9 +1007,12 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		ended[0].End.Hit.Target != enemy.ID {
 		t.Errorf("a sync older than the rows kept came last: ended %+v, want a hit on %d", ended, enemy.ID)
 	}
-	// A frame stepped before its views' syncs came flew her shot past every target, so her client
-	// replays it, though the server agrees with the frame before.
-	for view, agrees := range map[float64]bool{10.5: true, 9.5: false} {
+	// A frame stepped before its views' syncs came, or after her client forgot them, flew her shot past
+	// every target, so her client replays it, though the server agrees with the frame before.
+	for _, c := range []struct {
+		view           float64
+		forgot, agrees bool
+	}{{10.5, false, true}, {9.5, false, false}, {10.5, true, false}} {
 		p := predict.New(rules)
 		for tick := range uint64(3) {
 			p.See(10+tick, []predict.Sight{far})
@@ -1017,9 +1020,13 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 10.5})
 		first := p.State()
-		p.Step(predict.Frame{Seq: 2, AimX: 1, ViewTick: view})
-		if got := p.Agrees(1, first); got != agrees {
-			t.Errorf("her second frame drawn at %v: agrees %v, want %v", view, got, agrees)
+		if c.forgot {
+			p.Forget()
+		}
+		p.Step(predict.Frame{Seq: 2, AimX: 1, ViewTick: c.view})
+		if got := p.Agrees(1, first); got != c.agrees {
+			t.Errorf("her second frame drawn at %v, after forgetting %v: agrees %v, want %v", c.view, c.forgot, got,
+				c.agrees)
 		}
 	}
 }

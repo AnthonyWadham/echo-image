@@ -1,6 +1,9 @@
 package track
 
 import (
+	"cmp"
+	"slices"
+
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
@@ -25,25 +28,26 @@ type recordRow struct {
 // RecordSystem (PostUpdate, first, so after every writer) records this tick's row of every
 // tracked thing, which is what this tick's syncs show of it. Judges meet it by its rows, at the view
 // their client drew, and SyncSystem sends them. It keeps those of every view the window allows
-// (KeptRows), each written in place: O(T) for T things.
+// (KeptRows), each written in place: O(T log D + D log D) for T things and D deaths.
 type RecordSystem struct {
 	Window past.Window
+	died   []combatcomp.Died // scratch: this tick's deaths, by target
 }
 
 func (s *RecordSystem) Run(w *cardinal.World) {
 	keep := int(s.Window.KeptRows())
 	tick := w.TickHeight()
-	died := map[cardinal.EntityID]float64{}
-	for d := range w.SystemEvents[combatcomp.Died]() {
-		died[d.Target] = d.Until
-	}
+	s.died = slices.AppendSeq(s.died[:0], w.SystemEvents[combatcomp.Died]())
+	slices.SortFunc(s.died, func(a, b combatcomp.Died) int { return cmp.Compare(a.Target, b.Target) })
 	for e := range w.Contains[recordRow]().Iter() {
 		if e.Get[physics2d.PhysicsBody2D]().Shapes.Len() == 0 {
 			continue
 		}
 		row := rowOf(e, tick)
-		if until, ok := died[e.ID()]; ok {
-			row.Until = until
+		if i, ok := slices.BinarySearchFunc(s.died, e.ID(), func(d combatcomp.Died, id cardinal.EntityID) int {
+			return cmp.Compare(d.Target, id)
+		}); ok {
+			row.Until = s.died[i].Until
 		}
 		e.Set(e.Get[component.Track]().Record(row, keep))
 	}

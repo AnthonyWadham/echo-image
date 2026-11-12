@@ -121,7 +121,7 @@ type Predictor struct {
 	tracked []tracked    // each thing the kept syncs show, by serial
 	synced  []uint64     // the kept syncs' ticks: a ring, tick t at t % KeptRows, math.MaxUint64 for none
 	newest  uint64       // the newest tick seen
-	scene   *past.Scene  // what a step's shots meet
+	scene   *past.Scene  // what a step's judges meet
 	kept    []past.Row   // scratch: one thing's kept rows
 	stepped []stepped    // each frame stepped since the last Reset, oldest first
 }
@@ -153,7 +153,7 @@ func (t *tracked) appendRows(dst []past.Row, before uint64) []past.Row {
 	return dst
 }
 
-// stepped is the state a frame's step left, without its EchoPath, and whether its shots flew without
+// stepped is the state a frame's step left, without its EchoPath, and whether a judge looked without
 // the target syncs of its view.
 type stepped struct {
 	seq   uint32
@@ -205,9 +205,9 @@ func (p *Predictor) Forget() {
 }
 
 // sceneAt is the actor your frame at view acts as, its view held as the server holds it
-// (past.Window.Clamp), and the scene your shots meet as FlightSystem judges them: each thing still
-// there, by its kept rows, your Body moving from prev to where it is now and your Echo as you predict it
-// (Echo). No scene when a target sync of the view's ticks isn't here: then your shots meet no thing.
+// (past.Window.Clamp), and the scene its judges meet, as the server's do: each thing still there, by
+// its kept rows, your Body moving from prev to where it is now and your Echo as you predict it (Echo).
+// No scene when a target sync of the view's ticks isn't here: then they meet no thing.
 func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Scene) {
 	s := &p.state
 	a := past.Actor{Side: interact.Side{Owner: s.Body, Team: s.Team},
@@ -248,9 +248,9 @@ func (p *Predictor) Reset(s State) {
 }
 
 // Agrees reports whether s, the server's state after your frame seq, is the state stepping seq left,
-// your Echo included up to the newest step, and every frame since flew your shots with its view's
-// target syncs. Then those frames are right as they are, and the client skips its Reset and replay; the
-// predictor takes the rest of s's Echo path, which it only guessed. It forgets the frames up to seq.
+// your Echo included up to the newest step, and no frame since is blind. Then those frames are right as
+// they are, and the client skips its Reset and replay; the predictor takes the rest of s's Echo path,
+// which it only guessed. It forgets the frames up to seq.
 func (p *Predictor) Agrees(seq uint32, s State) bool {
 	i := slices.IndexFunc(p.stepped, func(st stepped) bool { return st.seq == seq })
 	if i < 0 {
@@ -363,17 +363,23 @@ func (p *Predictor) Step(f Frame) (box2d.Vec2, []Ended) {
 			Pos: hooks.Vec2(s.Center), Aim: aim,
 		}, &asked)
 	}
+	// Each judge gets the scene by look, built when the first one looks: one that looks without the
+	// view's syncs makes the step blind.
 	var a past.Actor
 	var scene *past.Scene
-	shooting := len(s.Shots) > 0 || len(asked.launches) > 0
-	if shooting {
-		a, scene = p.sceneAt(f.ViewTick, prev)
+	looked := false
+	look := func() (past.Actor, *past.Scene) {
+		if !looked {
+			a, scene = p.sceneAt(f.ViewTick, prev)
+			looked = true
+		}
+		return a, scene
 	}
-	ends := p.fly(asked.launches, f.Seq, a, scene)
+	ends := p.fly(asked.launches, f.Seq, look)
 	p.affect(asked.effects)
 	was := p.State()
 	was.EchoPath = nil
-	p.stepped = append(p.stepped, stepped{seq: f.Seq, state: was, blind: shooting && scene == nil})
+	p.stepped = append(p.stepped, stepped{seq: f.Seq, state: was, blind: looked && scene == nil})
 	return s.Center, ends
 }
 
@@ -406,10 +412,10 @@ func (p *Predictor) move(moveX, moveY float64, st status.Status) box2d.Vec2 {
 	return center
 }
 
-// fly launches the shots frame seq's casts asked for, then flies all your shots one tick as a fired them.
-// One that stops on a thing in scene ends there; with no scene, shots pass every thing. It returns the
-// shots that ended.
-func (p *Predictor) fly(launches []cast.Launch, seq uint32, a past.Actor, scene *past.Scene) []Ended {
+// fly launches the shots frame seq's casts asked for, then flies all your shots one tick in the scene
+// look gives. One that stops on a thing there ends there; with no scene, shots pass every thing. It
+// returns the shots that ended.
+func (p *Predictor) fly(launches []cast.Launch, seq uint32, look func() (past.Actor, *past.Scene)) []Ended {
 	s := &p.state
 	shots := p.content.Shots
 	for _, l := range launches {
@@ -426,6 +432,7 @@ func (p *Predictor) fly(launches []cast.Launch, seq uint32, a past.Actor, scene 
 		if !ok {
 			continue
 		}
+		a, scene := look()
 		next, end, over := shots.Fly(p.world, def, shot.Flight, a, scene, timestep.Seconds)
 		if over {
 			ends = append(ends, Ended{Shot: shot, End: end})

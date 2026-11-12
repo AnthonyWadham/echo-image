@@ -10,7 +10,8 @@ import (
 )
 
 // A track keeps each tick's row in its own slot, for as many ticks as it keeps. A window change keeps
-// the rows the new ring spans, and a ring is never read as a row it doesn't hold.
+// the rows the new ring spans, a ring is never read as a row it doesn't hold, and the rows before a tick
+// stop short of it.
 func TestTrackKeepsRowsByTick(t *testing.T) {
 	row := func(tick uint64) past.Row {
 		return past.Row{Tick: tick, Center: box2d.Vec2{X: float64(tick)}, Radius: 0.5, Until: 1}
@@ -43,6 +44,9 @@ func TestTrackKeepsRowsByTick(t *testing.T) {
 		tr = tr.Record(row(tick), 5)
 	}
 	check("kept", tr, 5, 8, 3, 4, 5, 6, 7)
+	if got := ticks(tr, 6); !slices.Equal(got, []uint64{3, 4, 5}) {
+		t.Errorf("rows before 6: ticks %v, want 3 4 5", got)
+	}
 	tr = tr.Record(row(8), 3)
 	check("shrunk", tr, 3, 9, 6, 7, 8)
 	tr = tr.Record(row(9), 6)
