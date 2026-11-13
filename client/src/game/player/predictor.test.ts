@@ -10,9 +10,11 @@ import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor }
 // TestPredictionMatchesServer's run (shards/game/prediction_test.go), which scripts/predictor.mjs has
 // it write before the tests, at the wasm's rate: the body_sync and target_sync before each tick, the
 // frames her client stepped from them, and what the Go predictor gave after the last: the server's
-// state once it applies that frame, unless it coasted or dropped one first. Casts, a dash, a shot
-// flying out its range, slows, a stun, bad frames, a shot that stops on bob where the frame's view drew
-// him, her Echo retracing her path, and a bad network's lost, late and held Inputs are in it.
+// state once it applies that frame, unless it coasted or dropped one first. Casts, a dash into a wall
+// under a phase and a landing out of it, slides along a wall and over the map edge's joints, shots
+// ending on a wall, on the edge and out of their range, slows, a stun, bad frames, a shot that stops on
+// bob where the frame's view drew him, her Echo retracing her path, and a bad network's lost, late and
+// held Inputs are in it.
 interface Step {
   Sync: BodySync
   Targets: TargetSync

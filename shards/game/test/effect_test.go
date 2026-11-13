@@ -1,26 +1,26 @@
 package test
 
 import (
+	"echo_image/pkg/level"
 	effectcomp "echo_image/shards/game/internal/effect/component"
-	"echo_image/shards/game/internal/interact"
 	"echo_image/shards/game/internal/physics"
 	"math"
 	"testing"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 )
 
 // A phase lets a Body walk through walls, but the map edge still stops it.
 func TestPhasePassesWallsNotBounds(t *testing.T) {
-	w, alice, _, fx := fxDuel(t)
+	spawn, _ := spawnOf(t, 0)
+	edge := spawn.X + 4.5
+	w, alice, _, fx := fxDuelOn(t, wall(box2d.Vec2{X: spawn.X + 2, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}),
+		mapBox("bounds", box2d.Vec2{X: edge + 0.5, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 20}))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	addWall(w, physics2d.Vec2{X: a.X + 2, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-	edge := a.X + 4.5
-	addMapBox(w, physics2d.Vec2{X: edge + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 20}, interact.Bounds)
 	n := int(math.Ceil(4/(bodiesFor(t, w, "alice").You.MoveSpeed*physics.SecondsPerTick))) + 1 // past the edge
 	fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(n + 2)})
-	w.Tick() // physics picks the shapes up; the phase applies from the next tick
+	w.Tick() // the phase applies from the next tick
 
 	moveFor(w, alice, 1, 0, n) // through the wall and into the edge
 	if got := yourBody(t, bodiesFor(t, w, "alice")).X + radiusOf(w, a); math.Abs(got-edge) > 0.01 {
@@ -32,10 +32,10 @@ func TestPhasePassesWallsNotBounds(t *testing.T) {
 // out the far side. Land takes the nearest clear cell of its 0.25 m grid, ties in grid order: it has no
 // notion of the side she came from.
 func TestPhaseEndingInsideWallLands(t *testing.T) {
-	w, alice, _, fx := fxDuel(t)
+	spawn, _ := spawnOf(t, 0)
+	face := spawn.X + 1.5
+	w, alice, _, fx := fxDuelOn(t, wall(box2d.Vec2{X: face + 0.5, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	face := a.X + 1.5
-	addWall(w, physics2d.Vec2{X: face + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
 	n := ticks(1.75 / bodiesFor(t, w, "alice").You.MoveSpeed) // a quarter of the way in, at either rate
 	fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(n + 2)})
 	w.Tick()
@@ -55,13 +55,13 @@ func TestPhaseEndingInsideWallLands(t *testing.T) {
 
 // Landing never crosses the map edge, even when the nearest clear spot is past it.
 func TestLandingStaysInsideMapEdge(t *testing.T) {
-	w, alice, _, fx := fxDuel(t)
+	spawn, r := spawnOf(t, 0)
+	face := spawn.X + 1.5
+	deep := wall(box2d.Vec2{X: face + 1.5, Y: spawn.Y}, box2d.Vec2{X: 1.5, Y: 5}) // 3 m deep
+	edge := face + 3                                                              // right behind it, 0.2 m thick
+	w, alice, _, fx := fxDuelOn(t, deep,
+		mapBox("bounds", box2d.Vec2{X: edge + 0.1, Y: spawn.Y}, box2d.Vec2{X: 0.1, Y: 20}))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	r := radiusOf(w, a)
-	face := a.X + 1.5
-	addWall(w, physics2d.Vec2{X: face + 1.5, Y: a.Y}, physics2d.Vec2{X: 1.5, Y: 5}) // 3 m deep
-	edge := face + 3                                                                // right behind it, 0.2 m thick
-	addMapBox(w, physics2d.Vec2{X: edge + 0.1, Y: a.Y}, physics2d.Vec2{X: 0.1, Y: 20}, interact.Bounds)
 	n := int(math.Ceil(4/(bodiesFor(t, w, "alice").You.MoveSpeed*physics.SecondsPerTick))) + 1 // to the edge
 	fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(n + 2)})
 	w.Tick()
@@ -127,14 +127,13 @@ func TestDashGoesItsDistanceAlongAim(t *testing.T) {
 
 // A dash replaces input while it lasts, walls still stop it, and it doesn't leak into the coast.
 func TestDashIgnoresInputAndStopsAtWall(t *testing.T) {
-	w, alice, _ := duel(t)
 	slot, d := dash(t)
+	spawn, r := spawnOf(t, 0)
+	face := spawn.X + r + d.Distance/2 // halfway along the dash
+	w, alice, _ := duelOn(t, wall(box2d.Vec2{X: face + 0.5, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	r := radiusOf(w, a)
-	face := a.X + r + d.Distance/2 // halfway along the dash
-	addWall(w, physics2d.Vec2{X: face + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
 	alice.cast(slot, 1, 0)
-	w.Tick() // physics picks the wall up; the dash runs from the next tick
+	w.Tick() // the dash runs from the next tick
 
 	for range d.Ticks() {
 		alice.move(0, 1) // ignored while dashing
@@ -184,14 +183,17 @@ func TestUnknownEffectKindIsDropped(t *testing.T) {
 // The same script twice gives the same state, events and system events after every tick.
 func TestEffectsAreDeterministic(t *testing.T) {
 	var fx *emitter // the current run's: each run calls setup, then script
+	spawn, _ := spawnOf(t, 0)
+	files := onMap(t, patched(t, effectKinds), level.Map{Solids: []level.Solid{
+		wall(box2d.Vec2{X: spawn.X + 2, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}),
+	}})
 	cardinal.RequireDeterministic(t, func(world *cardinal.World) {
 		fx = &emitter{}
-		withEmitter(withContent(t, effectKinds), fx)(world)
+		withEmitter(withFiles(files), fx)(world)
 	}, func(w *cardinal.TestWorld) {
 		alice, bob := claim(t, w)
 		a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
 		aID, bID := a.EntityID, b.EntityID
-		addWall(w, physics2d.Vec2{X: a.X + 2, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
 		fx.effect(a, effectcomp.EffectIntent{Kind: "phase", Ticks: uint64(ticks(0.6))}) // ends inside the wall
 		fx.effect(a, effectcomp.EffectIntent{Kind: "slow", Ticks: uint64(ticks(1.5)), Value: -2500, Source: bID})
 		slot, _ := dash(t)

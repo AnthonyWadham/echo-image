@@ -3,6 +3,7 @@ package test
 import (
 	"cmp"
 	echoimage "echo_image"
+	"echo_image/pkg/level"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	combatcomp "echo_image/shards/game/internal/combat/component"
@@ -251,7 +252,7 @@ func predictFrom(t *testing.T, s player.BodySync) predict.State {
 	got := overWire(t, s)
 	you := got.You
 	state := predict.State{
-		Tick: got.Tick, Body: you.Body, Team: you.Team, Center: box2d.Vec2{X: you.X, Y: you.Y},
+		Tick: got.Tick, Map: got.MapID, Body: you.Body, Team: you.Team, Center: box2d.Vec2{X: you.X, Y: you.Y},
 		Radius: you.Radius, MoveSpeed: you.MoveSpeed, Champion: you.Champion,
 		Cooldowns: slices.Collect(you.Cooldowns.Values()), Effects: slices.Collect(you.Effects.Values()),
 		EffectsNext: you.EffectsNext, EchoDelay: you.EchoDelay, EchoSerial: you.EchoSerial,
@@ -326,6 +327,19 @@ func requireEnded(t *testing.T, at string, ended []predict.Ended, server []proje
 	if !slices.Equal(got, want) {
 		t.Fatalf("%s: predicted ends %+v, the server's %+v", at, got, want)
 	}
+}
+
+// touched returns the shapes of a map kind in world that a circle at center touches: with radius 0, the
+// ones the point is inside.
+func touched(world *box2d.World, center box2d.Vec2, radius float64, kind interact.Kind) map[box2d.ShapeID]bool {
+	proxy := box2d.MakeProxy([]box2d.Vec2{center}, 1, radius)
+	shapes := map[box2d.ShapeID]bool{}
+	world.OverlapShape(&proxy, box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(kind)},
+		func(s box2d.ShapeID, _ any) bool {
+			shapes[s] = true
+			return true
+		}, nil)
+	return shapes
 }
 
 // guess is what a predictor gave after a step: its state, and where it has your Echo.
@@ -497,24 +511,39 @@ var recorded = map[string]string{
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
 		"stun": {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
 		"slow": {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"},
+		"phase": {"passes": ["wall"], "stacking": "merge"},
 		"out": {"tags": ["out"], "stacking": "merge"}}}`,
 }
 
+// recordedMap is the map TestPredictionMatchesServer's run plays, around the dev spawns: her Body starts
+// at (-5, 0), bob's at (5, 0). Wall 1 is under her, a solid, and wall 2 an outline up and to her left. The
+// edge's top has joints, and its left side is past a bolt's range from her.
+var recordedMap = level.Map{
+	Solids:   []level.Solid{wall(box2d.Vec2{X: -4.75, Y: -3.9375}, box2d.Vec2{X: 3.25, Y: 3.0625})},
+	Outlines: []level.Loop{mapLoop("wall", [][2]float64{{-10, 2.5}, {-8, 2.5}, {-8, 5}, {-10, 5}})},
+	Edges: []level.Loop{mapLoop("bounds", [][2]float64{{-25, 6}, {-4, 6}, {-2, 6}, {0, 6}, {2, 6}, {4, 6}, {7, 6},
+		{7, -15}, {-25, -15}})},
+}
+
 // The client predicts its Body with internal/predict, from what body_sync sends: its moves, its casts
-// and their cooldowns, its dash, its shots and its Echo. Started from any tick's state and stepped by the
-// frames after it, it lands on the server's bits, through slows, stuns, forced moves, held buttons, bad
-// frames and a shot flying out its range. Her second bolt meets bob, walking across it, where her screen
-// drew him: the server ends it the same tick at the same point, and a replay of the frame ends it there
-// too. Effects others put on her surprise it, and come with the next state. Her Echo trails her by a
-// second (test content), so it retraces her path in the run. Bob stops on his Echo, its anti-camp kills
-// it, and he is out: her last bolt flies through him.
+// and their cooldowns, its dash, its shots and its Echo, through the walls of the map it names. Started
+// from any tick's state and stepped by the frames after it, it lands on the server's bits, through slows,
+// stuns, a phase, forced moves, held buttons, bad frames, walls, the map edge and a shot flying out its
+// range. Her dash down crosses into wall 1 under bob's phase, his stun ends it there, and she lands on top
+// when the phase runs out. Her first bolt ends on wall 2. Her second bolt meets bob, walking across it,
+// where her screen drew him: the server ends it the same tick at the same point, and a replay of the frame
+// ends it there too. Effects others put on her surprise it, and come with the next state. Her Echo trails
+// her by a second (test content), so it retraces her path in the run. Bob walks up to the edge and stops
+// on his Echo, its anti-camp kills it, and he is out: her last bolt flies through him to the edge, which
+// she slides along on the bad network.
 // testdata/prediction-20hz.txt (one per tick rate) is the digest of the run and the bad network's replays.
 // -record writes the run, so the client checks its wasm build lands there too (predictor.test.ts).
 func TestPredictionMatchesServer(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, recorded), fx))
+	files := onMap(t, patched(t, recorded), recordedMap)
+	w := cardinal.NewTestWorld(t, withEmitter(withFiles(files), fx))
 	alice, bob := claim(t, w)
-	rules, err := predict.Load(patched(t, recorded))
+	rules, err := predict.Load(files)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,18 +560,19 @@ func TestPredictionMatchesServer(t *testing.T) {
 	// What bob puts on her, by step. Each applies from the tick after it.
 	surprises := map[int]effectcomp.EffectIntent{
 		2: {Kind: "slow", Ticks: 9, Value: -4000, Source: from},
-		6: {Kind: "stun", Ticks: 3, Source: from}, // ends her dash
+		3: {Kind: "phase", Ticks: 5, Source: from}, // runs out during the stun
+		6: {Kind: "stun", Ticks: 3, Source: from},  // ends her dash
 	}
 	moves := [][2]float64{{1, 0}, {0.3, -0.9}, {-1, 1}, {0, 0}, {math.NaN(), 1}, {-0.6, -0.8}, {3, 4}, {1e-12, 0}}
 	// She holds fire for six ticks, aiming up and left, away from bob: it casts once, then cools down.
-	// She also dashes on the fourth. Once her bolt is ready, she holds fire again, leading bob.
+	// She also dashes down on the fourth. Once her bolt is ready, she holds fire again, leading bob.
 	var lead box2d.Vec2
 	frameAt := func(i int) playercomp.InputFrame {
 		m := moves[i%len(moves)]
 		f := playercomp.InputFrame{MoveX: m[0], MoveY: m[1], AimX: -0.6, AimY: 0.8}
 		switch {
 		case i == 3:
-			f.Buttons = 1 | 1<<dashSlot
+			f.Buttons, f.AimX, f.AimY = 1|1<<dashSlot, 0, -1
 		case i < 6:
 			f.Buttons = 1
 		case i >= second && i < second+6:
@@ -600,7 +630,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 		requirePredicted(t, at+" replayed", guessOf(p), after, afterRows, !surprised)
 		requireEnded(t, at+" replayed", replayed, w.Emitted[projectilecomp.ShotEnded](), a.EntityID)
 	}
-	if want := []int{0, 3, 7}; !slices.Equal(replays, want) {
+	if want := []int{0, 3, 4, 7}; !slices.Equal(replays, want) {
 		t.Errorf("her client started over at steps %v, want %v: the first, and the step after each surprise", replays,
 			want)
 	}
@@ -611,13 +641,12 @@ func TestPredictionMatchesServer(t *testing.T) {
 	if first, last := run[0].Echo, run[len(run)-1].Echo; first == nil || last == nil || *first == *last {
 		t.Fatalf("predicted her Echo at %v after her first frame and %v after her last, want it moved", first, last)
 	}
-	// Her first bolt is drawn out to its range and her second up to bob, each at its speed in its last tick.
-	launch := box2d.Vec2{X: run[0].Shots[0].PrevX, Y: run[0].Shots[0].PrevY}
+	// Her first bolt ends on wall 2 and her second on bob, each at its speed in its last tick.
+	world := rules.Maps[bodiesFor(t, w, "alice").MapID]
 	bobBody := yourBody(t, bodiesFor(t, w, "bob")).EntityID
-	if len(ends) != 2 || math.Abs(math.Hypot(ends[0].End.At.X-launch.X, ends[0].End.At.Y-launch.Y)-bolt.Range) > 1e-9 ||
+	if len(ends) != 2 || len(touched(world, ends[0].End.At, ends[0].Radius+0.01, interact.Wall)) == 0 ||
 		ends[1].End.Hit.Target != bobBody {
-		t.Fatalf("ended %+v, want her first bolt at its range from %v, then her second on bob's Body %d",
-			ends, launch, bobBody)
+		t.Fatalf("ended %+v, want her first bolt on a wall, then her second on bob's Body %d", ends, bobBody)
 	}
 	for _, e := range ends {
 		if flew := math.Hypot(e.End.At.X-e.Pos.X, e.End.At.Y-e.Pos.Y); !(e.End.Until > 0 && e.End.Until <= 1) ||
@@ -648,7 +677,7 @@ func TestPredictionMatchesServer(t *testing.T) {
 	}
 
 	run = append(run, badNetwork(t, w, p, predict.New(rules), alice, bolt)...)
-	// Shots end out of range and on bob, after one frame and after several, so the wasm build meets each.
+	// Shots end on bob and elsewhere, after one frame and after several, so the wasm build meets each.
 	pairs := map[[2]bool]bool{}
 	for _, s := range run {
 		for _, e := range s.Ended {
@@ -657,6 +686,28 @@ func TestPredictionMatchesServer(t *testing.T) {
 	}
 	if len(pairs) != 4 {
 		t.Fatalf("the run ends shots as (several frames, on target) %v, want all four", slices.Collect(maps.Keys(pairs)))
+	}
+	// Elsewhere is out of range, on a wall and on the edge. Her Body lands out of a wall, and slides on a wall
+	// and along the edge from one segment to the next.
+	var atRange, shotOnWall, shotOnEdge, landed, onWall, overJoint bool
+	for _, s := range run {
+		for _, e := range s.Ended {
+			at, r := box2d.Vec2{X: e.X, Y: e.Y}, e.Radius+0.01
+			wallHit, edgeHit := len(touched(world, at, r, interact.Wall)) > 0, len(touched(world, at, r, interact.Bounds)) > 0
+			atRange = atRange || !e.OnTarget && !wallHit && !edgeHit
+			shotOnWall, shotOnEdge = shotOnWall || !e.OnTarget && wallHit, shotOnEdge || !e.OnTarget && edgeHit
+		}
+		from, to, r := box2d.Vec2{X: s.Sync.You.X, Y: s.Sync.You.Y}, box2d.Vec2{X: s.X, Y: s.Y}, s.Sync.You.Radius+0.01
+		inFrom, inTo := len(touched(world, from, 0, interact.Wall)) > 0, len(touched(world, to, 0, interact.Wall)) > 0
+		landed = landed || inFrom && !inTo && box2d.Distance(from, to) > walk // faster than she walks out
+		onWall = onWall || len(touched(world, to, r, interact.Wall)) > 0
+		edgeFrom, edgeTo := touched(world, from, r, interact.Bounds), touched(world, to, r, interact.Bounds)
+		overJoint = overJoint || len(edgeFrom) > 0 && len(edgeTo) > 0 && !maps.Equal(edgeFrom, edgeTo)
+	}
+	if !atRange || !shotOnWall || !shotOnEdge || !landed || !onWall || !overJoint {
+		t.Fatalf("the run ends shots out of range %v, on a wall %v and on the edge %v; her Body lands %v, slides on "+
+			"a wall %v and over an edge joint %v: want each", atRange, shotOnWall, shotOnEdge, landed, onWall,
+			overJoint)
 	}
 
 	// The run's digest, a line a step, is the golden, so a change to the sim shows as a reviewed diff. Each
@@ -668,11 +719,11 @@ func TestPredictionMatchesServer(t *testing.T) {
 	}
 	switch {
 	case *recordTo != "":
-		files := map[string]string{}
-		for name, raw := range patched(t, recorded) {
-			files[name] = string(raw)
+		texts := map[string]string{}
+		for name, raw := range files {
+			texts[name] = string(raw)
 		}
-		raw, err := msgpack.Marshal(recording{Content: files, Steps: run})
+		raw, err := msgpack.Marshal(recording{Content: texts, Steps: run})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -955,7 +1006,7 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 			}
 			p.See(tick, sights)
 		}
-		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
+		p.Reset(predict.State{Tick: now, Map: "open", Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		var ended []predict.Ended
 		var view float64                         // judged at, in the step it ended
 		for i, buttons := range []uint32{1, 0} { // she casts, then holds, her view a tick on
@@ -1003,7 +1054,7 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		p.See(tick, []predict.Sight{*kept[tick]})
 	}
 	p.See(4, []predict.Sight{farUp})
-	p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
+	p.Reset(predict.State{Tick: now, Map: "open", Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 	if _, ended := p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 1.5}); len(ended) != 1 ||
 		ended[0].End.Hit.Target != enemy.ID {
 		t.Errorf("a sync older than the rows kept came last: ended %+v, want a hit on %d", ended, enemy.ID)
@@ -1018,7 +1069,7 @@ func TestPredictorPlacesOnlyWhatSyncsShow(t *testing.T) {
 		for tick := range uint64(3) {
 			p.See(10+tick, []predict.Sight{far})
 		}
-		p.Reset(predict.State{Tick: now, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
+		p.Reset(predict.State{Tick: now, Map: "open", Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter"})
 		p.Step(predict.Frame{Seq: 1, AimX: 1, Buttons: 1, ViewTick: 10.5})
 		first := p.State()
 		if c.forgot {
@@ -1050,8 +1101,8 @@ func TestPredictorAgreesOnlyWithTheEchoItStepped(t *testing.T) {
 		{"elsewhere at her second frame", []box2d.Vec2{{X: 1}, {X: 1.5}, {X: 2}}, false},
 	} {
 		p := predict.New(rules)
-		p.Reset(predict.State{Tick: 10, Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter", EchoDelay: 5,
-			EchoPath: []box2d.Vec2{{}, {X: 1}}})
+		p.Reset(predict.State{Tick: 10, Map: "open", Body: 1, Radius: 0.5, MoveSpeed: 5, Champion: "starter",
+			EchoDelay: 5, EchoPath: []box2d.Vec2{{}, {X: 1}}})
 		p.Step(predict.Frame{Seq: 1})
 		first := p.State()
 		p.Step(predict.Frame{Seq: 2})
@@ -1061,6 +1112,33 @@ func TestPredictorAgreesOnlyWithTheEchoItStepped(t *testing.T) {
 		} else if at, _, _ := p.Echo(); got && at != c.path[1] {
 			t.Errorf("%s: her Echo at %v, want the server's %v", c.name, at, c.path[1])
 		}
+	}
+}
+
+// Your predictor walks the map its state names, as body_sync names the live one: the same frames stop
+// her at a wall on one map, and walk her on through the other, which has none there.
+func TestPredictorWalksTheMapItsStateNames(t *testing.T) {
+	const r, gap = 0.5, 0.25 // her radius, and her edge to the wall's
+	files := onMap(t, content.Overlay{}, level.Map{Solids: []level.Solid{
+		wall(box2d.Vec2{X: r + gap + 0.25, Y: 0}, box2d.Vec2{X: 0.25, Y: 2}),
+	}})
+	files["arena/tuning.json"] = []byte(`{"maps": ["open", "test"], "default_map": "test"}`)
+	rules, err := predict.Load(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := predict.New(rules)
+	walked := map[string]float64{}
+	for _, id := range []string{"test", "open"} {
+		p.Reset(predict.State{Tick: 10, Map: id, Body: 1, Radius: r, MoveSpeed: 5, Champion: "starter"})
+		for seq := range uint32(ticks(0.5)) {
+			p.Step(predict.Frame{Seq: seq + 1, MoveX: 1})
+		}
+		walked[id] = p.State().Center.X
+	}
+	if math.Abs(walked["test"]-gap) > 0.01 || walked["open"] <= 1 {
+		t.Fatalf("walked to x = %v on the walled map and %v on the open one, want %v at the wall, then on past it",
+			walked["test"], walked["open"], gap)
 	}
 }
 

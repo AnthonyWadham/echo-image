@@ -1,8 +1,8 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 to 3 are built (the mover's chain rule, the core
+> **A proposal, not the source of truth.** Steps 0 to 4 are built (the mover's chain rule, the core
 > in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
-> map). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> map, and movement, shots and the predictor on the map's world). Code, [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -199,8 +199,11 @@ A physics2d-owned path as the only path (the predictor cannot link physics2d).
   shots and rays at every corner. [test]
 - The loader checks the loop's winding. A loop wound the wrong way still stops slow walking, so a
   playtest looks fine, but shots and landing rays pass through it. [test]
-- Ties: when a shot meets two map shapes at the same moment, the earlier one in the file wins.
-  3.3% of test shots tied, and without this rule the answer changed with build order. [test]
+- Ties: when a shot meets two map shapes at the same moment, it stops at the same point either
+  way. Only the hit's kind (wall or edge) can differ: Box2D reports the shapes in build order. 3.3%
+  of test shots tied, and the shape changed with build order. [test] No tie rule is built: the shard
+  and the predictor build the same file in file order, so they agree, and nothing reads a map hit's
+  kind yet. The rule (the earlier shape in the file wins) comes with the first rule that does. [code]
 - Landing needs something solid to ask "is this point in a wall?". A hollow loop always says
   no. [code]
 
@@ -220,7 +223,8 @@ The cause: where a Body rests on one piece, Box2D also reports the corner of the
 - Each wall is one closed chain outline, counter-clockwise, so it blocks from outside. It stops
   movement. A straight run has no seams at all.
 - Convex fill pieces under their own kind bit answer "is this point in a wall?" for landing and
-  shots. A hollow outline can't.
+  shots. A hollow outline can't. Not built yet: the fill kind comes with the first concave wall.
+  Until then, a wall to land out of is a convex solid, and a Body in a hollow outline walks out.
 - The mover meets a chain as Box2D's chains collide: from the front only, and with ghost vertices
   (where the Body is over the next segment's face, the joint's corner plane is dropped). The pinned
   `CollideMover` does neither, so echo_image's mover adds it. Built and tested:
@@ -441,7 +445,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 1b | `pkg/level` | **Done.** Objects and their types, and the game's schema |
 | 2 | `pkg/levelstate` | **Done.** The Cardinal side: component, reconcile, `Changed` event |
 | 3 | game | **Done.** `arena` package. An open default map (a 100 x 100 m edge, two spawns where they are today). Cardinal side registered first. Map ID in body_sync |
-| 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move, with a map builder for tests. Recordings regain walls |
+| 4 | game | **Done.** One change: movement, shots and the predictor use the live map's world. Wall tests declare maps before boot (`onMap`). The recording meets walls, the edge's joints, a landing and a range end, at both rates. No tie rule yet (7.4) |
 | 5 | game | Spawns come from the map |
 | 6 | game | Game rules, with the library's rule helpers (a flood fill over Box2D queries). A failed landing is logged |
 | 7 | client | wasm export, greybox view, camera |
@@ -545,13 +549,13 @@ our own.
 | One tick's move | `shards/game/internal/player/motion/motion.go` |
 | The shot's map cast | `shards/game/internal/projectile/flight/flight.go` |
 | Systems that pass a world | `internal/player/movement_system.go`, `internal/projectile/flight_system.go` |
-| The predictor's empty world | `shards/game/internal/predict/predict.go` |
+| The predictor's maps | `shards/game/internal/predict/predict.go` (`loadMaps`, `Reset`) |
 | Content loader and embed | `shards/game/content/embed.go` |
 | Catalog and wiring | `shards/game/shard/catalog.go`, `shards/game/shard/shard.go` |
 | SimVersion | `sim.go`, `sim_test.go` |
 | Kind bits | `shards/game/internal/interact/interact.go` |
 | Dev spawns | `shards/game/internal/player/spawn_system.go`, `content/player/tuning.json` |
-| Test walls | `shards/game/test/harness_test.go` (`addMapBox`) |
+| Test maps | `shards/game/test/harness_test.go` (`onMap`, `mapBox`, `mapLoop`), `recordedMap` in `prediction_test.go` |
 
 **Proposed**
 

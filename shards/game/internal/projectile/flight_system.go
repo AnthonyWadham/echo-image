@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/levelstate"
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/physics"
@@ -22,13 +23,14 @@ import (
 // component.ShotEnded: where, when in the tick and on what. A shot launched this tick moves this tick,
 // so its path starts at the shooter.
 //
-// A shot meets the map now, and each recorded thing as its actor saw it: a predicted shot at its caster's
-// view, while that caster is still the one its Cause names, any other as screens draw this tick, as the
-// client's predictor does. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things, R rules.
+// A shot meets the live map now, and each recorded thing as its actor saw it: a predicted shot at its
+// caster's view, while that caster is still the one its Cause names, any other as screens draw this
+// tick, as the client's predictor does. O(P·(log N + K log K + K·R)) for P shots, N shapes, K things, R
+// rules.
 type FlightSystem struct {
-	Tuning  ProjectileTuning
-	Scene   *past.Scene // this tick's recorded things, as history.SceneSystem built it
-	Physics *physics2d.Plugin
+	Tuning ProjectileTuning
+	Scene  *past.Scene // this tick's recorded things, as history.SceneSystem built it
+	Levels *levelstate.Plugin
 }
 
 func (s *FlightSystem) Run(w *cardinal.World) {
@@ -39,7 +41,7 @@ func (s *FlightSystem) Run(w *cardinal.World) {
 	if len(shots) == 0 {
 		return
 	}
-	world := s.Physics.Engine()
+	world := s.Levels.Engine()
 	// Resolved after the search finished, since a resolved shot is destroyed.
 	for _, shot := range shots {
 		fly(w, world, s.Tuning, s.Scene, shot)

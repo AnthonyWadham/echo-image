@@ -2,10 +2,12 @@ package test
 
 import (
 	"context"
+	"echo_image/pkg/level"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/hooks"
+	"echo_image/shards/game/internal/arena"
 	"echo_image/shards/game/internal/echo"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/history"
@@ -19,6 +21,7 @@ import (
 	"echo_image/shards/game/shard"
 	"encoding/json"
 	"flag"
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -501,27 +504,91 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 	}
 }
 
-// addWall builds a static box wall that blocks Bodies and shots.
-func addWall(w *cardinal.TestWorld, center, halfExtents physics2d.Vec2) {
-	addMapBox(w, center, halfExtents, interact.Wall)
+// spawnOf is where the dev roster's Body i starts, and its radius, known before boot so a test can put
+// its map's walls around it. Players claim Bodies in roster order: alice's is 0, bob's 1.
+func spawnOf(t *testing.T, i int) (box2d.Vec2, float64) {
+	t.Helper()
+	tuning := tuningOf[player.MovementTuning](t)
+	d := tuning.DevSpawns[i]
+	return box2d.Vec2{X: d.X, Y: d.Y}, tuning.Champions[tuning.DevChampion].Radius
 }
 
-// addMapBox builds a static box of a map kind. Like every map shape it masks all bits, so each query's
-// mask decides whether it stops there.
-func addMapBox(w *cardinal.TestWorld, center, halfExtents physics2d.Vec2, kind interact.Kind) {
-	type boxRow struct {
-		Transform physics2d.Transform2D
-		Velocity  physics2d.Velocity2D
-		Body      physics2d.PhysicsBody2D
+// wall is a box wall that blocks Bodies and shots, for a test map.
+func wall(center, half box2d.Vec2) level.Solid { return mapBox("wall", center, half) }
+
+// mapBox is a box of a map kind (wall, or bounds: the map edge), for a test map. Like every map shape it
+// masks all bits, so each query's mask decides whether it stops there. Its corners round to the map
+// file's grid.
+func mapBox(kind string, center, half box2d.Vec2) level.Solid {
+	var corners []box2d.Vec2
+	for _, c := range [][2]float64{{-1, -1}, {1, -1}, {1, 1}, {-1, 1}} {
+		p := mapPoint(center.X+c[0]*half.X, center.Y+c[1]*half.Y)
+		corners = append(corners, p.Vec2())
 	}
-	box := w.Create[boxRow]()
-	box.Set(physics2d.Transform2D{Position: center})
-	box.Set(physics.NewBody2D(physics2d.BodyTypeStatic, physics2d.ColliderShape{
-		ShapeType:    physics2d.ShapeTypeBox,
-		HalfExtents:  halfExtents,
-		CategoryBits: uint64(kind),
-		MaskBits:     math.MaxUint64,
-	}))
+	hull := box2d.ComputeHull(corners) // a file holds a polygon in its hull's order
+	points := make([]level.Point, hull.Count)
+	for i := range points {
+		points[i] = mapPoint(hull.Points[i].X, hull.Points[i].Y)
+	}
+	return level.Solid{Kind: kind, Polygon: points}
+}
+
+// mapPoint is (x, y) in a map file's units, rounded.
+func mapPoint(x, y float64) level.Point {
+	return level.Point{int32(math.Round(x * level.Unit)), int32(math.Round(y * level.Unit))}
+}
+
+// mapLoop is a loop of a map kind through points (x, y), for a test map: an outline winds
+// counter-clockwise, an edge clockwise.
+func mapLoop(kind string, points [][2]float64) level.Loop {
+	l := level.Loop{Kind: kind}
+	for _, p := range points {
+		l.Points = append(l.Points, mapPoint(p[0], p[1]))
+	}
+	return l
+}
+
+// onMap is files with m, a test map, live at boot in place of the shipped maps.
+func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
+	t.Helper()
+	m.Solids, m.Outlines, m.Edges = slices.Clone(m.Solids), slices.Clone(m.Outlines), slices.Clone(m.Edges)
+	src := uint32(0)
+	for i := range m.Solids {
+		src++
+		m.Solids[i].Src = src
+	}
+	for _, loops := range [][]level.Loop{m.Outlines, m.Edges} {
+		for i := range loops {
+			src++
+			loops[i].Src = src
+		}
+	}
+	data, err := level.Encode(m, arena.Schema())
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = maps.Clone(files)
+	files["arena/tuning.json"] = []byte(`{"maps": ["test"], "default_map": "test"}`)
+	files["arena/test.level.json"] = data
+	return files
+}
+
+// duelOn is duel on a test map of solids.
+func duelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client) {
+	t.Helper()
+	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, level.Map{Solids: solids})))
+	alice, bob = claim(t, w)
+	return w, alice, bob
+}
+
+// fxDuelOn is fxDuel on a test map of solids.
+func fxDuelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client, fx *emitter) {
+	t.Helper()
+	fx = &emitter{}
+	files := onMap(t, patched(t, effectKinds), level.Map{Solids: solids})
+	w = cardinal.NewTestWorld(t, withEmitter(withFiles(files), fx))
+	alice, bob = claim(t, w)
+	return w, alice, bob, fx
 }
 
 // radiusOf returns the radius of b's collider circle.

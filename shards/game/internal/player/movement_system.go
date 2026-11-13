@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/levelstate"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/player/component"
@@ -24,16 +25,16 @@ type movableRow struct {
 
 // MovementSystem (PreUpdate, after InputSystem and the casts and before the physics plugin, so a frame
 // moves the Body the same tick it is acked) moves each Body one tick with motion.Step, the code the
-// client predictor runs too: Box2D's geometric mover, where the map kinds in its mask stop it and it
-// slides along them, while other Bodies don't block it. Effects feed it and never move a Body. It is
-// the only writer of a Body's Transform2D and Velocity2D. O(B).
+// client predictor runs too: Box2D's geometric mover through the live map's world, where the map kinds
+// in its mask stop it and it slides along them, while other Bodies don't block it. Effects feed it and
+// never move a Body. It is the only writer of a Body's Transform2D and Velocity2D. O(B).
 type MovementSystem struct {
-	Tuning  MovementTuning
-	Physics *physics2d.Plugin
+	Tuning MovementTuning
+	Levels *levelstate.Plugin
 }
 
 func (s *MovementSystem) Run(w *cardinal.World) {
-	engine := s.Physics.Engine()
+	engine := s.Levels.Engine()
 	timeout := s.Tuning.TimeoutTicks()
 	tick := w.TickHeight()
 	for body := range w.Contains[movableRow]().Iter() {

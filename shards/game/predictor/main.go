@@ -152,6 +152,7 @@ func sights(list js.Value) []predict.Sight {
 func state(v js.Value) predict.State {
 	s := predict.State{
 		Tick:        uint64Of(v.Get("Tick")),
+		Map:         v.Get("Map").String(),
 		Body:        uint32(v.Get("Body").Int()),
 		Team:        uint8(v.Get("Team").Int()),
 		Center:      box2d.Vec2{X: v.Get("X").Float(), Y: v.Get("Y").Float()},

@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"echo_image/pkg/level"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/echo"
@@ -16,8 +17,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
-	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
@@ -207,12 +208,9 @@ func TestStateOnlyGoesToPlayersWithABody(t *testing.T) {
 }
 
 func TestWallStopsBody(t *testing.T) {
-	w, alice, _ := duel(t)
-	a := yourBody(t, bodiesFor(t, w, "alice"))
-	r := radiusOf(w, a)
-	face := a.X + r + 1 // 1 unit ahead of her
-	addWall(w, physics2d.Vec2{X: face + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-	w.Tick() // physics picks the wall up
+	spawn, r := spawnOf(t, 0)
+	face := spawn.X + r + 1 // 1 unit ahead of her
+	w, alice, _ := duelOn(t, wall(box2d.Vec2{X: face + 0.5, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}))
 
 	// She walks into it, then keeps pushing.
 	step := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
@@ -233,10 +231,10 @@ func TestWallStopsBody(t *testing.T) {
 
 // Pressing diagonally into a wall slides along it at the part of the input along the wall.
 func TestBodySlidesAlongWall(t *testing.T) {
-	w, alice, _ := duel(t)
-	a := yourBody(t, bodiesFor(t, w, "alice"))
-	addWall(w, physics2d.Vec2{X: a.X + radiusOf(w, a) + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-	w.Tick() // physics picks the wall up; its face touches her right side
+	spawn, r := spawnOf(t, 0)
+	half := box2d.Vec2{X: 0.5, Y: 5}
+	// Its face touches her right side.
+	w, alice, _ := duelOn(t, wall(box2d.Vec2{X: spawn.X + r + 0.5, Y: spawn.Y}, half))
 
 	alice.move(1, 1)
 	w.Tick() // settles against the wall
@@ -247,11 +245,8 @@ func TestBodySlidesAlongWall(t *testing.T) {
 		requireMoved(t, before, bodiesFor(t, w, "alice"), 0, math.Sqrt2/2)
 	}
 
-	// 2 mm short of a wall, the tick she meets it still slides the whole way along it.
-	w, alice, _ = duel(t)
-	a = yourBody(t, bodiesFor(t, w, "alice"))
-	addWall(w, physics2d.Vec2{X: a.X + radiusOf(w, a) + 0.002 + 0.5, Y: a.Y}, physics2d.Vec2{X: 0.5, Y: 5})
-	w.Tick()
+	// 2 mm short of a wall (2 units of 1/1024 m), the tick she meets it still slides the whole way along it.
+	w, alice, _ = duelOn(t, wall(box2d.Vec2{X: spawn.X + r + 2.0/level.Unit + 0.5, Y: spawn.Y}, half))
 	before := bodiesFor(t, w, "alice")
 	alice.move(1, 1)
 	w.Tick()

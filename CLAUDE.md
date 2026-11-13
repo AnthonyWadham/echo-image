@@ -156,7 +156,7 @@ shards/game/
     predict/  package predict     the client's own Body ahead of the server: Reset from a body_sync,
                                   See each target_sync's rows, Step per frame, new or replayed
                                   (cast gate, move, hooks, its shots at the frame's view, its
-                                  effects) — no Cardinal import
+                                  effects), through the map it names — no Cardinal import
   predictor/  package main        js/wasm only: predict for the browser, with content.FS embedded
                                   (client/scripts/predictor.mjs)
     version/  package main        prints echoimage.SimVersion, which predictor.mjs stamps into the wasm
@@ -172,7 +172,8 @@ team, ref, netsync, player/component, player/motion, effect/component, effect/st
 ability/cast, combat/component, echo/component, projectile/component, history/component,
 pkg/levelstate}`, `arena → {interact, pkg/level}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
-team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past}`, `history →
+team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past,
+pkg/levelstate}`, `history →
 {interact, team, ref, netsync, combat/component, effect/component, player/component, history/component,
 history/past}`, `area → {physics, interact, team, area/component,
 combat/component, effect/component}`, `combat → {combat/component, ability/component}`, `echo →
@@ -350,7 +351,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   would change the shot's Owner and keep Cause. An area's damage has no cause.
 - **Shots don't use physics contacts.** A projectile has no Box2D body. `projectile.FlightSystem` moves
   each shot every tick and resolves the **first** thing on its path that its rules don't pass
-  (`flight.Fly`): one Box2D shape cast on `Physics.Engine()` over the map kinds its rules stop at, and
+  (`flight.Fly`): one Box2D shape cast on the live map's world (`Levels.Engine()`, from
+  `pkg/levelstate`) over the map kinds its rules stop at, and
   one Box2D pair cast per recorded thing the scene's tree query finds (`past.Scene.Cast`), judged by its
   owner's relation and tags (team isn't a collision bit). A shot's `Type` names its shot type, whose rules are looked up
   each tick; its numbers are copied at launch.
@@ -435,7 +437,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 ### Collision filtering & teams
 - **Every collision or overlap check is a Box2D query. Never hand-write one.** No distance or overlap
   math between entities, and no loop over every target: ask Box2D with a cast, overlap or ray, through
-  physics2d or `Physics.Engine()`, and decide pass or stop in its callback. Box2D's tree is what keeps
+  physics2d, `Physics.Engine()` (Bodies and Echoes) or `Levels.Engine()` (the live map's walls and
+  edge), and decide pass or stop in its callback. Box2D's tree is what keeps
   it scalable, and every shape is already in it. A Box2D pair cast (`box2d.ShapeCastCircle`) on a shape
   the tree found counts too, as does one on what a component saved, found by its own
   `box2d.DynamicTree` (`past.Scene`: the recorded things at an actor's view).
@@ -471,7 +474,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Bodies are `BodyTypeManual`, and `player.MovementSystem` moves them itself.** Box2D never pairs a
   kinematic or Manual body with a static or kinematic one, so its step can't stop a Body.
 - **One tick's move is `motion.Step`,** which the server and the client predictor both run. It
-  lands a Body that's inside a blocker, picks its velocity and runs the mover.
+  lands a Body that's inside a blocker, picks its velocity and runs the mover. It queries only the
+  live map's world (`Levels.Engine()`), which no step touches: walls and the edge are the map's.
 - **The move is Box2D's geometric mover,** `physics/mover.Move`: up to 5 passes of collide → solve
   planes → cast, then the velocity is clipped. A pass under 1 cm ends it, unless it met a wall it had
   no plane for yet, so a Body slides on the tick it meets a wall. It writes `Transform2D`. Walls stop a
@@ -530,10 +534,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   depends on this (`TestFrameMovesBodySameTickAsAck`). The predictor steps in the same order: input,
   cast gate, move, then the hooks and shots from where the Body moved. Effects a cast starts apply
   from the next tick.
-  - Before the plugin, the step sees each Body where it moved to this tick. The mover sees walls as of
-    the last step, so a wall created this tick blocks from the next one.
-  - `physics.NewPlugin()` builds the plugin first so Movement can hold it. Where `world.RegisterPlugin`
-    is called is what places its step.
+  - Before the plugin, the step sees each Body where it moved to this tick.
+  - `physics.NewPlugin()` builds the plugin first so `area.AreaSystem` can hold it. Where
+    `world.RegisterPlugin` is called is what places its step.
 - **`echo.ReplaySystem` runs in PreUpdate, after Movement and before the physics plugin,** so Box2D
   holds this tick's Echo poses when shots and areas query it (`TestShotMeetsEchoWhereItIsNow`). An
   Echo spawned this tick joins Box2D next tick.
@@ -578,6 +581,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Tests change content with `withContent`** (`harness_test.go`): it deep-merges JSON patches into the
   shipped files and boots the real `registerWith` from that `fs.FS`; `patched` gives a predictor the same.
   Use it for test-only shot types and champions; never add test content to the shipped files.
+  A test with walls declares its map before boot: `onMap` writes a test map into the files, and
+  `duelOn` and `fxDuelOn` are `duel` and `fxDuel` on one. The shard's own world has no wall to add.
   A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
   one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
@@ -754,11 +759,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     Corrections still come from what the client can't know: a late frame (the server repeats the last
     one, at a view moved on), effects others cause, and a target someone else kills first. Pacing
     keeps late frames rare.
-  - The predictor's world has no map yet. The shard keeps the live map (`pkg/levelstate`) and
-    body_sync names it (`MapID`), but movement and shots still query physics2d's world. Both move to
-    the map's world, with the predictor's, in one change (step 4 of
-    `docs/research/map-loading-strategy.md`). Until then a shot the server stops at a wall flies on
-    past it on your screen, until a body_sync shows it gone, about a round trip later.
+  - The predictor walks the map body_sync names (`MapID`). `predict.Load` builds every map
+    `content/arena` lists, as the shard's map plugin does, and `Reset` takes the state's. A shard
+    names only maps its build carries, and SimVersion pins those, so `Reset` panics on any other.
+    The recording meets wall 1 (her dash, a phase and a landing), wall 2 (an outline her first bolt
+    ends on) and the edge (her slide over its joints, a bolt on it), on its own map (`recordedMap`).
   - The client aims from where the frame moves its Body, since the server casts from there.
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
   (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, and

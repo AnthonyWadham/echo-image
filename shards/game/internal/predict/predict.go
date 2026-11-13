@@ -10,6 +10,7 @@ package predict
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"io/fs"
 	"math"
 	"reflect"
@@ -17,9 +18,11 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
+	"echo_image/pkg/level"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/hooks"
+	"echo_image/shards/game/internal/arena"
 	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/interact"
@@ -34,23 +37,53 @@ type Content struct {
 	Shots     flight.Tuning
 	Effects   status.Tuning
 	History   past.Tuning
+	Maps      map[string]*box2d.World // each map's walls, by ID: queried, never stepped
 }
 
 // Load reads Content from fsys, the content embed.FS, with content.Load, as the shard does: each file
-// decoded strictly, the hooks bound, then each checked.
+// decoded strictly, the hooks bound, then each checked. Each map is built as the shard builds it.
 func Load(fsys fs.FS) (Content, error) {
 	var c Content
-	var errs [4]error
+	var errs [5]error
 	c.Abilities, errs[0] = content.Load[cast.Tuning](fsys)
 	c.Shots, errs[1] = content.Load[flight.Tuning](fsys)
 	c.Effects, errs[2] = content.Load[status.Tuning](fsys)
 	c.History, errs[3] = content.Load[past.Tuning](fsys)
+	c.Maps, errs[4] = loadMaps(fsys)
 	return c, errors.Join(errs[:]...)
+}
+
+// loadMaps builds each map content/arena lists into a Box2D world of its own, from the files the shard's
+// map plugin builds.
+func loadMaps(fsys fs.FS) (map[string]*box2d.World, error) {
+	t, err := content.Load[arena.ArenaTuning](fsys)
+	if err != nil {
+		return nil, err
+	}
+	files, err := t.Files(fsys)
+	if err != nil {
+		return nil, err
+	}
+	schema := arena.Schema()
+	worlds := make(map[string]*box2d.World, len(files))
+	for _, id := range t.Maps {
+		m, err := level.Decode(files[id], schema)
+		if err != nil {
+			return nil, fmt.Errorf("map %s: %w", id, err)
+		}
+		def := box2d.DefaultWorldDef()
+		worlds[id] = box2d.NewWorld(&def)
+		if _, err := level.Build(worlds[id], m, schema); err != nil {
+			return nil, fmt.Errorf("map %s: %w", id, err)
+		}
+	}
+	return worlds, nil
 }
 
 // State is the server's state of your Body and what it started, after Tick, as body_sync sends it.
 type State struct {
 	Tick        uint64
+	Map         string // the live map's ID: its walls
 	Body        uint32 // your Body's EntityID: the caster, owner and target of what it casts
 	Team        uint8
 	Center      box2d.Vec2
@@ -109,12 +142,12 @@ type Sight struct {
 	past.Row
 }
 
-// Predictor steps your Body one tick per frame from the last State. Its world has no map yet; walls
-// come with the arena. It keeps each thing's rows from the target syncs, as the server keeps its History,
-// for the views each frame is drawn over.
+// Predictor steps your Body one tick per frame from the last State, through the walls of the map it
+// names. It keeps each thing's rows from the target syncs, as the server keeps its History, for the views
+// each frame is drawn over.
 type Predictor struct {
 	content  Content
-	world    *box2d.World
+	world    *box2d.World // the state's map
 	state    State
 	start    uint64       // the state's tick at the last Reset
 	moves    []box2d.Vec2 // your Body's center after each step since then
@@ -163,8 +196,7 @@ type stepped struct {
 
 // New returns a Predictor that runs content. Reset it before stepping.
 func New(content Content) *Predictor {
-	def := box2d.DefaultWorldDef()
-	p := &Predictor{content: content, world: box2d.NewWorld(&def), scene: past.NewScene(content.History.Window),
+	p := &Predictor{content: content, scene: past.NewScene(content.History.Window),
 		synced: make([]uint64, content.History.Window.KeptRows())}
 	p.Forget()
 	return p
@@ -240,8 +272,13 @@ func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Sc
 	return a, p.scene
 }
 
-// Reset starts over from s.
+// Reset starts over from s. Its map must be one of the content's, as a shard of the same build names.
 func (p *Predictor) Reset(s State) {
+	world, ok := p.content.Maps[s.Map]
+	if !ok {
+		panic(fmt.Sprintf("predict: no map %q in this content", s.Map))
+	}
+	p.world = world
 	s.Cooldowns, s.Effects, s.Shots = slices.Clone(s.Cooldowns), slices.Clone(s.Effects), slices.Clone(s.Shots)
 	s.EchoPath = slices.Clone(s.EchoPath)
 	p.state, p.start, p.moves, p.stepped = s, s.Tick, p.moves[:0], p.stepped[:0]

@@ -52,7 +52,8 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	effect.RegisterTypes(world)
 	area.RegisterTypes(world)
 
-	// Physics plugin: built here so movement can query it, registered after movement.
+	// Physics plugin: built here so areas can query it, registered after movement. It holds Bodies and
+	// Echoes; the map's walls are the map plugin's.
 	physicsPlugin := physics.NewPlugin()
 
 	// Input (PreUpdate, first): queues Input frames and applies one per Body per tick, and emits
@@ -70,7 +71,7 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 		cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))
 	world.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))
-	world.RegisterSystem(&player.MovementSystem{Tuning: c.movement, Physics: physicsPlugin},
+	world.RegisterSystem(&player.MovementSystem{Tuning: c.movement, Levels: c.levels},
 		cardinal.WithHook(cardinal.PreUpdate))
 
 	// Echo replay (PreUpdate, after Movement): record the Body's pose and drive the Echo to the pose
@@ -104,7 +105,7 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// it meets by its rules. A shot launched this tick moves this tick, so its path starts at the
 	// shooter.
 	world.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})
-	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Scene: scene, Physics: physicsPlugin})
+	world.RegisterSystem(&projectile.FlightSystem{Tuning: c.shots, Scene: scene, Levels: c.levels})
 
 	// Areas (Update): each area acts on the things overlapping its holder, by its rules. An Echo's
 	// anti-camp is one.

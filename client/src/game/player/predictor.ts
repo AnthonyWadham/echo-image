@@ -114,6 +114,7 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
     const { EchoDelay, EchoSerial, EchoPath } = sync.You
     return {
       Tick: String(sync.Tick),
+      Map: sync.MapID,
       Body,
       Team,
       X,

@@ -3846,6 +3846,78 @@
      "new": ""
     }
    ]
+  },
+  {
+   "id": "M4-M1",
+   "breaks": "movement walks no map",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/movement_system.go",
+     "old": "\tengine := s.Levels.Engine()\n",
+     "new": "\tdef := box2d.DefaultWorldDef()\n\tengine := box2d.NewWorld(&def)\n"
+    }
+   ]
+  },
+  {
+   "id": "M4-F1",
+   "breaks": "shots fly through the map",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight_system.go",
+     "old": "\tworld := s.Levels.Engine()\n",
+     "new": "\tdef := box2d.DefaultWorldDef()\n\tworld := box2d.NewWorld(&def)\n"
+    }
+   ]
+  },
+  {
+   "id": "M4-P1",
+   "breaks": "the predictor builds its maps empty",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\t\tif _, err := level.Build(worlds[id], m, schema); err != nil {\n",
+     "new": "\t\tif _, err := level.Build(box2d.NewWorld(&def), m, schema); err != nil {\n"
+    }
+   ]
+  },
+  {
+   "id": "M4-P2",
+   "breaks": "the predictor keeps its first map",
+   "check": "prediction",
+   "edits": [
+    {
+     "file": "shards/game/internal/predict/predict.go",
+     "old": "\tworld, ok := p.content.Maps[s.Map]\n",
+     "new": "\tworld, ok := p.content.Maps[s.Map]\n\tif p.world != nil {\n\t\tworld = p.world\n\t}\n"
+    }
+   ]
+  },
+  {
+   "id": "M4-W1",
+   "breaks": "the wasm predictor reads no map",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\tMap:         v.Get(\"Map\").String(),\n",
+     "new": "\t\tMap:         \"open\",\n"
+    }
+   ]
+  },
+  {
+   "id": "M4-T1",
+   "breaks": "the client names no map",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/predictor.ts",
+     "old": "      Map: sync.MapID,\n",
+     "new": "      Map: 'open',\n"
+    }
+   ]
   }
  ]
 }

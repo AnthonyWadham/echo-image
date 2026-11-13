@@ -356,16 +356,15 @@ func TestViewOutsideTheRowsStillHits(t *testing.T) {
 // A wall on the path in front of bob's Echo, now, stops the shot first, though alice drew the Echo
 // behind it: the map isn't rewound.
 func TestWallBeforeEchoStopsShot(t *testing.T) {
-	w, alice, bob := duel(t)
+	echoAt, _ := spawnOf(t, 1) // bob's Echo trails him by seconds, so it stays where he starts here
+	// alice walks to 1.25 from the Echo, with a thin wall between.
+	w, alice, bob := duelOn(t, wall(box2d.Vec2{X: echoAt.X - 0.625, Y: echoAt.Y}, box2d.Vec2{X: 0.05, Y: 2}))
 	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
 	target := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob")))
 	a := yourBody(t, bodiesFor(t, w, "alice"))
-	// alice walks to 1.25 from the Echo, and a thin wall goes between.
 	speed := bodiesFor(t, w, "alice").You.MoveSpeed * physics.SecondsPerTick
 	moveFor(w, alice, 1, 0, int(math.Round((target.X-1.25-a.X)/speed)))
 	a = yourBody(t, bodiesFor(t, w, "alice"))
-	addWall(w, physics2d.Vec2{X: (a.X + target.X) / 2, Y: target.Y}, physics2d.Vec2{X: 0.05, Y: 2})
-	w.Tick() // physics picks the wall up
 
 	alice.fire(1, 0)
 	_, shot := primary(t)
@@ -502,14 +501,12 @@ func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
 }
 
 func TestWallStopsShot(t *testing.T) {
-	w, alice, bob := duel(t)
+	aliceAt, _ := spawnOf(t, 0)
+	bobAt, _ := spawnOf(t, 1)
+	wallX := (aliceAt.X + bobAt.X) / 2 // halfway between them
+	w, alice, bob := duelOn(t, wall(box2d.Vec2{X: wallX, Y: 0}, box2d.Vec2{X: 0.5, Y: 5}))
 	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo, so only the wall can stop the shot
-
-	// A wall halfway between them.
-	a, b := yourBody(t, bodiesFor(t, w, "alice")), yourBody(t, bodiesFor(t, w, "bob"))
-	wallX := (a.X + b.X) / 2
-	addWall(w, physics2d.Vec2{X: wallX, Y: 0}, physics2d.Vec2{X: 0.5, Y: 5})
-	w.Tick() // physics picks the wall up
+	b := yourBody(t, bodiesFor(t, w, "bob"))
 
 	ended := flyUntilEnded(t, w, "bob", fireAtEcho(t, w, alice)+2)
 	// Sent once more, touching the wall's face, half its width from its center: on the map, not a target.
