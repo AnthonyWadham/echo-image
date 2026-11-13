@@ -1,7 +1,7 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0, 1 and 1b are built (the mover's chain rule, and
-> the core in `pkg/level`). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> **A proposal, not the source of truth.** Steps 0, 1, 1b and 2 are built (the mover's chain rule,
+> the core in `pkg/level`, the Cardinal side in `pkg/levelstate`). Code, [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -279,23 +279,29 @@ Entity spawning now (no user).
 
 ### 7.7 Which map is live
 
-**State holds** one singleton component: map ID, hash, and an epoch (a counter that rises on every
-change).
+**State holds** one singleton component, `Current`: map ID, the file's SHA-256, an epoch (a counter
+that rises on every change), and `Next`, the map a change asked for.
 
-**Derived, in plugin memory:** the built Box2D world.
+**Derived, in plugin memory:** every map's built Box2D world, and which one is live.
 
 **One system, "reconcile",** runs first in every tick, and once at Init:
 1. A change was requested → take the new ID, raise the epoch.
 2. The ID is unknown to this build → stop: "world purge".
 3. The hash in state differs from this build's → take the build's hash, raise the epoch.
 4. The built world does not match state → swap to the right one.
-5. Anything changed → emit one `Changed` event.
+5. The epoch rose, in a tick → emit one `Changed` event (previous ID, new ID, epoch).
 
 That one path covers boot, restore, map change and reload. Every map is loaded and checked at boot,
-so a change is a swap.
+so a change is a swap. A restore of another map swaps memory without `Changed`: state did not change.
+A snapshot from before the plugin has no `Current`, so the tick creates it, and that is a change.
 
-**Who picks the map.** Content, for now (`default_map`). Later the match owner calls one function.
-No client command can pick a map.
+**The API.** `levelstate.NewPlugin(Config{Maps, Schema, Default})` decodes and builds every map, or
+returns the first error. `Register` it before every other PreUpdate system. Systems read
+`Engine()` (the live map's Box2D world, queries only) and `Map()` each tick. Built in step 2.
+
+**Who picks the map.** Content, for now (`default_map`). Later the match owner calls
+`Change(w, id)`. The map is live from the next tick, so a whole tick reads one map. No client
+command can pick a map.
 
 **Why.**
 - Cardinal has no hook after a restore, and Init runs before it. A first-in-tick reconcile is the
@@ -431,7 +437,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 0 | mover | **Done.** The mover meets chains as Box2D does, so outlines don't hook (7.4) |
 | 1 | `pkg/level` | **Done.** The core: format, strict decode and encode, kinds, build into Box2D |
 | 1b | `pkg/level` | **Done.** Objects and their types, and the game's schema |
-| 2 | `pkg/levelstate` | The Cardinal side: component, reconcile, `Changed` event |
+| 2 | `pkg/levelstate` | **Done.** The Cardinal side: component, reconcile, `Changed` event |
 | 3 | game | `arena` package. An open default map (far edge, two spawns where they are today). Cardinal side registered first. Map identity in body_sync |
 | 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move, with a map builder for tests. Recordings regain walls |
 | 5 | game | Spawns come from the map |

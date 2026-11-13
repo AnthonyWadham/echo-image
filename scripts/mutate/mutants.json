@@ -8,7 +8,8 @@
   "sim60": "go test -tags rate60 .",
   "prediction-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; go test ./shards/game/test -run 'TestPrediction|TestPredictor'",
   "ts-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; cd client && bun run test",
-  "level": "go test ./pkg/level"
+  "level": "go test ./pkg/level",
+  "levelstate": "go test ./pkg/levelstate"
  },
  "mutants": [
   {
@@ -3593,6 +3594,203 @@
      "file": "pkg/level/schema.go",
      "old": "\t\tif other, ok := owner[t]; ok {",
      "new": "\t\tif other, ok := owner[t]; false && ok {"
+    }
+   ]
+  },
+  {
+   "id": "M2-P1",
+   "breaks": "a map may have no ID",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\t\tif id == \"\" {",
+     "new": "\t\tif false && id == \"\" {"
+    }
+   ]
+  },
+  {
+   "id": "M2-P2",
+   "breaks": "a map that doesn't decode is skipped",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\t\tm, err := level.Decode(data, config.Schema)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"levelstate: map %s: %w\", id, err)\n\t\t}\n",
+     "new": "\t\tm, err := level.Decode(data, config.Schema)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n"
+    }
+   ]
+  },
+  {
+   "id": "M2-P3",
+   "breaks": "the default may be no map",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\tlive, ok := p.maps[config.Default]\n\tif !ok {",
+     "new": "\tlive, ok := p.maps[config.Default]\n\tif false && !ok {"
+    }
+   ]
+  },
+  {
+   "id": "M2-P4",
+   "breaks": "the hash isn't the file's",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "hash: sha256.Sum256(data)}",
+     "new": "hash: sha256.Sum256(nil)}"
+    }
+   ]
+  },
+  {
+   "id": "M2-R1",
+   "breaks": "a plugin registers in two worlds",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\tif p.registered {",
+     "new": "\tif false && p.registered {"
+    }
+   ]
+  },
+  {
+   "id": "M2-R2",
+   "breaks": "the system runs after other systems of the tick",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "emit: true}, cardinal.WithHook(cardinal.PreUpdate))",
+     "new": "emit: true}, cardinal.WithHook(cardinal.Update))"
+    }
+   ]
+  },
+  {
+   "id": "M2-K1",
+   "breaks": "Change takes a map the build lacks",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\tif _, ok := p.maps[id]; !ok {",
+     "new": "\tif _, ok := p.maps[id]; false && !ok {"
+    }
+   ]
+  },
+  {
+   "id": "M2-N1",
+   "breaks": "a requested change is never taken",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\tif now.Next != \"\" {\n\t\tnow.ID, now.Next = now.Next, \"\"\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M2-N2",
+   "breaks": "a taken request stays in Next",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\t\tnow.ID, now.Next = now.Next, \"\"\n",
+     "new": "\t\tnow.ID = now.Next\n"
+    }
+   ]
+  },
+  {
+   "id": "M2-D1",
+   "breaks": "an empty state gets no map",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\tif now.ID == \"\" {\n\t\tnow.ID = s.plugin.defaultID\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M2-U1",
+   "breaks": "a map the build lacks falls back to the default",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\t\tpanic(fmt.Errorf(\"levelstate: map %q isn't in this build; run world purge\", now.ID))\n",
+     "new": "\t\tlive = s.plugin.maps[s.plugin.defaultID]\n"
+    }
+   ]
+  },
+  {
+   "id": "M2-H1",
+   "breaks": "a restored map keeps its old file's hash",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\tif now.ID != was.ID || now.Hash != live.hash {",
+     "new": "\tif now.ID != was.ID {"
+    }
+   ]
+  },
+  {
+   "id": "M2-E1",
+   "breaks": "the epoch never rises",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\t\tnow.Epoch++\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M2-S1",
+   "breaks": "memory keeps the old map",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\ts.plugin.live = live\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M2-C1",
+   "breaks": "Init emits Changed",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\tif s.emit && now.Epoch != was.Epoch {",
+     "new": "\tif now.Epoch != was.Epoch {"
+    }
+   ]
+  },
+  {
+   "id": "M2-C2",
+   "breaks": "a restore of another map emits Changed",
+   "check": "levelstate",
+   "edits": [
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\ts.plugin.live = live\n",
+     "new": "\tswapped := s.plugin.live != live\n\ts.plugin.live = live\n"
+    },
+    {
+     "file": "pkg/levelstate/reconcile.go",
+     "old": "\tif s.emit && now.Epoch != was.Epoch {",
+     "new": "\tif s.emit && (now.Epoch != was.Epoch || swapped) {"
     }
    ]
   }
