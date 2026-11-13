@@ -7,9 +7,11 @@ import (
 	"maps"
 	"slices"
 
+	"echo_image/pkg/levelstate"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/area"
+	"echo_image/shards/game/internal/arena"
 	"echo_image/shards/game/internal/echo"
 	"echo_image/shards/game/internal/effect"
 	"echo_image/shards/game/internal/history"
@@ -27,13 +29,14 @@ type catalog struct {
 	effects   effect.EffectTuning
 	areas     area.AreaTuning
 	history   history.HistoryTuning
+	levels    *levelstate.Plugin // the maps content/arena lists, each built
 }
 
 // loadCatalog loads each file from fsys with content.Load, then checks the IDs one file names in
 // another. Any error fails the boot.
 func loadCatalog(fsys fs.FS) (catalog, error) {
 	var c catalog
-	var errs [7]error
+	var errs [8]error
 	c.movement, errs[0] = content.Load[player.MovementTuning](fsys)
 	c.echoes, errs[1] = content.Load[echo.EchoTuning](fsys)
 	c.abilities, errs[2] = content.Load[ability.AbilityTuning](fsys)
@@ -41,10 +44,24 @@ func loadCatalog(fsys fs.FS) (catalog, error) {
 	c.effects, errs[4] = content.Load[effect.EffectTuning](fsys)
 	c.areas, errs[5] = content.Load[area.AreaTuning](fsys)
 	c.history, errs[6] = content.Load[history.HistoryTuning](fsys)
+	c.levels, errs[7] = loadLevels(fsys)
 	if err := errors.Join(errs[:]...); err != nil {
 		return c, err
 	}
 	return c, c.lineUp()
+}
+
+// loadLevels decodes each map arena/tuning.json lists and builds it into a Box2D world of its own.
+func loadLevels(fsys fs.FS) (*levelstate.Plugin, error) {
+	t, err := content.Load[arena.ArenaTuning](fsys)
+	if err != nil {
+		return nil, err
+	}
+	files, err := t.Files(fsys)
+	if err != nil {
+		return nil, err
+	}
+	return levelstate.NewPlugin(levelstate.Config{Maps: files, Schema: arena.Schema(), Default: t.DefaultMap})
 }
 
 // lineUp checks the IDs one file names in another: each ability's shots and effect kinds, and each

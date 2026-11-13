@@ -18,6 +18,7 @@ const bodySync: BodySync = {
   Tick: 9007199254740993n,
   TickSeconds: 0.05,
   SimVersion: 'go1.27.1+0123456789abcdef',
+  MapID: 'open',
   You: {
     Body: 1,
     Team: 1,

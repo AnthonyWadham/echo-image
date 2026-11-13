@@ -4,6 +4,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/levelstate"
 	abilitycomp "echo_image/shards/game/internal/ability/component"
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	echocomp "echo_image/shards/game/internal/echo/component"
@@ -31,6 +32,11 @@ type syncRow struct {
 type shotRow struct {
 	Projectile projectilecomp.Projectile
 	Transform  physics2d.Transform2D
+}
+
+// mapRow is the live map.
+type mapRow struct {
+	Current levelstate.Current
 }
 
 // echoRow is an Echo's path, for its Body's YouState.
@@ -90,6 +96,10 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			echoes[e.Get[team.Owner]().Body] = e
 		}
 	}
+	var mapID string
+	for e := range w.Contains[mapRow]().Iter() {
+		mapID = e.Get[levelstate.Current]().ID
+	}
 	tuning := s.Tuning
 	ahead := tuning.EchoPathTicks()
 	lists := bodies.Lists(viewers)
@@ -109,6 +119,7 @@ func (s *SyncSystem) Run(w *cardinal.World) {
 			Tick:        w.TickHeight(),
 			TickSeconds: physics.SecondsPerTick,
 			SimVersion:  s.SimVersion,
+			MapID:       mapID,
 			You:         y,
 			Bodies:      lists.For(v),
 		})

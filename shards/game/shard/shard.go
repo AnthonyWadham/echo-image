@@ -36,6 +36,9 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 		panic(err)
 	}
 
+	// Map (Init, and PreUpdate first): makes the map state names live before any system reads it.
+	world.RegisterPlugin(c.levels)
+
 	// Every component, command, event and system event a system uses must be registered before
 	// StartGame; an unregistered one panics on first use.
 	ref.RegisterTypes(world)

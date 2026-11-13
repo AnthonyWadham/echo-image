@@ -16,6 +16,7 @@ type BodySync struct {
 	Tick        uint64
 	TickSeconds float64
 	SimVersion  string // the sim this shard runs (echoimage.SimVersion): a client predicts only with the same
+	MapID       string // the live map: content/arena/<MapID>.level.json, which SimVersion pins
 	You         YouState
 	Bodies      cardinal.Slice[BodyState]
 }

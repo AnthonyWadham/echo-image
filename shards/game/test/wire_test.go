@@ -44,6 +44,7 @@ func TestWireFixtures(t *testing.T) {
 			Tick:        9007199254740993, // 2^53+1, past float64 precision
 			TickSeconds: 0.05,
 			SimVersion:  "go1.27.1+0123456789abcdef",
+			MapID:       "open",
 			You: player.YouState{
 				Body: 1, Team: 1, X: 1.5, Y: -2, Radius: 0.5,
 				InputSession: 4294967295, InputAck: 42, InputQueued: 3, InputCap: 10, InputTarget: 4,

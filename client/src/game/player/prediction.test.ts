@@ -70,6 +70,7 @@ const sync = (x: number): BodySync => ({
   Tick: 100n,
   TickSeconds: tickSeconds,
   SimVersion: 'this build',
+  MapID: 'open',
   You: {
     Body: 1,
     Team: 0,

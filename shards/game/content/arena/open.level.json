@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "solids": [],
+  "outlines": [],
+  "edges": [
+    {"src": 1, "kind": "bounds", "points": [[-51200, -51200], [-51200, 51200], [51200, 51200], [51200, -51200]]}
+  ],
+  "objects": [
+    {"id": 2, "type": "spawn", "at": [-5120, 0], "props": {"team":0}},
+    {"id": 3, "type": "spawn", "at": [5120, 0], "props": {"team":1}}
+  ]
+}

@@ -54,7 +54,11 @@ func tuningOf[T content.File](t *testing.T) T {
 // order, so a test can add a shot type or a champion. Objects merge, and anything else replaces.
 func withContent(t testing.TB, patches ...map[string]string) func(*cardinal.World) {
 	t.Helper()
-	files := patched(t, patches...)
+	return withFiles(patched(t, patches...))
+}
+
+// withFiles is Register with files in place of the shipped content.
+func withFiles(files content.Overlay) func(*cardinal.World) {
 	return func(world *cardinal.World) { shard.RegisterWith(world, files, otel.GetMeterProvider()) }
 }
 
@@ -413,6 +417,9 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 			`{"shots": {"bolt": {"meets": [{"kinds": ["echo"], "do": "stop", "payload": true}]}}}`, "names no relations"},
 		{"rule for shots meeting shots", "projectile/tuning.json",
 			`{"shots": {"bolt": {"meets": [{"kinds": ["shot"], "do": "stop"}]}}}`, "names a kind a shot never meets"},
+		{"default map not listed", "arena/tuning.json", `{"default_map": "cave"}`, `default map "cave"`},
+		{"listed map with no file", "arena/tuning.json", `{"maps": ["open", "cave"]}`, "cave.level.json"},
+		{"map that doesn't decode", "arena/open.level.json", `{"format": 2}`, "map open: level: format 2"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			err := shard.CheckContent(patched(t, map[string]string{c.file: c.patch}))
@@ -426,10 +433,13 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 	}
 }
 
-// Every recorder and sync reads the tick's final state: each runs in PostUpdate, after every writer,
-// from history.RecordSystem to combat.DeathSystem, the one system there that changes the world. Read from
-// a tick's spans, so it is the order that ran, wherever each system was registered.
-func TestReadersRunInPostUpdate(t *testing.T) {
+// ran is a system a tick ran: its type's name and its hook.
+type ran struct{ name, hook string }
+
+// systemsRun returns the systems one tick of the shard runs, in order. Read from the tick's spans, so it
+// is the order that ran, wherever each system was registered.
+func systemsRun(t *testing.T) []ran {
+	t.Helper()
 	spans := tracetest.NewSpanRecorder()
 	traced := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
 	before := otel.GetTracerProvider()
@@ -440,25 +450,45 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 	})
 	cardinal.NewTestWorld(t, shard.Register).Tick()
 
+	var systems []ran
+	for _, span := range spans.Ended() {
+		var s ran
+		for _, kv := range span.Attributes() {
+			switch kv.Key {
+			case "cardinal.system.name":
+				s.name = strings.TrimPrefix(kv.Value.AsString(), "*")
+			case "cardinal.system.hook":
+				s.hook = kv.Value.AsString()
+			}
+		}
+		if s.name != "" && s.hook != "SYSTEM_HOOK_INIT" {
+			systems = append(systems, s)
+		}
+	}
+	return systems
+}
+
+// The map a tick's state names is live before any system reads it: levelstate's system runs first.
+func TestMapIsLiveFirstInTheTick(t *testing.T) {
+	systems := systemsRun(t)
+	if len(systems) == 0 || !strings.HasPrefix(systems[0].name, "levelstate.") {
+		t.Fatalf("a tick runs %v, want a levelstate system first", systems)
+	}
+}
+
+// Every recorder and sync reads the tick's final state: each runs in PostUpdate, after every writer,
+// from history.RecordSystem to combat.DeathSystem, the one system there that changes the world.
+func TestReadersRunInPostUpdate(t *testing.T) {
 	reader := func(name string) bool {
 		return strings.HasSuffix(name, ".RecordSystem") || strings.HasSuffix(name, ".SyncSystem")
 	}
 	var post []string
-	for _, span := range spans.Ended() {
-		var name, hook string
-		for _, kv := range span.Attributes() {
-			switch kv.Key {
-			case "cardinal.system.name":
-				name = strings.TrimPrefix(kv.Value.AsString(), "*")
-			case "cardinal.system.hook":
-				hook = kv.Value.AsString()
-			}
-		}
+	for _, s := range systemsRun(t) {
 		switch {
-		case hook == "SYSTEM_HOOK_POST_UPDATE":
-			post = append(post, name)
-		case reader(name) || name == "combat.DeathSystem":
-			t.Errorf("%s runs before PostUpdate", name)
+		case s.hook == "SYSTEM_HOOK_POST_UPDATE":
+			post = append(post, s.name)
+		case reader(s.name) || s.name == "combat.DeathSystem":
+			t.Errorf("%s runs before PostUpdate", s.name)
 		}
 	}
 	if len(post) < 2 || post[0] != "history.RecordSystem" || post[len(post)-1] != "combat.DeathSystem" {

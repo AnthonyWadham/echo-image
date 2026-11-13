@@ -1,7 +1,8 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0, 1, 1b and 2 are built (the mover's chain rule,
-> the core in `pkg/level`, the Cardinal side in `pkg/levelstate`). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> **A proposal, not the source of truth.** Steps 0 to 3 are built (the mover's chain rule, the core
+> in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
+> map). Code, [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -335,8 +336,9 @@ holds the same bytes. An explicit list makes "which maps ship" a reviewed line.
 - **Web.** One new wasm export returns the current map's shapes. The client draws grey boxes from
   it. There is no TypeScript parser, so nothing can drift.
 - **Camera.** Follows your Body and clamps to the map edge.
-- **Wire.** Map ID, hash and epoch ride in body_sync, next to SimVersion. Geometry never goes on
-  the wire.
+- **Wire.** The map ID rides in body_sync (`MapID`), next to SimVersion, which already pins the
+  file's bytes. Hash and epoch join when a client needs them, such as a Unity client that reads the
+  file itself. Geometry never goes on the wire.
 - **Unity.** Reads the same baked file to draw. It gets bit-identical prediction only if it runs
   the Go sim. A second collision builder in C# is refused.
 - **Art.** Later: a client-only file keyed by `src` IDs. The gameplay file never names art. League
@@ -438,7 +440,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 1 | `pkg/level` | **Done.** The core: format, strict decode and encode, kinds, build into Box2D |
 | 1b | `pkg/level` | **Done.** Objects and their types, and the game's schema |
 | 2 | `pkg/levelstate` | **Done.** The Cardinal side: component, reconcile, `Changed` event |
-| 3 | game | `arena` package. An open default map (far edge, two spawns where they are today). Cardinal side registered first. Map identity in body_sync |
+| 3 | game | **Done.** `arena` package. An open default map (a 100 x 100 m edge, two spawns where they are today). Cardinal side registered first. Map ID in body_sync |
 | 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move, with a map builder for tests. Recordings regain walls |
 | 5 | game | Spawns come from the map |
 | 6 | game | Game rules, with the library's rule helpers (a flood fill over Box2D queries). A failed landing is logged |

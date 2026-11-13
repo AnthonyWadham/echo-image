@@ -9,6 +9,7 @@ export interface BodySync {
   Tick: bigint // uint64
   TickSeconds: number
   SimVersion: string // the sim the shard runs: your predictor predicts only with the same
+  MapID: string // the live map: content/arena/<MapID>.level.json, which SimVersion pins
   You: YouState
   Bodies: BodyState[]
 }

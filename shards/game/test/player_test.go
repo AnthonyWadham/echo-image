@@ -426,3 +426,20 @@ func TestOthersSeeChampionsAndEffectKinds(t *testing.T) {
 		t.Fatalf("alice sees bob's Echo with %+v, want a slow until %d", got, stun.End-2)
 	}
 }
+
+// body_sync names the live map, so a client draws and predicts with its file: here a second map, which
+// content makes live at boot.
+func TestBodySyncNamesTheLiveMap(t *testing.T) {
+	open, err := content.FS.ReadFile("arena/open.level.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := cardinal.NewTestWorld(t, withFiles(content.Overlay{
+		"arena/tuning.json":     []byte(`{"maps": ["open", "copy"], "default_map": "copy"}`),
+		"arena/copy.level.json": open,
+	}))
+	claim(t, w)
+	if got := bodiesFor(t, w, "alice").MapID; got != "copy" {
+		t.Fatalf("body_sync names map %q, want copy", got)
+	}
+}

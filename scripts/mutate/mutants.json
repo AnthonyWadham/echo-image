@@ -3793,6 +3793,59 @@
      "new": "\tif s.emit && (now.Epoch != was.Epoch || swapped) {"
     }
    ]
+  },
+  {
+   "id": "M3-R1",
+   "breaks": "the map goes live after systems that read it",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/shard/shard.go",
+     "old": "\t// Map (Init, and PreUpdate first): makes the map state names live before any system reads it.\n\tworld.RegisterPlugin(c.levels)\n",
+     "new": ""
+    },
+    {
+     "file": "shards/game/shard/shard.go",
+     "old": "\tworld.RegisterSystem(&echo.ReplaySystem{}, cardinal.WithHook(cardinal.PreUpdate))\n",
+     "new": "\tworld.RegisterSystem(&echo.ReplaySystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterPlugin(c.levels)\n"
+    }
+   ]
+  },
+  {
+   "id": "M3-B1",
+   "breaks": "body_sync names no map",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/sync_system.go",
+     "old": "\t\t\tMapID:       mapID,\n",
+     "new": "\t\t\tMapID:       mapID[:0],\n"
+    }
+   ]
+  },
+  {
+   "id": "M3-C1",
+   "breaks": "a bad map doesn't fail the boot",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/shard/catalog.go",
+     "old": "\tc.levels, errs[7] = loadLevels(fsys)\n",
+     "new": "\tc.levels, _ = loadLevels(fsys)\n"
+    }
+   ]
+  },
+  {
+   "id": "M3-V1",
+   "breaks": "SimVersion skips the map library",
+   "check": "go",
+   "edits": [
+    {
+     "file": "sim.go",
+     "old": "\n//go:embed pkg/level pkg/levelstate",
+     "new": ""
+    }
+   ]
   }
  ]
 }

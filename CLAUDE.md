@@ -105,6 +105,8 @@ shards/game/
     area/     package area        areas: area_system.go (each area acts on what overlaps its holder,
                                   by rules), tuning.go (area kinds), doc.go
       component/  package component   Area — area's leaf; a constructor gives its entity an area
+    arena/    package arena       the game's side of its maps: Schema (the kinds wall and bounds, the spawn
+                                  type) and ArenaTuning (the maps that ship) — no Cardinal import
     player/   package player      player Body: spawn_system.go (the one Body constructor),
                                   input_system.go, movement_system.go, input_command.go,
                                   sync_system.go, tuning.go (champions)
@@ -167,7 +169,8 @@ Current dependency direction (must stay acyclic): a feature's behavior package d
 the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feature>/component`** leaves
 it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
 team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
-ability/cast, combat/component, echo/component, projectile/component, history/component}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
+ability/cast, combat/component, echo/component, projectile/component, history/component,
+pkg/levelstate}`, `arena → {interact, pkg/level}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past}`, `history →
 {interact, team, ref, netsync, combat/component, effect/component, player/component, history/component,
@@ -506,6 +509,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   **Never `math.Hypot`:** it fuses on arm64. Use `box2d.Length`.
 
 ### System registration ordering (`shard.go`)
+- **The map plugin (`pkg/levelstate`) registers first,** so its system runs at Init and first in
+  PreUpdate: the map state names is live before any system reads it (`TestMapIsLiveFirstInTheTick`).
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
@@ -588,6 +593,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **JSON content lives under `content/<feature>/<file>.json`**, one `embed.FS` (`content.FS`) —
   `go:embed` can't reach across directories. `JSONFile()` returns the path within that FS (e.g.
   `"combat/tuning.json"`).
+- **Map files are decoded only by the level library** (`pkg/level`), never `content.Load`.
+  `content/arena/tuning.json` lists the maps that ship (`content/arena/<id>.level.json`) and the
+  default; the catalog builds each into the `levelstate` plugin, so a bad map fails the boot.
 - **Content is code.** It is embedded and hashed into `SimVersion`, so a shard resumes a snapshot on
   the content its build carries; changing content is a new build.
 - **Prefer typed per-feature config structs** over a single stringly-typed global settings bag
@@ -722,8 +730,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     `content.Load`.
   - **A client predicts only for a shard of its own build.** `echoimage.SimVersion` is the Go release,
     the build tags (from the binary's build info; `rate60` picks 60 Hz) and a hash of what the shard and
-    the predictor build from: `go.mod`, `go.sum`, and `shards/game`'s code, content and predictor,
-    without tests. The shard hashes the copy it embeds (its Docker build has no `.git`) and sends it as
+    the predictor build from: `go.mod`, `go.sum`, `shards/game`'s code, content and predictor, and
+    `pkg/level` and `pkg/levelstate`, without tests. The shard hashes the copy it embeds (its Docker build has no `.git`) and sends it as
     body_sync's `SimVersion`.
     `predictor.mjs` stamps the same into the wasm (`-X main.simVersion`), which never embeds the
     source, so players don't download it. When they differ, `LocalPlayer` doesn't play and the HUD
@@ -746,10 +754,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     Corrections still come from what the client can't know: a late frame (the server repeats the last
     one, at a view moved on), effects others cause, and a target someone else kills first. Pacing
     keeps late frames rare.
-  - The predictor's world has no map yet. Walls come with the arena: one Cardinal-free package that the
-    shard and the predictor both build from the same content file (`docs/research/map-loading-strategy.md`).
-    Until then a shot the server stops at a wall flies on past it on your screen, until a body_sync
-    shows it gone, about a round trip later.
+  - The predictor's world has no map yet. The shard keeps the live map (`pkg/levelstate`) and
+    body_sync names it (`MapID`), but movement and shots still query physics2d's world. Both move to
+    the map's world, with the predictor's, in one change (step 4 of
+    `docs/research/map-loading-strategy.md`). Until then a shot the server stops at a wall flies on
+    past it on your screen, until a body_sync shows it gone, about a round trip later.
   - The client aims from where the frame moves its Body, since the server casts from there.
 - **The server queues frames and applies exactly one per Body per tick**, in Seq order
   (`player.InputSystem`, `player/component.InputQueue`). Duplicates and applied frames are dropped, and

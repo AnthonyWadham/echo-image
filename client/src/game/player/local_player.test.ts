@@ -54,6 +54,7 @@ const bodySync = (tick: number, ack = 0, bodies = [1]): BodySync => ({
   Tick: BigInt(tick),
   TickSeconds: 0.05,
   SimVersion: sim,
+  MapID: 'open',
   You: {
     Body: 1,
     Team: 0,
