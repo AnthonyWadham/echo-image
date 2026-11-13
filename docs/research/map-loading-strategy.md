@@ -1,6 +1,7 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Only step 0 is built (the mover's chain rule). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> **A proposal, not the source of truth.** Steps 0 and 1 are built (the mover's chain rule, and the
+> core in `pkg/level`). Code, [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -134,13 +135,14 @@ determinism checks (hard-wired to `pkg/box2d`) must add the package. [code]
 |---|---|
 | `format` | A whole number. A reader refuses a number it does not know. |
 | `solids` | Wall pieces. Each has `src` (the drawn object it came from), `kind`, and one shape: polygon (3-8 points), circle or capsule. |
-| `edges` | Closed loops. Each has `src`, `kind` and its points. |
-| `objects` | Placed points. Each has `id`, `type`, a position and `props`. |
+| `outlines` | Closed loops around walls, counter-clockwise: they keep things out. Each has `src`, `kind` and its points. |
+| `edges` | Closed loops around the play area, clockwise: they keep things in. |
+| `objects` | Placed points. Each has `id`, `type`, a position and `props`. Comes in step 1b. |
 
 **Rules.**
 - Every coordinate is a whole number. One unit is 1/1024 m.
 - Shapes are final and in world space. No rotation and no trig at load.
-- One canonical byte form. The loader re-encodes what it read and refuses the file if the bytes
+- One canonical byte form, one shape per line, so a diff shows which shape changed. The loader re-encodes what it read and refuses the file if the bytes
   differ. This check is what makes decoding strict: Go's JSON decoder alone accepts duplicate keys,
   wrong-case keys, `-0` and `null`. [test]
 - Each polygon is written in the point order Box2D's own hull function returns, so "the hull
@@ -360,7 +362,7 @@ One tier: errors.
 
 | Runs at | Checks |
 |---|---|
-| every load (shard, wasm, bake) | format known; canonical bytes; kinds and types known; props strict; each polygon is its own convex hull; each loop has 4+ points and the right winding |
+| every load (shard, wasm, bake) | format known; canonical bytes; kinds and types known; props strict; each polygon is its own convex hull; each loop has 4+ points and the right winding; segments and capsules longer than LinearSlop; every point inside Box2D's world |
 | bake and shard boot | the game's rules, on the built world, through Box2D queries: spawns clear of walls; map sealed; every clear cell reachable; every wall cell can land (F26) |
 | bake only | Tiled rules: every object has a class; no tiles, templates or infinite maps; no polygon crosses itself |
 
@@ -424,12 +426,13 @@ All in echo_image (7.1), one reviewable step at a time.
 | # | Where | Step |
 |---|---|---|
 | 0 | mover | **Done.** The mover meets chains as Box2D does, so outlines don't hook (7.4) |
-| 1 | `pkg/level` | The core: format, decode, encode, kinds, types, build, rule helpers, a map builder for tests |
+| 1 | `pkg/level` | **Done.** The core: format, strict decode and encode, kinds, build into Box2D |
+| 1b | `pkg/level` | Objects and their types |
 | 2 | `pkg/levelstate` | The Cardinal side: component, reconcile, `Changed` event |
 | 3 | game | `arena` package. An open default map (far edge, two spawns where they are today). Cardinal side registered first. Map identity in body_sync |
-| 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move. Recordings regain walls |
+| 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move, with a map builder for tests. Recordings regain walls |
 | 5 | game | Spawns come from the map |
-| 6 | game | Game rules. A failed landing is logged |
+| 6 | game | Game rules, with the library's rule helpers (a flood fill over Box2D queries). A failed landing is logged |
 | 7 | client | wasm export, greybox view, camera |
 | 8 | `pkg/level/bake` | Baker, Tiled reader, project generator |
 | 9 | game | Tiled sources, generated project, staleness test, the first real map |

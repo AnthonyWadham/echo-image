@@ -47,6 +47,11 @@ one is the *what*.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
   `projectile_test.go`, … in `shards/game/test`). One harness: shared helpers live in
   `harness_test.go`. Never a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
+- **`pkg/level` is built to move to world-engine,** so it follows world-engine's rules, not this repo's:
+  it imports only `box2d` and the standard library, never a game word; JSON is `goccy/go-json`; tests
+  are package `level_test`. Lint it with world-engine's config and its pinned linter (v2.15.0, built
+  with this repo's Go): `golangci-lint run --config ../world-engine/.golangci.yaml --fix=false
+  ./pkg/level/...`.
 - **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
   `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
