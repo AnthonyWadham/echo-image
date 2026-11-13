@@ -741,7 +741,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
     one, at a view moved on), effects others cause, and a target someone else kills first. Pacing
     keeps late frames rare.
   - The predictor's world has no map yet. Walls come with the arena: one Cardinal-free package that the
-    shard and the predictor both build from the same content file (`docs/research/map-system-findings.md`).
+    shard and the predictor both build from the same content file (`docs/research/map-loading-strategy.md`).
     Until then a shot the server stops at a wall flies on past it on your screen, until a body_sync
     shows it gone, about a round trip later.
   - The client aims from where the frame moves its Body, since the server casts from there.
@@ -870,7 +870,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   package-per-feature vs. its `system/` junk drawer, and deferred intents vs. its typed-event
   fan-out). Compare against general best practice, not just what rampage did.
 - **Research findings** (not source of truth; this file and the code win) live in `docs/research/`.
-  Map system: [`docs/research/map-system-findings.md`](docs/research/map-system-findings.md).
+  Map loading: [`docs/research/map-loading-strategy.md`](docs/research/map-loading-strategy.md) (it
+  replaces the proposal in [`map-system-findings.md`](docs/research/map-system-findings.md) §6-§7).
   The predictor on Unity, phones and consoles:
   [`docs/research/predictor-on-every-client.md`](docs/research/predictor-on-every-client.md).
 - **Backlog of ideas and decisions for later:** [`docs/backlog.md`](docs/backlog.md). Read it when
