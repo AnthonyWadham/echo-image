@@ -3277,6 +3277,42 @@
      "new": "const meetable = ^interact.Area"
     }
    ]
+  },
+  {
+   "id": "M0-S1",
+   "breaks": "a chain segment blocks from behind too",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/mover/mover.go",
+     "old": "\tif !front(p1, p2, c) {\n\t\treturn false\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M0-S2",
+   "breaks": "a chain joint keeps its corner plane (no ghost vertices)",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/mover/mover.go",
+     "old": "\te := box2d.Sub(p2, p1)\n\tswitch t := box2d.Dot(box2d.Sub(c, p1), e); {\n\tcase t <= 0:\n\t\treturn !overFace(seg.Ghost1, p1, c)\n\tcase t >= box2d.Dot(e, e):\n\t\treturn !overFace(p2, seg.Ghost2, c)\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M0-S3",
+   "breaks": "the chain rule reads the circle in world space, not the chain body's",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/mover/mover.go",
+     "old": "c := box2d.InvTransformPoint(world.BodyTransform(world.ShapeBody(shape)), center)",
+     "new": "c := center"
+    }
+   ]
   }
  ]
 }

@@ -467,6 +467,10 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   planes → cast, then the velocity is clipped. A pass under 1 cm ends it, unless it met a wall it had
   no plane for yet, so a Body slides on the tick it meets a wall. It writes `Transform2D`. Walls stop a
   Body and it slides along them.
+- **A chain wall meets a Body as Box2D's chains collide:** from its front only (a counter-clockwise
+  loop blocks from outside), and smoothly where segments join: the mover drops a segment's end plane
+  while the Body is over the next segment's face (Box2D's ghost vertices). The pinned `CollideMover`
+  does neither, so this is the one place the mover reads a shape's geometry.
 - **The mover's query filter decides what blocks a Body:** `{Category: interact.Body, Mask:
   motion.Blockers &^ passes}`. The filter is two-way, which is why map shapes mask all bits. The Body's own
   `MaskBits` doesn't drive the mover.
