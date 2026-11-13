@@ -3334,8 +3334,8 @@
    "edits": [
     {
      "file": "pkg/level/level.go",
-     "old": "\tif !bytes.Equal(encode(m), data) {",
-     "new": "\tif false && !bytes.Equal(encode(m), data) {"
+     "old": "\tif canonical, err := encode(m); err != nil || !bytes.Equal(canonical, data) {",
+     "new": "\tif canonical, err := encode(m); false && (err != nil || !bytes.Equal(canonical, data)) {"
     }
    ]
   },
@@ -3441,12 +3441,12 @@
    "check": "level",
    "edits": [
     {
-     "file": "pkg/level/level.go",
-     "old": "kind[0] >= 'a' && kind[0] <= 'z'",
-     "new": "kind[0] >= 'A' && kind[0] <= 'z'"
+     "file": "pkg/level/schema.go",
+     "old": "name[0] >= 'a' && name[0] <= 'z'",
+     "new": "name[0] >= 'A' && name[0] <= 'z'"
     },
     {
-     "file": "pkg/level/level.go",
+     "file": "pkg/level/schema.go",
      "old": "r >= 'a' && r <= 'z' ||",
      "new": "r >= 'A' && r <= 'z' ||"
     }
@@ -3466,13 +3466,13 @@
   },
   {
    "id": "M1-B1",
-   "breaks": "Build takes a kind the game didn't name",
+   "breaks": "a solid's kind needn't be in the schema",
    "check": "level",
    "edits": [
     {
-     "file": "pkg/level/build.go",
-     "old": "\tif err := m.known(kinds); err != nil {",
-     "new": "\tif err := m.known(kinds); false && err != nil {"
+     "file": "pkg/level/level.go",
+     "old": "\tif _, ok := kinds[s.Kind]; !ok {",
+     "new": "\tif _, ok := kinds[s.Kind]; false && !ok {"
     }
    ]
   },
@@ -3485,6 +3485,114 @@
      "file": "pkg/level/build.go",
      "old": "\t\t\tworld.SetShapeUserData(segment, place)\n",
      "new": "\t\t\tworld.SetShapeUserData(segment, 0)\n"
+    }
+   ]
+  },
+  {
+   "id": "M1-B3",
+   "breaks": "a loop's kind needn't be in the schema",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\tif _, ok := kinds[l.Kind]; !ok {",
+     "new": "\tif _, ok := kinds[l.Kind]; false && !ok {"
+    }
+   ]
+  },
+  {
+   "id": "M1-O1",
+   "breaks": "an object may have id 0",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\tcase o.ID == 0:",
+     "new": "\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M1-O2",
+   "breaks": "two objects may share an id",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\tcase taken[o.ID]:",
+     "new": "\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M1-O3",
+   "breaks": "an object's type needn't be in the schema",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\tt, ok := types[o.Type]\n\tif !ok {",
+     "new": "\tt, ok := types[o.Type]\n\tif false && !ok {"
+    }
+   ]
+  },
+  {
+   "id": "M1-O4",
+   "breaks": "an object's props may be another struct",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\tif got := reflect.TypeOf(o.Props); got != t {",
+     "new": "\tif got := reflect.TypeOf(o.Props); false && got != t {"
+    }
+   ]
+  },
+  {
+   "id": "M1-O5",
+   "breaks": "props may have unknown fields",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\t\tpropsDecoder := json.NewDecoder(bytes.NewReader(o.Props))\n\t\tpropsDecoder.DisallowUnknownFields()\n",
+     "new": "\t\tpropsDecoder := json.NewDecoder(bytes.NewReader(o.Props))\n"
+    }
+   ]
+  },
+  {
+   "id": "M1-O6",
+   "breaks": "an object may lie outside Box2D's world",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\treturn inRange(o.At[0], o.At[1])",
+     "new": "\treturn nil"
+    }
+   ]
+  },
+  {
+   "id": "M1-T1",
+   "breaks": "an object type's props may be a non-struct",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/schema.go",
+     "old": "\t\tif t == nil || t.Kind() != reflect.Struct {",
+     "new": "\t\tif t == nil {"
+    }
+   ]
+  },
+  {
+   "id": "M1-T2",
+   "breaks": "two object types may share a struct",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/schema.go",
+     "old": "\t\tif other, ok := owner[t]; ok {",
+     "new": "\t\tif other, ok := owner[t]; false && ok {"
     }
    ]
   }

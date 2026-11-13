@@ -2,7 +2,9 @@ package level_test
 
 import (
 	"flag"
+	"math"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +16,20 @@ import (
 var update = flag.Bool("update", false, "rewrite the golden file from arena()")
 
 const golden = "testdata/arena.level.json"
+
+// spawn is the arena's one object type.
+type spawn struct {
+	Team int `json:"team"`
+}
+
+var schema = level.Schema{
+	Kinds: level.Kinds{
+		"wall":   {CategoryBits: 1, MaskBits: math.MaxUint64},
+		"fill":   {CategoryBits: 2, MaskBits: math.MaxUint64},
+		"bounds": {CategoryBits: 4, MaskBits: math.MaxUint64},
+	},
+	Types: level.Types{"spawn": reflect.TypeFor[spawn]()},
+}
 
 // u returns meters in units.
 func u(meters float64) int32 { return int32(meters * level.Unit) }
@@ -38,8 +54,8 @@ func convex(points ...level.Point) []level.Point {
 	return out
 }
 
-// arena is a small map with every shape: a 20 x 12 m edge, an L-shaped wall as an outline and its
-// fill, a box, a pillar and a capsule.
+// arena is a small map with every shape and a spawn per team: a 20 x 12 m edge, an L-shaped wall as an
+// outline and its fill, a box, a pillar and a capsule.
 func arena() level.Map {
 	return level.Map{
 		Solids: []level.Solid{
@@ -55,13 +71,17 @@ func arena() level.Map {
 		Edges: []level.Loop{{Src: 1, Kind: "bounds", Points: []level.Point{
 			pt(-10, -6), pt(-10, 6), pt(10, 6), pt(10, -6),
 		}}},
+		Objects: []level.Object{
+			{ID: 6, Type: "spawn", At: pt(-8, 0), Props: spawn{Team: 1}},
+			{ID: 7, Type: "spawn", At: pt(8, 0), Props: spawn{Team: 2}},
+		},
 	}
 }
 
 // The canonical bytes are pinned: Encode writes the golden file, and Decode reads it back to the map
 // that writes it again.
 func TestEncodeWritesTheGoldenFile(t *testing.T) {
-	data, err := level.Encode(arena())
+	data, err := level.Encode(arena(), schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +97,12 @@ func TestEncodeWritesTheGoldenFile(t *testing.T) {
 	if string(data) != string(want) {
 		t.Fatalf("Encode wrote\n%s\nwant %s (go test -update rewrites it)", data, golden)
 	}
-	m, err := level.Decode(want)
+	m, err := level.Decode(want, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again := level.EncodeUnchecked(m); string(again) != string(want) {
-		t.Fatalf("the decoded map encodes to\n%s", again)
+	if again, err := level.EncodeUnchecked(m); err != nil || string(again) != string(want) {
+		t.Fatalf("the decoded map encodes to\n%s (%v)", again, err)
 	}
 }
 
@@ -98,8 +118,9 @@ func reverse(points []level.Point) []level.Point {
 	return out
 }
 
-// Decode refuses a file that isn't exactly Encode's bytes for its map, and a shape Box2D wouldn't build
-// exactly as written. Each case breaks one rule of the arena.
+// Decode refuses a file that isn't exactly Encode's bytes for its map, a kind or type the schema doesn't
+// name, props that don't fit their struct, and a shape Box2D wouldn't build exactly as written. Each
+// case breaks one rule of the arena.
 func TestDecodeRefuses(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -118,6 +139,10 @@ func TestDecodeRefuses(t *testing.T) {
 		{"a third number in a point", nil, replace(`[0, 3072]`, `[0, 3072, 1]`), "canonical"},
 		{"other spacing", nil, replace(`"src": 3`, `"src":3`), "canonical"},
 		{"bytes after the map", nil, func(s string) string { return s + "{}\n" }, "after top-level value"},
+		{"a kind the schema doesn't name", func(m *level.Map) { m.Solids[2].Kind = "glass" }, nil, `unknown kind "glass"`},
+		{"a loop kind the schema doesn't name", func(m *level.Map) {
+			m.Edges[0].Kind = "glass"
+		}, nil, `unknown kind "glass"`},
 		{"a solid with no shape", func(m *level.Map) { m.Solids[2].Polygon = nil }, nil, "0 shapes"},
 		{"a solid with two shapes", func(m *level.Map) { m.Solids[3].Polygon = m.Solids[2].Polygon }, nil, "2 shapes"},
 		{"a polygon of 2 points", func(m *level.Map) {
@@ -141,20 +166,55 @@ func TestDecodeRefuses(t *testing.T) {
 		{"an edge wound counter-clockwise", func(m *level.Map) {
 			m.Edges[0].Points = reverse(m.Edges[0].Points)
 		}, nil, "wrong way"},
-		{"a kind in capitals", func(m *level.Map) { m.Solids[2].Kind = "Wall" }, nil, `kind "Wall"`},
 		{"a point past Box2D's world", func(m *level.Map) {
 			m.Edges[0].Points[2] = pt(100_001, 6)
+		}, nil, "outside Box2D's world"},
+		{"a type the schema doesn't name", func(m *level.Map) { m.Objects[0].Type = "chest" }, nil, `unknown type "chest"`},
+		{"props with an unknown field", nil, replace(`{"team":1}`, `{"team":1,"hat":2}`), "unknown field"},
+		{"props of the wrong JSON type", nil, replace(`{"team":1}`, `{"team":"red"}`), "props"},
+		{"props missing a field", nil, replace(`{"team":1}`, `{}`), "canonical"},
+		{"no props", nil, replace(`, "props": {"team":1}`, ``), "props"},
+		{"an object id 0", func(m *level.Map) { m.Objects[0].ID = 0 }, nil, "id 0, want 1 or more"},
+		{"two objects with one id", func(m *level.Map) { m.Objects[1].ID = 6 }, nil, "an earlier object has this id"},
+		{"an object past Box2D's world", func(m *level.Map) {
+			m.Objects[0].At = pt(100_001, 0)
 		}, nil, "outside Box2D's world"},
 	} {
 		m := arena()
 		if c.edit != nil {
 			c.edit(&m)
 		}
-		text := string(level.EncodeUnchecked(m))
+		data, err := level.EncodeUnchecked(m)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		text := string(data)
 		if c.text != nil {
 			text = c.text(text)
 		}
-		if _, err := level.Decode([]byte(text)); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := level.Decode([]byte(text), schema); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: got %v, want an error with %q", c.name, err, c.want)
+		}
+	}
+}
+
+// Encode refuses what Decode would, for a map made in code: an object of a type the schema doesn't name,
+// or whose props aren't its type's struct.
+func TestEncodeRefuses(t *testing.T) {
+	type twin struct {
+		Team int `json:"team"`
+	}
+	for _, c := range []struct {
+		name string
+		edit func(*level.Map)
+		want string
+	}{
+		{"a type the schema doesn't name", func(m *level.Map) { m.Objects[0].Type = "chest" }, `unknown type "chest"`},
+		{"props of another struct", func(m *level.Map) { m.Objects[0].Props = twin{Team: 1} }, "want a level_test.spawn"},
+	} {
+		m := arena()
+		c.edit(&m)
+		if _, err := level.Encode(m, schema); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v, want an error with %q", c.name, err, c.want)
 		}
 	}

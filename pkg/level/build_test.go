@@ -1,7 +1,7 @@
 package level_test
 
 import (
-	"math"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -10,12 +10,6 @@ import (
 
 	"echo_image/pkg/level"
 )
-
-var kinds = level.Kinds{
-	"wall":   {CategoryBits: 1, MaskBits: math.MaxUint64},
-	"fill":   {CategoryBits: 2, MaskBits: math.MaxUint64},
-	"bounds": {CategoryBits: 4, MaskBits: math.MaxUint64},
-}
 
 func newWorld() *box2d.World {
 	def := box2d.DefaultWorldDef()
@@ -28,7 +22,7 @@ func meters(units int32) float64 { return float64(units) / level.Unit }
 // kind's, and its geometry the file's, in meters.
 func TestBuildMakesEachShapeInFileOrder(t *testing.T) {
 	world, m := newWorld(), arena()
-	body, err := level.Build(world, m, kinds)
+	body, err := level.Build(world, m, schema)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +36,7 @@ func TestBuildMakesEachShapeInFileOrder(t *testing.T) {
 	for _, s := range m.Solids {
 		place++
 		shape, ok := at[place]
-		if !ok || world.ShapeFilter(shape) != kinds[s.Kind] {
+		if !ok || world.ShapeFilter(shape) != schema.Kinds[s.Kind] {
 			t.Fatalf("solid %d: no shape, or not kind %s's filter", place, s.Kind)
 		}
 		switch {
@@ -68,7 +62,8 @@ func TestBuildMakesEachShapeInFileOrder(t *testing.T) {
 		for i, p := range l.Points {
 			place++
 			shape, ok := at[place]
-			if !ok || world.ShapeType(shape) != box2d.ChainSegmentShape || world.ShapeFilter(shape) != kinds[l.Kind] {
+			kind := schema.Kinds[l.Kind]
+			if !ok || world.ShapeType(shape) != box2d.ChainSegmentShape || world.ShapeFilter(shape) != kind {
 				t.Fatalf("segment %d: no chain segment, or not kind %s's filter", place, l.Kind)
 			}
 			seg := world.ShapeChainSegment(shape).Segment
@@ -82,22 +77,24 @@ func TestBuildMakesEachShapeInFileOrder(t *testing.T) {
 	}
 }
 
-// Build adds nothing for a map it can't build as written: a kind the game didn't name, or a bad shape.
+// Build adds nothing for a map it can't build as written: a kind the schema doesn't name, or a bad shape.
 func TestBuildRefuses(t *testing.T) {
+	noFill := level.Schema{Kinds: maps.Clone(schema.Kinds), Types: schema.Types}
+	delete(noFill.Kinds, "fill")
 	for _, c := range []struct {
-		name  string
-		edit  func(*level.Map)
-		kinds level.Kinds
-		want  string
+		name   string
+		edit   func(*level.Map)
+		schema level.Schema
+		want   string
 	}{
-		{"an unknown kind", nil, level.Kinds{"wall": kinds["wall"], "bounds": kinds["bounds"]}, `unknown kind "fill"`},
-		{"a bad shape", func(m *level.Map) { m.Edges[0].Points = m.Edges[0].Points[:3] }, kinds, "want 4 or more"},
+		{"an unknown kind", nil, noFill, `unknown kind "fill"`},
+		{"a bad shape", func(m *level.Map) { m.Edges[0].Points = m.Edges[0].Points[:3] }, schema, "want 4 or more"},
 	} {
 		world, m := newWorld(), arena()
 		if c.edit != nil {
 			c.edit(&m)
 		}
-		if _, err := level.Build(world, m, c.kinds); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := level.Build(world, m, c.schema); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: got %v, want an error with %q", c.name, err, c.want)
 		}
 		if n := world.Counters().BodyCount; n != 0 {

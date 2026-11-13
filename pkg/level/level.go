@@ -1,7 +1,8 @@
-// Package level reads a baked map file and builds its walls into a Box2D world. A map is content, not
+// Package level reads a baked map file and builds its walls into a Box2D world. A map holds walls
+// (convex solids and chain loops) and objects (typed points, such as spawns). A map is content, not
 // state: the same bytes build the same walls on every platform, so a server and its clients agree
-// without sending geometry. It imports only Box2D and the standard library, and the game names the
-// kinds, so any game can use it.
+// without sending geometry. It imports only Box2D and the standard library, and the game's schema names
+// every kind and type, so any game can use it.
 package level
 
 import (
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"strings"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
@@ -28,11 +30,12 @@ type Point [2]int32
 // Vec2 returns p in meters.
 func (p Point) Vec2() box2d.Vec2 { return box2d.Vec2{X: meters(p[0]), Y: meters(p[1])} }
 
-// A Map is a map file's shapes, each list in file order.
+// A Map is a map file's contents, each list in file order.
 type Map struct {
 	Solids   []Solid
 	Outlines []Loop // loops that keep things out, around walls
 	Edges    []Loop // loops that keep things in, around the play area
+	Objects  []Object
 }
 
 // A Solid is one convex piece: exactly one of a polygon, a circle and a capsule. Src is the drawn
@@ -66,6 +69,15 @@ type Loop struct {
 	Points []Point `json:"points"`
 }
 
+// An Object is a typed point in the map, such as a spawn. ID is unique in the map, from 1, but a
+// rebake can change it. Props is a value of the struct the schema gives Type, not a pointer to one.
+type Object struct {
+	ID    uint32
+	Type  string
+	At    Point
+	Props any
+}
+
 // A section is one of a map's lists of loops, and the way its loops wind: 1 counter-clockwise, -1
 // clockwise.
 type section struct {
@@ -80,8 +92,11 @@ func (m Map) sections() []section {
 }
 
 // Decode reads a map file. It takes only the bytes Encode writes for the same map, so a file has one
-// meaning, and only shapes Box2D builds exactly as written.
-func Decode(data []byte) (Map, error) {
+// meaning, only kinds and types the schema names, and only shapes Box2D builds exactly as written.
+func Decode(data []byte, schema Schema) (Map, error) {
+	if err := schema.check(); err != nil {
+		return Map{}, err
+	}
 	var head struct {
 		Format int `json:"format"`
 	}
@@ -96,6 +111,12 @@ func Decode(data []byte) (Map, error) {
 		Solids   []Solid `json:"solids"`
 		Outlines []Loop  `json:"outlines"`
 		Edges    []Loop  `json:"edges"`
+		Objects  []struct {
+			ID    uint32          `json:"id"`
+			Type  string          `json:"type"`
+			At    Point           `json:"at"`
+			Props json.RawMessage `json:"props"`
+		} `json:"objects"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -103,26 +124,40 @@ func Decode(data []byte) (Map, error) {
 		return Map{}, fmt.Errorf("level: %w", err)
 	}
 	m := Map{Solids: file.Solids, Outlines: file.Outlines, Edges: file.Edges}
-	if err := m.check(); err != nil {
+	for i, o := range file.Objects {
+		t, ok := schema.Types[o.Type]
+		if !ok {
+			return Map{}, fmt.Errorf("level: objects[%d] (id %d): unknown type %q", i, o.ID, o.Type)
+		}
+		props := reflect.New(t)
+		propsDecoder := json.NewDecoder(bytes.NewReader(o.Props))
+		propsDecoder.DisallowUnknownFields()
+		if err := propsDecoder.Decode(props.Interface()); err != nil {
+			return Map{}, fmt.Errorf("level: objects[%d] (id %d): props: %w", i, o.ID, err)
+		}
+		m.Objects = append(m.Objects, Object{ID: o.ID, Type: o.Type, At: o.At, Props: props.Elem().Interface()})
+	}
+	if err := m.check(schema); err != nil {
 		return Map{}, err
 	}
-	// The decoder takes duplicate keys, keys in any case, -0, null and extra array items.
-	if !bytes.Equal(encode(m), data) {
+	// The decoder takes duplicate keys, keys in any case, -0, null, missing fields and extra array items.
+	if canonical, err := encode(m); err != nil || !bytes.Equal(canonical, data) {
 		return Map{}, errors.New("level: not in canonical form: write the file with Encode")
 	}
 	return m, nil
 }
 
 // Encode writes m as a map file, in the one form Decode reads. It refuses what Decode would.
-func Encode(m Map) ([]byte, error) {
-	if err := m.check(); err != nil {
+func Encode(m Map, schema Schema) ([]byte, error) {
+	if err := m.check(schema); err != nil {
 		return nil, err
 	}
-	return encode(m), nil
+	return encode(m)
 }
 
-// encode writes m one shape per line, keys in a fixed order. It writes what's there, checked or not.
-func encode(m Map) []byte {
+// encode writes m one shape or object per line, keys in a fixed order, props as the JSON encoder writes
+// them. It writes what's there, checked or not.
+func encode(m Map) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "{\n  \"format\": %d,\n  \"solids\": [", format)
 	for i, s := range m.Solids {
@@ -149,8 +184,18 @@ func encode(m Map) []byte {
 		}
 		end(&b, len(section.loops))
 	}
+	b.WriteString(",\n  \"objects\": [")
+	for i, o := range m.Objects {
+		props, err := json.Marshal(o.Props)
+		if err != nil {
+			return nil, fmt.Errorf("level: objects[%d] (id %d): props: %w", i, o.ID, err)
+		}
+		item(&b, i)
+		fmt.Fprintf(&b, `{"id": %d, "type": "%s", "at": %s, "props": %s}`, o.ID, o.Type, point(o.At), props)
+	}
+	end(&b, len(m.Objects))
 	b.WriteString("\n}\n")
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 
 func item(b *bytes.Buffer, i int) {
@@ -177,26 +222,35 @@ func list(points []Point) string {
 	return "[" + strings.Join(s, ", ") + "]"
 }
 
-// check returns the first shape Box2D can't build exactly as written.
-func (m Map) check() error {
+// check returns the first thing in m the schema doesn't name, or that Box2D can't build as written.
+func (m Map) check(schema Schema) error {
+	if err := schema.check(); err != nil {
+		return err
+	}
 	for i, s := range m.Solids {
-		if err := s.check(); err != nil {
+		if err := s.check(schema.Kinds); err != nil {
 			return fmt.Errorf("level: solids[%d] (src %d): %w", i, s.Src, err)
 		}
 	}
 	for _, section := range m.sections() {
 		for i, l := range section.loops {
-			if err := l.check(section.winding); err != nil {
+			if err := l.check(section.winding, schema.Kinds); err != nil {
 				return fmt.Errorf("level: %s[%d] (src %d): %w", section.name, i, l.Src, err)
 			}
+		}
+	}
+	taken := map[uint32]bool{}
+	for i, o := range m.Objects {
+		if err := o.check(schema.Types, taken); err != nil {
+			return fmt.Errorf("level: objects[%d] (id %d): %w", i, o.ID, err)
 		}
 	}
 	return nil
 }
 
-func (s Solid) check() error {
-	if err := checkKind(s.Kind); err != nil {
-		return err
+func (s Solid) check(kinds Kinds) error {
+	if _, ok := kinds[s.Kind]; !ok {
+		return fmt.Errorf("unknown kind %q", s.Kind)
 	}
 	shapes := 0
 	for _, has := range []bool{s.Polygon != nil, s.Circle != nil, s.Capsule != nil} {
@@ -258,9 +312,9 @@ func checkRound(radius int32, centers ...Point) error {
 }
 
 // check checks l as a loop that winds want: 1 counter-clockwise, -1 clockwise.
-func (l Loop) check(want int) error {
-	if err := checkKind(l.Kind); err != nil {
-		return err
+func (l Loop) check(want int, kinds Kinds) error {
+	if _, ok := kinds[l.Kind]; !ok {
+		return fmt.Errorf("unknown kind %q", l.Kind)
 	}
 	n := len(l.Points)
 	if n < 4 {
@@ -293,16 +347,24 @@ func winding(points []Point) int {
 	return sum.Sign()
 }
 
-// checkKind takes 1 to 32 lowercase letters, digits and underscores, starting with a letter.
-func checkKind(kind string) error {
-	ok := len(kind) >= 1 && len(kind) <= 32 && kind[0] >= 'a' && kind[0] <= 'z'
-	for _, r := range kind {
-		ok = ok && (r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_')
+// check checks o's ID is from 1 and not taken, its type is in types with props of its struct, and it
+// lies in range. It marks the ID taken.
+func (o Object) check(types Types, taken map[uint32]bool) error {
+	switch {
+	case o.ID == 0:
+		return errors.New("id 0, want 1 or more")
+	case taken[o.ID]:
+		return errors.New("an earlier object has this id")
 	}
+	taken[o.ID] = true
+	t, ok := types[o.Type]
 	if !ok {
-		return fmt.Errorf("kind %q: want a-z, 0-9 and _, starting with a letter, up to 32", kind)
+		return fmt.Errorf("unknown type %q", o.Type)
 	}
-	return nil
+	if got := reflect.TypeOf(o.Props); got != t {
+		return fmt.Errorf("props are a %v, want a %v", got, t)
+	}
+	return inRange(o.At[0], o.At[1])
 }
 
 // inRange checks each value, in units, is within Box2D's world: box2d.Huge meters.

@@ -1,7 +1,7 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 and 1 are built (the mover's chain rule, and the
-> core in `pkg/level`). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> **A proposal, not the source of truth.** Steps 0, 1 and 1b are built (the mover's chain rule, and
+> the core in `pkg/level`). Code, [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -137,7 +137,7 @@ determinism checks (hard-wired to `pkg/box2d`) must add the package. [code]
 | `solids` | Wall pieces. Each has `src` (the drawn object it came from), `kind`, and one shape: polygon (3-8 points), circle or capsule. |
 | `outlines` | Closed loops around walls, counter-clockwise: they keep things out. Each has `src`, `kind` and its points. |
 | `edges` | Closed loops around the play area, clockwise: they keep things in. |
-| `objects` | Placed points. Each has `id`, `type`, a position and `props`. Comes in step 1b. |
+| `objects` | Typed points, such as spawns. Each has `id` (unique in the map), `type`, `at` and `props`. |
 
 **Rules.**
 - Every coordinate is a whole number. One unit is 1/1024 m.
@@ -247,7 +247,8 @@ runtime.
 ### 7.5 Kinds
 
 **What.** Each shape has one kind name. The game hands the library a table: name → category bits
-and mask bits. The library copies the bits. It never reads them.
+and mask bits. The library copies the bits. It never reads them. The kind table and the object
+types (7.6) together are the game's schema (`level.Schema`), which Decode, Encode and Build all take.
 
 **In echo_image.** `wall` and `bounds`, from `interact`, with mask = all bits. That is today's rule.
 
@@ -259,8 +260,10 @@ way: contents on surfaces, masks on queries. [R4]
 
 ### 7.6 Objects
 
-**What.** An object is `{id, type, position, props}`. The game registers a Go struct per type.
-Props decode strictly into it. The game reads typed lists.
+**What.** An object is `{id, type, at, props}`. The game registers a Go struct per type
+(`level.Types{"spawn": reflect.TypeFor[Spawn]()}`), one struct per type. Props decode strictly into
+it, and are written as Go's JSON encoder writes that struct, so every field is in the file. The game
+reads typed lists: `level.Objects[Spawn](m)` returns the spawns in file order. Built in step 1b.
 
 **In echo_image, day one.** One type: `spawn {team}`. The dev spawn system takes positions from
 the map. Nothing else.
@@ -427,7 +430,7 @@ All in echo_image (7.1), one reviewable step at a time.
 |---|---|---|
 | 0 | mover | **Done.** The mover meets chains as Box2D does, so outlines don't hook (7.4) |
 | 1 | `pkg/level` | **Done.** The core: format, strict decode and encode, kinds, build into Box2D |
-| 1b | `pkg/level` | Objects and their types |
+| 1b | `pkg/level` | **Done.** Objects and their types, and the game's schema |
 | 2 | `pkg/levelstate` | The Cardinal side: component, reconcile, `Changed` event |
 | 3 | game | `arena` package. An open default map (far edge, two spawns where they are today). Cardinal side registered first. Map identity in body_sync |
 | 4 | game | **One change:** movement, shots and the predictor use the level world. Tie rule. Wall tests move, with a map builder for tests. Recordings regain walls |
