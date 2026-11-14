@@ -403,7 +403,7 @@ func TestEchoShotHitsLive(t *testing.T) {
 // Shots pass allies: alice's shot flies through carol, her teammate 2 m in front of her, and carol's
 // Echo, where she drew them.
 func TestShotPassesThroughAllies(t *testing.T) {
-	w := cardinal.NewTestWorld(t, withContent(t, twoVsTwo))
+	w := cardinal.NewTestWorld(t, withFiles(twoVsTwo(t)))
 	alice, _ := claim(t, w)
 	join(t, w, "carol")
 	from := yourBody(t, bodiesFor(t, w, "alice"))
@@ -586,10 +586,10 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 // content: a 2v2, and a shot that passes Bodies).
 func TestShotMeetsAnEchoTheTickItSpawns(t *testing.T) {
 	fx := &emitter{}
-	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, twoVsTwo, map[string]string{
+	w := cardinal.NewTestWorld(t, withEmitter(withFiles(twoVsTwo(t, map[string]string{
 		"projectile/tuning.json": `{"shots": {"lance": {"speed": 15, "range": 20, "radius": 0.15, "damage": 10,
 			"meets": [{"kinds": ["body"], "do": "pass"}]}}}`,
-	}), fx))
+	})), fx))
 	claim(t, w)
 	b := yourBody(t, bodiesFor(t, w, "bob"))
 	// carol joins at (-3, 0), and her Echo spawns there as bob's lance flies up through her Body.

@@ -4,11 +4,14 @@
 package arena
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"math"
 	"path"
 	"reflect"
+	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
@@ -16,9 +19,31 @@ import (
 	"echo_image/shards/game/internal/interact"
 )
 
-// Spawn is where a Body of Team starts: a map object of type spawn.
+// Spawn is where a Body of Team starts: a map object of type spawn. A map holds one for each player.
 type Spawn struct {
 	Team uint8 `json:"team"`
+}
+
+// Spawns returns m's spawn points by team, each team's in file order: its players take them in turn.
+func Spawns(m level.Map) map[uint8][]box2d.Vec2 {
+	spawns := map[uint8][]box2d.Vec2{}
+	for _, s := range level.Objects[Spawn](m) {
+		spawns[s.Props.Team] = append(spawns[s.Props.Team], s.At.Vec2())
+	}
+	return spawns
+}
+
+// CheckSpawns returns an error unless m has a spawn for each player, where players is how many start on
+// each team.
+func CheckSpawns(m level.Map, players map[uint8]int) error {
+	spawns := Spawns(m)
+	var errs []error
+	for _, team := range slices.Sorted(maps.Keys(players)) {
+		if have, want := len(spawns[team]), players[team]; have < want {
+			errs = append(errs, fmt.Errorf("arena: team %d has spawns for %d of its %d players", team, have, want))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Schema is what the game's maps may hold: walls and the edge, by their interact kinds, and spawns. Like

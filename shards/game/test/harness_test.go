@@ -274,21 +274,30 @@ func join(t *testing.T, w *cardinal.TestWorld, player string) *client {
 	return c
 }
 
-// twoVsTwo is a 2v2 dev roster (test content). After claim, carol joins alice's team 2 m in front of
-// her, and dave bob's.
-var twoVsTwo = map[string]string{"player/tuning.json": `{"dev_spawns": [
-	{"team": 0, "x": -5, "y": 0}, {"team": 1, "x": 5, "y": 0}, {"team": 0, "x": -3, "y": 0}, {"team": 1, "x": 3, "y": 0}]}`}
+// twoVsTwo is a 2v2 (test content), with patches on top: a dev roster of four, on a map where carol
+// starts on alice's team 2 m in front of her, and dave on bob's 2 m in front of him. After claim, carol
+// and dave join.
+func twoVsTwo(t testing.TB, patches ...map[string]string) content.Overlay {
+	t.Helper()
+	roster := map[string]string{"player/tuning.json": `{"dev_spawns": [{"team": 0}, {"team": 1}, {"team": 0},
+		{"team": 1}]}`}
+	return onMap(t, patched(t, append([]map[string]string{roster}, patches...)...), level.Map{Objects: []level.Object{
+		spawnAt(0, -5, 0), spawnAt(0, -3, 0), spawnAt(1, 5, 0), spawnAt(1, 3, 0),
+	}})
+}
 
 // skirmish is a 3v3 that fights on (test content: no Echo dies). Each step, every player walks up or
 // down and holds fire at the other side.
 func skirmish(tb testing.TB) (step func()) {
 	tb.Helper()
-	w := cardinal.NewTestWorld(tb, withContent(tb, map[string]string{
-		"player/tuning.json": `{"dev_spawns": [{"team": 0, "x": -5, "y": 0}, {"team": 1, "x": 5, "y": 0},
-			{"team": 0, "x": -5, "y": 3}, {"team": 1, "x": 5, "y": 3}, {"team": 0, "x": -5, "y": -3},
-			{"team": 1, "x": 5, "y": -3}]}`,
+	files := patched(tb, map[string]string{
+		"player/tuning.json": `{"dev_spawns": [{"team": 0}, {"team": 1}, {"team": 0}, {"team": 1}, {"team": 0},
+			{"team": 1}]}`,
 		"echo/tuning.json": `{"max_hp": 1e9}`,
-	}))
+	})
+	w := cardinal.NewTestWorld(tb, withFiles(onMap(tb, files, level.Map{Objects: []level.Object{
+		spawnAt(0, -5, 0), spawnAt(0, -5, 3), spawnAt(0, -5, -3), spawnAt(1, 5, 0), spawnAt(1, 5, 3), spawnAt(1, 5, -3),
+	}})))
 	var players []*client
 	for _, id := range []string{"a1", "b1", "a2", "b2", "a3", "b3"} {
 		players = append(players, &client{w: w, id: id, session: 1, back: drawLag})
@@ -423,6 +432,8 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"default map not listed", "arena/tuning.json", `{"default_map": "cave"}`, `default map "cave"`},
 		{"listed map with no file", "arena/tuning.json", `{"maps": ["open", "cave"]}`, "cave.level.json"},
 		{"map that doesn't decode", "arena/open.level.json", `{"format": 2}`, "map open: level: format 2"},
+		{"map short of spawns", "player/tuning.json", `{"dev_spawns": [{"team": 0}, {"team": 0}]}`,
+			"map open: arena: team 0 has spawns for 1 of its 2 players"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			err := shard.CheckContent(patched(t, map[string]string{c.file: c.patch}))
@@ -504,13 +515,51 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 	}
 }
 
-// spawnOf is where the dev roster's Body i starts, and its radius, known before boot so a test can put
-// its map's walls around it. Players claim Bodies in roster order: alice's is 0, bob's 1.
+// spawnOf is where the dev roster's Body i starts on the shipped default map, and its radius, known
+// before boot so a test can put its map's walls around it. Players claim Bodies in roster order: alice's
+// is 0, bob's 1.
 func spawnOf(t *testing.T, i int) (box2d.Vec2, float64) {
 	t.Helper()
 	tuning := tuningOf[player.MovementTuning](t)
-	d := tuning.DevSpawns[i]
-	return box2d.Vec2{X: d.X, Y: d.Y}, tuning.Champions[tuning.DevChampion].Radius
+	team, before := tuning.DevSpawns[i].Team, 0 // Bodies of its team before it
+	for _, d := range tuning.DevSpawns[:i] {
+		if d.Team == team {
+			before++
+		}
+	}
+	return arena.Spawns(shippedMap(t))[team][before], tuning.Champions[tuning.DevChampion].Radius
+}
+
+// shippedMap is the shipped default map.
+func shippedMap(t *testing.T) level.Map {
+	t.Helper()
+	tuning := tuningOf[arena.ArenaTuning](t)
+	files, err := tuning.Files(content.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := level.Decode(files[tuning.DefaultMap], arena.Schema())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// shippedSpawns are the shipped default map's spawns, for a test map where Bodies start as they do there.
+func shippedSpawns(t *testing.T) []level.Object {
+	t.Helper()
+	var spawns []level.Object
+	for _, o := range shippedMap(t).Objects {
+		if _, ok := o.Props.(arena.Spawn); ok {
+			spawns = append(spawns, o)
+		}
+	}
+	return spawns
+}
+
+// spawnAt is a spawn of team at (x, y), for a test map.
+func spawnAt(team uint8, x, y float64) level.Object {
+	return level.Object{Type: "spawn", At: mapPoint(x, y), Props: arena.Spawn{Team: team}}
 }
 
 // wall is a box wall that blocks Bodies and shots, for a test map.
@@ -552,6 +601,7 @@ func mapLoop(kind string, points [][2]float64) level.Loop {
 func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
 	t.Helper()
 	m.Solids, m.Outlines, m.Edges = slices.Clone(m.Solids), slices.Clone(m.Outlines), slices.Clone(m.Edges)
+	m.Objects = slices.Clone(m.Objects)
 	src := uint32(0)
 	for i := range m.Solids {
 		src++
@@ -563,6 +613,10 @@ func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
 			loops[i].Src = src
 		}
 	}
+	for i := range m.Objects {
+		src++
+		m.Objects[i].ID = src
+	}
 	data, err := level.Encode(m, arena.Schema())
 	if err != nil {
 		t.Fatal(err)
@@ -573,19 +627,20 @@ func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
 	return files
 }
 
-// duelOn is duel on a test map of solids.
+// duelOn is duel on a test map of solids, with the shipped map's spawns.
 func duelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client) {
 	t.Helper()
-	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, level.Map{Solids: solids})))
+	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, level.Map{Solids: solids,
+		Objects: shippedSpawns(t)})))
 	alice, bob = claim(t, w)
 	return w, alice, bob
 }
 
-// fxDuelOn is fxDuel on a test map of solids.
+// fxDuelOn is fxDuel on a test map of solids, with the shipped map's spawns.
 func fxDuelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client, fx *emitter) {
 	t.Helper()
 	fx = &emitter{}
-	files := onMap(t, patched(t, effectKinds), level.Map{Solids: solids})
+	files := onMap(t, patched(t, effectKinds), level.Map{Solids: solids, Objects: shippedSpawns(t)})
 	w = cardinal.NewTestWorld(t, withEmitter(withFiles(files), fx))
 	alice, bob = claim(t, w)
 	return w, alice, bob, fx

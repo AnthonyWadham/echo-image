@@ -422,6 +422,19 @@ func TestOthersSeeChampionsAndEffectKinds(t *testing.T) {
 	}
 }
 
+// Each team's Bodies start on its spawns in the map, one each, in file order.
+func TestBodiesStartOnTheirTeamsSpawns(t *testing.T) {
+	w := cardinal.NewTestWorld(t, withFiles(twoVsTwo(t)))
+	claim(t, w)
+	join(t, w, "carol")
+	join(t, w, "dave")
+	for name, x := range map[string]float64{"alice": -5, "bob": 5, "carol": -3, "dave": 3} {
+		if b := yourBody(t, bodiesFor(t, w, name)); b.X != x || b.Y != 0 {
+			t.Errorf("%s starts at (%v, %v), want (%v, 0)", name, b.X, b.Y, x)
+		}
+	}
+}
+
 // body_sync names the live map, so a client draws and predicts with its file: here a second map, which
 // content makes live at boot.
 func TestBodySyncNamesTheLiveMap(t *testing.T) {

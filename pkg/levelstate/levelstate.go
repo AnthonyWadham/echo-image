@@ -1,6 +1,6 @@
 // Package levelstate keeps one live map in a Cardinal world. State names it. Memory holds every map the
-// build ships, each decoded, checked and built into a Box2D world of its own at boot, so a change is a
-// swap.
+// build ships, each decoded, built into a Box2D world of its own and checked by the game's rules at boot,
+// so a change is a swap.
 //
 // One system runs at Init and first in every tick. It takes a requested change, refuses a map the build
 // lacks, takes the build's file for the live map, and points memory at it. When a tick changes the live
@@ -49,11 +49,14 @@ type Changed struct {
 // Name is the system event name.
 func (Changed) Name() string { return "levelstate_changed" }
 
-// Config is a game's maps: each file by map ID, the schema they're read with, and the map live at boot.
+// Config is a game's maps: each file by map ID, the schema they're read with, the map live at boot, and
+// the game's rules for a map.
 type Config struct {
 	Maps    map[string][]byte
 	Schema  level.Schema
 	Default string
+	// Check runs on each map once it's built, and refuses it with an error. Nil checks nothing.
+	Check func(m level.Map, world *box2d.World) error
 }
 
 // Plugin keeps the live map of one world.
@@ -71,8 +74,9 @@ type built struct {
 	hash  [sha256.Size]byte
 }
 
-// NewPlugin decodes each map and builds it into a Box2D world of its own. It returns the first error, in
-// ID order: a map with no ID, a map that doesn't decode, or a default that isn't one of the maps.
+// NewPlugin decodes each map, builds it into a Box2D world of its own and checks it. It returns the first
+// error, in ID order: a map with no ID, a map that doesn't decode or that Check refuses, or a default that
+// isn't one of the maps.
 func NewPlugin(config Config) (*Plugin, error) {
 	p := &Plugin{maps: make(map[string]*built, len(config.Maps)), defaultID: config.Default}
 	for _, id := range slices.Sorted(maps.Keys(config.Maps)) {
@@ -88,6 +92,11 @@ func NewPlugin(config Config) (*Plugin, error) {
 		world := box2d.NewWorld(&worldDef)
 		if _, err := level.Build(world, m, config.Schema); err != nil {
 			return nil, fmt.Errorf("levelstate: map %s: %w", id, err)
+		}
+		if config.Check != nil {
+			if err := config.Check(m, world); err != nil {
+				return nil, fmt.Errorf("levelstate: map %s: %w", id, err)
+			}
 		}
 		p.maps[id] = &built{m: m, world: world, hash: sha256.Sum256(data)}
 	}

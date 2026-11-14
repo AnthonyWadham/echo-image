@@ -22,12 +22,19 @@ type MovementTuning struct {
 	DevSpawns        []DevSpawn             `json:"dev_spawns"`   // the Bodies DevSpawnSystem makes
 }
 
-// DevSpawn is a Body DevSpawnSystem makes at world init.
+// DevSpawn is a Body DevSpawnSystem makes at world init. Where it starts is the map's.
 type DevSpawn struct {
-	Nickname string  `json:"nickname"`
-	Team     uint8   `json:"team"`
-	X        float64 `json:"x"`
-	Y        float64 `json:"y"`
+	Nickname string `json:"nickname"`
+	Team     uint8  `json:"team"`
+}
+
+// DevPlayers is how many Bodies DevSpawnSystem makes on each team.
+func (t MovementTuning) DevPlayers() map[uint8]int {
+	players := map[uint8]int{}
+	for _, d := range t.DevSpawns {
+		players[d.Team]++
+	}
+	return players
 }
 
 // ChampionDef is a champion's Body.

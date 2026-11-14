@@ -93,7 +93,7 @@ func TestHoldingFireShootsOncePerCooldown(t *testing.T) {
 }
 
 func TestCooldownGoesOnlyToAllies(t *testing.T) {
-	w := cardinal.NewTestWorld(t, withContent(t, twoVsTwo))
+	w := cardinal.NewTestWorld(t, withFiles(twoVsTwo(t)))
 	alice, _ := claim(t, w)
 	join(t, w, "carol") // alice's team
 	aliceBody := yourBody(t, bodiesFor(t, w, "alice"))

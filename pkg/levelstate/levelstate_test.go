@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
 	"echo_image/pkg/level"
@@ -108,6 +109,14 @@ func TestNewPluginRefuses(t *testing.T) {
 		{"a map with no ID", func(c *levelstate.Config) { c.Maps[""] = c.Maps["open"] }, "a map has no ID"},
 		{"a map that doesn't decode", func(c *levelstate.Config) { c.Maps["broken"] = []byte("{}") }, "map broken: "},
 		{"a default that isn't a map", func(c *levelstate.Config) { c.Default = "cave" }, `default map "cave"`},
+		{"a map the game's rules refuse", func(c *levelstate.Config) {
+			c.Check = func(m level.Map, world *box2d.World) error {
+				if len(m.Solids) > 0 {
+					return fmt.Errorf("%d shapes, and a solid", world.Counters().ShapeCount)
+				}
+				return nil
+			}
+		}, "map pillar: 5 shapes, and a solid"},
 	} {
 		cfg := config(t)
 		c.edit(&cfg)

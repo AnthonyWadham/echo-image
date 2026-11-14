@@ -3830,8 +3830,8 @@
    "edits": [
     {
      "file": "shards/game/shard/catalog.go",
-     "old": "\tc.levels, errs[7] = loadLevels(fsys)\n",
-     "new": "\tc.levels, _ = loadLevels(fsys)\n"
+     "old": "\tc.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers())\n",
+     "new": "\tc.levels, _ = loadLevels(fsys, c.movement.DevPlayers())\n"
     }
    ]
   },
@@ -3916,6 +3916,78 @@
      "file": "client/src/game/player/predictor.ts",
      "old": "      Map: sync.MapID,\n",
      "new": "      Map: 'open',\n"
+    }
+   ]
+  },
+  {
+   "id": "M5-S1",
+   "breaks": "a team's Bodies all start on its first spawn",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/spawn_system.go",
+     "old": "\t\tat := spawns[d.Team][taken[d.Team]]\n",
+     "new": "\t\tat := spawns[d.Team][0]\n"
+    }
+   ]
+  },
+  {
+   "id": "M5-S2",
+   "breaks": "Bodies start on team 0's spawns",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/spawn_system.go",
+     "old": "\t\tat := spawns[d.Team][taken[d.Team]]\n",
+     "new": "\t\tat := spawns[0][taken[d.Team]]\n"
+    }
+   ]
+  },
+  {
+   "id": "M5-A1",
+   "breaks": "a team's spawns go in reverse file order",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/arena.go",
+     "old": "\t\tspawns[s.Props.Team] = append(spawns[s.Props.Team], s.At.Vec2())\n",
+     "new": "\t\tspawns[s.Props.Team] = append([]box2d.Vec2{s.At.Vec2()}, spawns[s.Props.Team]...)\n"
+    }
+   ]
+  },
+  {
+   "id": "M5-C1",
+   "breaks": "the boot skips the game's rules",
+   "check": "go",
+   "edits": [
+    {
+     "file": "pkg/levelstate/levelstate.go",
+     "old": "\t\tif config.Check != nil {\n",
+     "new": "\t\tif false && config.Check != nil {\n"
+    }
+   ]
+  },
+  {
+   "id": "M5-C2",
+   "breaks": "a map one spawn short boots",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/arena.go",
+     "old": "have < want {",
+     "new": "have < want-1 {"
+    }
+   ]
+  },
+  {
+   "id": "M5-D1",
+   "breaks": "the roster counts one player per team",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/tuning.go",
+     "old": "\t\tplayers[d.Team]++\n",
+     "new": "\t\tplayers[d.Team] = 1\n"
     }
    ]
   }

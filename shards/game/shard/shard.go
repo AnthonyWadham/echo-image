@@ -82,9 +82,10 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// Physics plugin: PreUpdate step produces contact/trigger events each tick. Kept for queries.
 	world.RegisterPlugin(physicsPlugin)
 
-	// Players: dev scaffolding spawns two players (a 1v1) at init. Replace with command-driven
-	// spawning when matchmaking/clients land.
-	world.RegisterSystem(&player.DevSpawnSystem{Tuning: c.movement}, cardinal.WithHook(cardinal.Init))
+	// Players: dev scaffolding spawns the dev roster (a 1v1) at init, on the live map's spawns. Replace
+	// with command-driven spawning when matchmaking/clients land.
+	world.RegisterSystem(&player.DevSpawnSystem{Tuning: c.movement, Levels: c.levels},
+		cardinal.WithHook(cardinal.Init))
 
 	// Echo spawn (Update): give a newly-claimed Body its one Echo carrying its Health. BodyClaimed from
 	// PreUpdate is still visible (system events clear at tick end). Claim-triggered, not Init — see

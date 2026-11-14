@@ -1,8 +1,9 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 to 4 are built (the mover's chain rule, the core
+> **A proposal, not the source of truth.** Steps 0 to 5 are built (the mover's chain rule, the core
 > in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
-> map, and movement, shots and the predictor on the map's world). Code, [`CLAUDE.md`](../../CLAUDE.md)
+> map, movement, shots and the predictor on the map's world, and spawns from the map). Code,
+> [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
 > still hold unless §12 here says otherwise.
@@ -271,7 +272,10 @@ it, and are written as Go's JSON encoder writes that struct, so every field is i
 reads typed lists: `level.Objects[Spawn](m)` returns the spawns in file order. Built in step 1b.
 
 **In echo_image, day one.** One type: `spawn {team}`. The dev spawn system takes positions from
-the map. Nothing else.
+the map. Nothing else. Built in step 5: a map holds one spawn per player, and each team's Bodies
+take its spawns in file order, as team games' maps do (one start per slot). The boot fails if any
+map has fewer spawns for a team than the roster puts on it. Picking a free spawn, as engines do for
+a respawn or a late join, comes with the first of those.
 
 **Later, with the first map-placed entity.** A spawn hook (type → constructor), and a tag on what
 it spawned, so a map change removes exactly that set. Quantum does this. [R1] Designed, not built.
@@ -446,7 +450,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 2 | `pkg/levelstate` | **Done.** The Cardinal side: component, reconcile, `Changed` event |
 | 3 | game | **Done.** `arena` package. An open default map (a 100 x 100 m edge, two spawns where they are today). Cardinal side registered first. Map ID in body_sync |
 | 4 | game | **Done.** One change: movement, shots and the predictor use the live map's world. Wall tests declare maps before boot (`onMap`). The recording meets walls, the edge's joints, a landing and a range end, at both rates. No tie rule yet (7.4) |
-| 5 | game | Spawns come from the map |
+| 5 | game | **Done.** Spawns come from the map: one per player, in file order per team. The boot checks every map has enough, through the plugin's rules hook (`Config.Check`), which step 6 fills |
 | 6 | game | Game rules, with the library's rule helpers (a flood fill over Box2D queries). A failed landing is logged |
 | 7 | client | wasm export, greybox view, camera |
 | 8 | `pkg/level/bake` | Baker, Tiled reader, project generator |
@@ -554,7 +558,7 @@ our own.
 | Catalog and wiring | `shards/game/shard/catalog.go`, `shards/game/shard/shard.go` |
 | SimVersion | `sim.go`, `sim_test.go` |
 | Kind bits | `shards/game/internal/interact/interact.go` |
-| Dev spawns | `shards/game/internal/player/spawn_system.go`, `content/player/tuning.json` |
+| Dev spawns | `shards/game/internal/player/spawn_system.go`, `content/player/tuning.json` (the roster), `internal/arena/arena.go` (`Spawns`, `CheckSpawns`) |
 | Test maps | `shards/game/test/harness_test.go` (`onMap`, `mapBox`, `mapLoop`), `recordedMap` in `prediction_test.go` |
 
 **Proposed**

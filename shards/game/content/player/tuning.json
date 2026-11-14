@@ -9,7 +9,7 @@
   },
   "dev_champion": "starter",
   "dev_spawns": [
-    {"nickname": "Player One", "team": 0, "x": -5, "y": 0},
-    {"nickname": "Player Two", "team": 1, "x": 5, "y": 0}
+    {"nickname": "Player One", "team": 0},
+    {"nickname": "Player Two", "team": 1}
   ]
 }

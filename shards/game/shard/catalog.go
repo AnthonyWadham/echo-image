@@ -7,6 +7,9 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/argus-labs/world-engine/pkg/box2d"
+
+	"echo_image/pkg/level"
 	"echo_image/pkg/levelstate"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
@@ -44,15 +47,16 @@ func loadCatalog(fsys fs.FS) (catalog, error) {
 	c.effects, errs[4] = content.Load[effect.EffectTuning](fsys)
 	c.areas, errs[5] = content.Load[area.AreaTuning](fsys)
 	c.history, errs[6] = content.Load[history.HistoryTuning](fsys)
-	c.levels, errs[7] = loadLevels(fsys)
+	c.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers())
 	if err := errors.Join(errs[:]...); err != nil {
 		return c, err
 	}
 	return c, c.lineUp()
 }
 
-// loadLevels decodes each map arena/tuning.json lists and builds it into a Box2D world of its own.
-func loadLevels(fsys fs.FS) (*levelstate.Plugin, error) {
+// loadLevels decodes each map arena/tuning.json lists, builds it into a Box2D world of its own, and checks
+// it holds a spawn for each player the dev roster puts on each team.
+func loadLevels(fsys fs.FS, players map[uint8]int) (*levelstate.Plugin, error) {
 	t, err := content.Load[arena.ArenaTuning](fsys)
 	if err != nil {
 		return nil, err
@@ -61,7 +65,8 @@ func loadLevels(fsys fs.FS) (*levelstate.Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	return levelstate.NewPlugin(levelstate.Config{Maps: files, Schema: arena.Schema(), Default: t.DefaultMap})
+	return levelstate.NewPlugin(levelstate.Config{Maps: files, Schema: arena.Schema(), Default: t.DefaultMap,
+		Check: func(m level.Map, _ *box2d.World) error { return arena.CheckSpawns(m, players) }})
 }
 
 // lineUp checks the IDs one file names in another: each ability's shots and effect kinds, and each

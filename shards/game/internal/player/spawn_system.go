@@ -4,6 +4,8 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/levelstate"
+	"echo_image/shards/game/internal/arena"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	historycomp "echo_image/shards/game/internal/history/component"
 	"echo_image/shards/game/internal/interact"
@@ -32,15 +34,20 @@ type bodyRow struct {
 }
 
 // DevSpawnSystem makes the dev roster's Bodies (content: dev_spawns) at world init, numbered from 1 in
-// order. Players claim them in that order. This is dev scaffolding — real spawning will be
-// command-driven (matchmaking / client join). Replace this system when that lands.
+// order, on the live map's spawns: each team's Bodies take its spawns in file order, one each (the boot
+// checks every map has enough). Players claim them in that order. This is dev scaffolding — real
+// spawning will be command-driven (matchmaking / client join). Replace this system when that lands.
 type DevSpawnSystem struct {
 	Tuning MovementTuning
+	Levels *levelstate.Plugin
 }
 
 func (s *DevSpawnSystem) Run(w *cardinal.World) {
+	spawns, taken := arena.Spawns(s.Levels.Map()), map[uint8]int{}
 	for i, d := range s.Tuning.DevSpawns {
-		spawnBody(w, s.Tuning, s.Tuning.DevChampion, uint32(i+1), d.Nickname, d.Team, physics2d.Vec2{X: d.X, Y: d.Y})
+		at := spawns[d.Team][taken[d.Team]]
+		taken[d.Team]++
+		spawnBody(w, s.Tuning, s.Tuning.DevChampion, uint32(i+1), d.Nickname, d.Team, physics2d.Vec2{X: at.X, Y: at.Y})
 	}
 }
 

@@ -186,7 +186,7 @@ func TestEffectsAreDeterministic(t *testing.T) {
 	spawn, _ := spawnOf(t, 0)
 	files := onMap(t, patched(t, effectKinds), level.Map{Solids: []level.Solid{
 		wall(box2d.Vec2{X: spawn.X + 2, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5}),
-	}})
+	}, Objects: shippedSpawns(t)})
 	cardinal.RequireDeterministic(t, func(world *cardinal.World) {
 		fx = &emitter{}
 		withEmitter(withFiles(files), fx)(world)

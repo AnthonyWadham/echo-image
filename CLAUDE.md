@@ -106,7 +106,8 @@ shards/game/
                                   by rules), tuning.go (area kinds), doc.go
       component/  package component   Area — area's leaf; a constructor gives its entity an area
     arena/    package arena       the game's side of its maps: Schema (the kinds wall and bounds, the spawn
-                                  type) and ArenaTuning (the maps that ship) — no Cardinal import
+                                  type), Spawns and CheckSpawns, and ArenaTuning (the maps that ship)
+                                  — no Cardinal import
     player/   package player      player Body: spawn_system.go (the one Body constructor),
                                   input_system.go, movement_system.go, input_command.go,
                                   sync_system.go, tuning.go (champions)
@@ -170,7 +171,7 @@ the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feat
 it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
 team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
 ability/cast, combat/component, echo/component, projectile/component, history/component,
-pkg/levelstate}`, `arena → {interact, pkg/level}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
+pkg/levelstate, arena}`, `arena → {interact, pkg/level}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past,
 pkg/levelstate}`, `history →
@@ -586,8 +587,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
   one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
-  (`dev_spawns` in `content/player/tuning.json`, e.g. `twoVsTwo`) and adds them with `join`. Players
-  claim free Bodies in roster order.
+  (`dev_spawns` in `content/player/tuning.json`), gives it a map with a spawn for each (`twoVsTwo`),
+  and adds them with `join`. Players claim free Bodies in roster order.
 - **The definition TYPE lives in the feature package that owns it** (e.g. `projectile.ProjectileTuning`),
   **never a central `types/` grab-bag.** Shared sim code keeps the type in its own package
   (`flight.Tuning`), and the feature names it with an alias, or embeds it to add a check
@@ -601,6 +602,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Map files are decoded only by the level library** (`pkg/level`), never `content.Load`.
   `content/arena/tuning.json` lists the maps that ship (`content/arena/<id>.level.json`) and the
   default; the catalog builds each into the `levelstate` plugin, so a bad map fails the boot.
+- **A map holds a spawn for each player.** Each team's Bodies take its spawns in file order, one each
+  (`arena.Spawns`), as team games' maps do. The boot fails if any map has fewer spawns for a team than
+  the dev roster puts on it: the game's rules run on every map through `levelstate.Config.Check`.
 - **Content is code.** It is embedded and hashed into `SimVersion`, so a shard resumes a snapshot on
   the content its build carries; changing content is a new build.
 - **Prefer typed per-feature config structs** over a single stringly-typed global settings bag
