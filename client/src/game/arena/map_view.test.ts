@@ -2,20 +2,24 @@ import { Box3, Group, LineLoop, Mesh } from 'three'
 import type { Object3D } from 'three'
 import { describe, expect, test } from 'vitest'
 import { MapView, WallHeight } from './map_view'
-import type { MapShapes } from './map_view'
+import type { MapFile, MapShapes } from './map_view'
 
-// A square wall, a round one and a capsule along x, the square outlined, inside a 20 x 20 m edge.
-const shapes: MapShapes = {
-  Solids: [
-    { Polygon: [{ X: 1, Y: 1 }, { X: 2, Y: 1 }, { X: 2, Y: 2 }, { X: 1, Y: 2 }] },
-    { Circle: { Center: { X: -3, Y: 4 }, Radius: 0.5 } },
-    { Capsule: { Center1: { X: 3, Y: -2 }, Center2: { X: 6, Y: -2 }, Radius: 0.25 } },
+// A square wall, a round one and a capsule along x, the square outlined, inside a 20 x 20 m edge: in
+// units, 1024 to a meter.
+const file: MapFile = {
+  solids: [
+    { polygon: [[1024, 1024], [2048, 1024], [2048, 2048], [1024, 2048]] },
+    { circle: { center: [-3072, 4096], radius: 512 } },
+    { capsule: { center1: [3072, -2048], center2: [6144, -2048], radius: 256 } },
   ],
-  Outlines: [[{ X: 1, Y: 1 }, { X: 2, Y: 1 }, { X: 2, Y: 2 }, { X: 1, Y: 2 }]],
-  Edges: [[{ X: -10, Y: -10 }, { X: -10, Y: 10 }, { X: 10, Y: 10 }, { X: 10, Y: -10 }]],
-  Bounds: { min: { x: -10, y: -10 }, max: { x: 10, y: 10 } },
+  outlines: [{ points: [[1024, 1024], [2048, 1024], [2048, 2048], [1024, 2048]] }],
+  edges: [{ points: [[-10240, -10240], [-10240, 10240], [10240, 10240], [10240, -10240]] }],
 }
-const maps: Record<string, MapShapes> = { walls: shapes, open: { ...shapes, Solids: [], Outlines: [] } }
+const shapes: MapShapes = { File: file, Bounds: { min: { x: -10, y: -10 }, max: { x: 10, y: 10 } } }
+const maps: Record<string, MapShapes> = {
+  walls: shapes,
+  open: { ...shapes, File: { ...file, solids: [], outlines: [] } },
+}
 
 // The box o fills, as its lowest and highest corners: to 6 places, since three.js keeps 32-bit floats.
 const box = (o: Object3D) => {

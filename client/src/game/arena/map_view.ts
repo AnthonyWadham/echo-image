@@ -11,22 +11,32 @@ import {
 } from 'three'
 import type { Object3D } from 'three'
 import { lit } from '../../engine/render/color'
-import type { Spot } from '../../engine/render/entity_views'
 import type { Bounds } from '../../engine/render/stage'
 
-/** A map's shapes in meters, as the server builds them: shards/game/predictor's shapes export. */
+/** A map as the server decoded it: shards/game/predictor's shapes export. */
 export interface MapShapes {
-  Solids: Solid[]
-  Outlines: Spot[][] // loops around walls
-  Edges: Spot[][] // loops around the play area
-  Bounds?: Bounds // the box around its shapes and objects: none for an empty map
+  File: MapFile
+  Bounds?: Bounds // the box around its shapes and objects, in meters: none for an empty map
 }
+
+/** A map file, as pkg/level writes it: points in whole units, Unit to a meter. */
+export interface MapFile {
+  solids: Solid[]
+  outlines: Loop[] // around walls
+  edges: Loop[] // around the play area
+}
+
+type Units = [number, number]
+type Loop = { points: Units[] }
 
 /** One convex piece of wall: level.Solid. */
 export type Solid =
-  | { Polygon: Spot[] }
-  | { Circle: { Center: Spot; Radius: number } }
-  | { Capsule: { Center1: Spot; Center2: Spot; Radius: number } }
+  | { polygon: Units[] }
+  | { circle: { center: Units; radius: number } }
+  | { capsule: { center1: Units; center2: Units; radius: number } }
+
+const Unit = 1024 // units a meter: pkg/level's Unit
+const meters = ([x, y]: Units) => new Vector2(x / Unit, y / Unit)
 
 export const WallHeight = 1 // m
 const Lift = 0.01 // m: a line sits this far above what it lines, so it draws on top
@@ -58,15 +68,15 @@ export class MapView {
     this.bounds = undefined
     const m = id === undefined ? undefined : this.#shapes(id)
     if (!m) return
-    for (const s of m.Solids) {
+    for (const s of m.File.solids) {
       this.#root.add(new Mesh(new ExtrudeGeometry(outline(s), extrude), wall))
     }
     for (const [loops, z] of [
-      [m.Outlines, WallHeight + Lift],
-      [m.Edges, Lift],
+      [m.File.outlines, WallHeight + Lift],
+      [m.File.edges, Lift],
     ] as const) {
-      for (const points of loops) {
-        const geometry = new BufferGeometry().setFromPoints(points.map((p) => new Vector3(p.X, p.Y, z)))
+      for (const { points } of loops) {
+        const geometry = new BufferGeometry().setFromPoints(points.map(([x, y]) => new Vector3(x / Unit, y / Unit, z)))
         this.#root.add(new LineLoop(geometry, line))
       }
     }
@@ -76,15 +86,15 @@ export class MapView {
 
 /** A solid's outline, to extrude. */
 function outline(s: Solid): Shape {
-  if ('Polygon' in s) return new Shape(s.Polygon.map((p) => new Vector2(p.X, p.Y)))
-  if ('Circle' in s) {
-    const { Center, Radius } = s.Circle
-    return new Shape().absarc(Center.X, Center.Y, Radius, 0, 2 * Math.PI, false)
+  if ('polygon' in s) return new Shape(s.polygon.map(meters))
+  if ('circle' in s) {
+    const { x, y } = meters(s.circle.center)
+    return new Shape().absarc(x, y, s.circle.radius / Unit, 0, 2 * Math.PI, false)
   }
   // Half a circle round each end, joined by the sides.
-  const { Center1: a, Center2: b, Radius } = s.Capsule
-  const angle = Math.atan2(b.Y - a.Y, b.X - a.X)
+  const [a, b, radius] = [meters(s.capsule.center1), meters(s.capsule.center2), s.capsule.radius / Unit]
+  const angle = Math.atan2(b.y - a.y, b.x - a.x)
   return new Shape()
-    .absarc(a.X, a.Y, Radius, angle + Math.PI / 2, angle + (3 * Math.PI) / 2, false)
-    .absarc(b.X, b.Y, Radius, angle - Math.PI / 2, angle + Math.PI / 2, false)
+    .absarc(a.x, a.y, radius, angle + Math.PI / 2, angle + (3 * Math.PI) / 2, false)
+    .absarc(b.x, b.y, radius, angle - Math.PI / 2, angle + Math.PI / 2, false)
 }

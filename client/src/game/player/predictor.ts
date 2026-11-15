@@ -1,6 +1,6 @@
 import type { Vec2 } from '../../engine/math/vec2'
 import { runGo } from '../../engine/wasm/go'
-import type { MapShapes } from '../arena/map_view'
+import type { MapFile, MapShapes } from '../arena/map_view'
 import type { TargetSync } from '../history/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
@@ -79,7 +79,7 @@ export interface Predictor {
   echo(): PredictedEcho | undefined
   /** Your kit after the newest tick. */
   kit(): PredictedKit
-  /** A map's shapes, by ID, as the server builds them: undefined for one this build doesn't have. */
+  /** A map's file and bounds, by ID, as the server decoded it: undefined for one this build doesn't have. */
   shapes(mapID: string): MapShapes | undefined
 }
 
@@ -95,7 +95,7 @@ interface Exports {
   shots(): PredictedShot[]
   echo(): PredictedEcho | null
   kit(): PredictedKit
-  shapes(mapID: string): MapShapes | null
+  shapes(mapID: string): (Omit<MapShapes, 'File'> & { File: string }) | null
   useContent(files: Record<string, string>): string | null
   interpolationSeconds(): number
 }
@@ -160,6 +160,9 @@ export async function loadPredictor(wasm?: BufferSource, content?: Record<string
     shots: () => exports.shots(),
     echo: () => exports.echo() ?? undefined,
     kit: () => exports.kit(),
-    shapes: (mapID) => exports.shapes(mapID) ?? undefined,
+    shapes: (mapID) => {
+      const m = exports.shapes(mapID)
+      return m ? { ...m, File: JSON.parse(m.File) as MapFile } : undefined
+    },
   }
 }

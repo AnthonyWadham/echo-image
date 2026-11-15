@@ -623,8 +623,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   Bodies walk. They sample a 0.25 m grid (`level.Grid`) of Box2D queries, so a gap narrower than a
   cell can slip through. They cost about 2 ms a boot on the open map; keep them free of allocations
   per cell.
-- **The client draws the map its predictor decoded** (the wasm's `shapes(mapID)`, in meters), so no
-  TypeScript reads a map file. `client/src/game/arena/map_view.ts` draws it grey, again only when a
+- **The client draws the map its predictor decoded.** The wasm's `shapes(mapID)` gives the map file
+  as `pkg/level` writes it, in units, so Go alone checks a map and TypeScript only `JSON.parse`s it
+  (`MapFile`). `client/src/game/arena/map_view.ts` draws it grey, in meters, again only when a
   body_sync of your sim names another map. The camera follows your drawn Body and stops 1 m past the
   map's bounds (`Stage.follow`). Go owns that box (`level.Map.Bounds`, sent with the shapes): no
   TypeScript works it out.

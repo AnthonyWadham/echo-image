@@ -4226,49 +4226,49 @@
   },
   {
    "id": "M7-W1",
-   "breaks": "the wasm gives a map's points in units",
+   "breaks": "the wasm gives an empty map file",
    "check": "ts",
    "edits": [
     {
      "file": "shards/game/predictor/main.go",
-     "old": "\tv := p.Vec2()\n\treturn map[string]any{\"X\": v.X, \"Y\": v.Y}",
-     "new": "\treturn map[string]any{\"X\": float64(p[0]), \"Y\": float64(p[1])}"
+     "old": "out := map[string]any{\"File\": string(file)}",
+     "new": "out := map[string]any{\"File\": string(file[:0]) + \"{}\"}"
     }
    ]
   },
   {
-   "id": "M7-W2",
-   "breaks": "the wasm gives a round wall's radius in units",
+   "id": "M7-V7",
+   "breaks": "the map view draws a solid's points in units",
    "check": "ts",
    "edits": [
     {
-     "file": "shards/game/predictor/main.go",
-     "old": "func meters(units int32) float64 { return float64(units) / level.Unit }",
-     "new": "func meters(units int32) float64 { return float64(units) }"
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "const meters = ([x, y]: Units) => new Vector2(x / Unit, y / Unit)",
+     "new": "const meters = ([x, y]: Units) => new Vector2(x, y)"
     }
    ]
   },
   {
-   "id": "M7-W3",
-   "breaks": "the wasm gives a capsule as an empty polygon",
+   "id": "M7-V8",
+   "breaks": "the map view draws a round wall's radius in units",
    "check": "ts",
    "edits": [
     {
-     "file": "shards/game/predictor/main.go",
-     "old": "\t\tcase s.Capsule != nil:",
-     "new": "\t\tcase false:"
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "s.circle.radius / Unit",
+     "new": "s.circle.radius"
     }
    ]
   },
   {
-   "id": "M7-W4",
-   "breaks": "the wasm drops a map's edges",
+   "id": "M7-V9",
+   "breaks": "the map view draws outlines and edges in units",
    "check": "ts",
    "edits": [
     {
-     "file": "shards/game/predictor/main.go",
-     "old": "\"Edges\": loops(m.Edges)",
-     "new": "\"Edges\": loops(nil)"
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "new Vector3(x / Unit, y / Unit, z)",
+     "new": "new Vector3(x, y, z)"
     }
    ]
   },
@@ -4363,8 +4363,8 @@
    "edits": [
     {
      "file": "client/src/game/arena/map_view.ts",
-     "old": "      [m.Edges, Lift],",
-     "new": "      [m.Edges, WallHeight + Lift],"
+     "old": "      [m.File.edges, Lift],",
+     "new": "      [m.File.edges, WallHeight + Lift],"
     }
    ]
   },
