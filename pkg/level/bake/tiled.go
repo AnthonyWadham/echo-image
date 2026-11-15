@@ -192,14 +192,38 @@ func (r *reader) shape(o tiledObject) error {
 		}
 	}
 	if edge {
-		r.m.Edges = append(r.m.Edges, level.Loop{Src: o.ID, Kind: o.Class, Points: edgeLoop(points)})
+		r.m.Edges = append(r.m.Edges, level.Loop{Src: o.ID, Kind: o.Class, Points: loop(points, -1)})
 		return nil
 	}
 	polygon, err := convex(points)
+	if err == nil && !slices.Equal(loop(points, 1), loop(polygon, 1)) {
+		err = errors.New("crosses itself") // its corners make a hull, but not in the order drawn
+	}
+	if fill, ok := r.c.Fills[o.Class]; err != nil && ok {
+		return r.outlined(o, points, fill)
+	}
 	if err != nil {
 		return err
 	}
 	r.m.Solids = append(r.m.Solids, level.Solid{Src: o.ID, Kind: o.Class, Polygon: polygon})
+	return nil
+}
+
+// outlined adds o, a wall Box2D takes as no one polygon, as its outline and the pieces that fill it.
+func (r *reader) outlined(o tiledObject, points []level.Point, fill string) error {
+	outline := level.Loop{Src: o.ID, Kind: o.Class, Points: loop(points, 1)}
+	// The loader's own check, before the cut: a loop that crosses itself has no pieces.
+	if _, err := level.Encode(level.Map{Outlines: []level.Loop{outline}}, r.c.Schema); err != nil {
+		return err
+	}
+	pieces, err := split(outline.Points)
+	if err != nil {
+		return err
+	}
+	r.m.Outlines = append(r.m.Outlines, outline)
+	for _, piece := range pieces {
+		r.m.Solids = append(r.m.Solids, level.Solid{Src: o.ID, Kind: fill, Polygon: piece})
+	}
 	return nil
 }
 
@@ -290,9 +314,9 @@ func convex(points []level.Point) ([]level.Point, error) {
 		vecs[i] = p.Vec2()
 	}
 	hull := box2d.ComputeHull(vecs)
-	if hull.Count != len(points) {
+	if hull.Count != len(points) || !box2d.ValidateHull(&hull) {
 		return nil, errors.New("is concave, or has a corner on a line or within 5 mm of another: " +
-			"a wall is convex (concave walls come with the fill kind)")
+			"its kind has no fill, so it must be convex")
 	}
 	out := make([]level.Point, hull.Count)
 	for i, v := range hull.Points[:hull.Count] {
@@ -301,19 +325,20 @@ func convex(points []level.Point) ([]level.Point, error) {
 	return out, nil
 }
 
-// edgeLoop is an edge's corners clockwise from its lowest, then leftmost.
-func edgeLoop(points []level.Point) []level.Point {
-	loop := slices.Clone(points)
-	if level.Winding(loop) > 0 { // counter-clockwise
-		slices.Reverse(loop)
+// loop is a loop's corners from its lowest, then leftmost, wound winding: 1 counter-clockwise (an
+// outline), -1 clockwise (an edge). So a loop bakes the same however it was drawn.
+func loop(points []level.Point, winding int) []level.Point {
+	out := slices.Clone(points)
+	if level.Winding(out) == -winding {
+		slices.Reverse(out)
 	}
 	first := 0
-	for i, p := range loop {
-		if q := loop[first]; p[1] < q[1] || p[1] == q[1] && p[0] < q[0] {
+	for i, p := range out {
+		if q := out[first]; p[1] < q[1] || p[1] == q[1] && p[0] < q[0] {
 			first = i
 		}
 	}
-	return append(loop[first:], loop[:first]...)
+	return append(out[first:], out[:first]...)
 }
 
 // canvas turns Tiled's pixels, y down from the canvas's top left, into units, y up from its centre: a

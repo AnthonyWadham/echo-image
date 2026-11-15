@@ -3,8 +3,8 @@
 > **A proposal, not the source of truth.** Every step is built (the mover's chain rule, the core
 > in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena`, movement, shots and the
 > predictor on the map's world, spawns from the map, the map rules at boot, the client's grey map and
-> camera, the Tiled baker, and the first real map, `courtyard`). The fill kind and the concave-wall
-> splitter wait for the first concave wall (7.4). Code,
+> camera, the Tiled baker, the first real map, `courtyard`, the fill kind and the concave-wall
+> splitter). Code,
 > [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
@@ -226,8 +226,8 @@ The cause: where a Body rests on one piece, Box2D also reports the corner of the
 - Each wall is one closed chain outline, counter-clockwise, so it blocks from outside. It stops
   movement. A straight run has no seams at all.
 - Convex fill pieces under their own kind bit answer "is this point in a wall?" for landing and
-  shots. A hollow outline can't. Not built yet: the fill kind comes with the first concave wall.
-  Until then, a wall to land out of is a convex solid, and a Body in a hollow outline walks out.
+  shots. A hollow outline can't. Built in steps 10 and 11: the baker cuts a wall Box2D takes as no
+  one polygon into its outline and triangles of fill.
   The map rules still refuse a hollow outline a Body fits in: open space no Body walks to (7.11).
 - The mover meets a chain as Box2D's chains collide: from the front only, and with ghost vertices
   (where the Body is over the next segment's face, the joint's corner plane is dropped). The pinned
@@ -474,8 +474,10 @@ All in echo_image (7.1), one reviewable step at a time.
 | 5 | game | **Done.** Spawns come from the map: one per player, in file order per team. The boot checks every map has enough, through the plugin's rules hook (`Config.Check`), which step 6 fills |
 | 6 | game | **Done.** The map rules at boot (`arena.CheckMap` over `level.Grid`, 7.11), once per champion radius. A failed landing is logged. Test maps start from the shipped map, so they keep its edge and spawns |
 | 7 | client | **Done.** The wasm's `shapes(mapID)` gives the map file as `pkg/level` writes it, and its bounds. `game/arena/map_view.ts` draws it grey: solids as 1 m blocks, outlines on their tops, edges on the ground. The camera follows your drawn Body and stops at the map (`Stage.follow`) |
-| 8 | `pkg/level/bake` | **Done.** `Bake` reads Tiled's JSON, converts, snaps, encodes, then decodes, builds and runs the game's rules as a shard does. `Project` writes the Tiled project from the schema. The splitter waits for the fill kind: a concave wall is refused |
+| 8 | `pkg/level/bake` | **Done.** `Bake` reads Tiled's JSON, converts, snaps, encodes, then decodes, builds and runs the game's rules as a shard does. `Project` writes the Tiled project from the schema |
 | 9 | game | **Done.** `maps/` holds `open.tmj` (bakes to the old file byte for byte), `courtyard.tmj` (40 x 24 m, the default map) and the generated project. `TestMapsAreBaked` rebakes both and checks the project; `moon run echo:bake` writes them. World tests play `open` (`onOpen`), so a new shipped map moves none of them |
+| 10 | game | **Done.** The fill kind (`interact.Fill`): a walk never asks for it, and landing, the map rules and a shot's cast ask with `interact.Solid` |
+| 11 | `pkg/level/bake` | **Done.** The splitter: a wall that is concave, has more than 8 corners or a corner on a line bakes as its outline plus triangles of its kind's fill (`Config.Fills`). It tries every triangulation between the wall's corners and takes the first whose triangles Box2D all takes; a wall too thin for any is refused. Measured on 1,200 made-up walls: 62 refused (7 by the loader's 5 mm rule, 55 too thin), 0 bad pieces of 12,532 |
 
 - Step 4 must not be split. Server walls without predictor walls make every wall stop a correction (F8).
 - Another game can use it only once it moves to world-engine (7.1).

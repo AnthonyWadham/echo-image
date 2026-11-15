@@ -4567,7 +4567,7 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\tif level.Winding(loop) > 0 { // counter-clockwise",
+     "old": "\tif level.Winding(out) == -winding {",
      "new": "\tif false {"
     }
    ]
@@ -4579,8 +4579,8 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\treturn append(loop[first:], loop[:first]...)",
-     "new": "\treturn loop"
+     "old": "\treturn append(out[first:], out[:first]...)",
+     "new": "\treturn out"
     }
    ]
   },
@@ -4591,7 +4591,7 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\tif hull.Count != len(points) {",
+     "old": "\tif hull.Count != len(points) || !box2d.ValidateHull(&hull) {",
      "new": "\tif false {"
     }
    ]
@@ -4857,6 +4857,126 @@
      "file": "pkg/level/bake/bake.go",
      "old": "if _, ok := c.Schema.Kinds[k]; !ok {",
      "new": "if _, ok := c.Schema.Kinds[k]; false && !ok {"
+    }
+   ]
+  },
+  {
+   "id": "M11-C1",
+   "breaks": "a wall is cut between corners that can't see each other: fill outside it",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/split.go",
+     "old": "\tif !inward(p, a, b) || !inward(p, b, a) {\n\t\treturn false\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M11-C2",
+   "breaks": "a wall is cut across its own sides",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/split.go",
+     "old": "\t\tif gap.DistanceSquared <= box2d.LinearSlop*box2d.LinearSlop {",
+     "new": "\t\tif gap.DistanceSquared < 0 {"
+    }
+   ]
+  },
+  {
+   "id": "M11-C3",
+   "breaks": "a wall too thin to cut is cut into slivers",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/split.go",
+     "old": "\t\treturn err == nil\n",
+     "new": "\t\treturn err == nil || true\n"
+    }
+   ]
+  },
+  {
+   "id": "M11-C4",
+   "breaks": "a cut ends at a corner whose two sides weren't cut",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/split.go",
+     "old": "if (k == i+1 || cut[i][k] >= 0) && (j == k+1 || cut[k][j] >= 0) && side(i, k) && side(k, j) &&",
+     "new": "if side(i, k) && side(k, j) &&"
+    }
+   ]
+  },
+  {
+   "id": "M11-O1",
+   "breaks": "an outline keeps the way and the corner it was drawn from",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "outline := level.Loop{Src: o.ID, Kind: o.Class, Points: loop(points, 1)}",
+     "new": "outline := level.Loop{Src: o.ID, Kind: o.Class, Points: points}"
+    }
+   ]
+  },
+  {
+   "id": "M11-O2",
+   "breaks": "a wall that crosses itself is cut before the loader checks its outline",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif _, err := level.Encode(level.Map{Outlines: []level.Loop{outline}}, r.c.Schema); err != nil {\n\t\treturn err\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M11-O3",
+   "breaks": "a cut wall has no outline",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tr.m.Outlines = append(r.m.Outlines, outline)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M11-O4",
+   "breaks": "a cut wall's pieces are walls, which stop a walk at their seams",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "level.Solid{Src: o.ID, Kind: fill, Polygon: piece}",
+     "new": "level.Solid{Src: o.ID, Kind: o.Class, Polygon: piece}"
+    }
+   ]
+  },
+  {
+   "id": "M11-O5",
+   "breaks": "a concave wall of a kind with no fill bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "if fill, ok := r.c.Fills[o.Class]; err != nil && ok {",
+     "new": "if fill, ok := r.c.Fills[o.Class]; err != nil && (ok || true) {"
+    }
+   ]
+  },
+  {
+   "id": "M11-X1",
+   "breaks": "a wall whose corners cross bakes as their hull",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif err == nil && !slices.Equal(loop(points, 1), loop(polygon, 1)) {",
+     "new": "\tif false {"
     }
    ]
   }

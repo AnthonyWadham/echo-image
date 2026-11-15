@@ -617,8 +617,10 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   types. `moon run echo:bake` rebakes `content/arena` and the project (`pkg/level/bake`, with the boot's
   own `arena.Rules`); `TestMapsAreBaked` fails when one is stale or a listed map has no source. A tile is
   a meter and the canvas's centre is (0, 0); objects bake in layer order, so each team's spawns go in
-  that order; the `bounds` class draws the edge. Walls are convex: the baker refuses a concave polygon
-  until the fill kind exists. A loop (an edge, an outline) can't cross itself, or bring two segments
+  that order; the `bounds` class draws the edge. A wall polygon Box2D takes as no one shape (concave, over 8
+  corners, a corner on a line) bakes as its outline plus triangles of fill (`bake.Config.Fills`, the
+  splitter in `pkg/level/bake/split.go`): draw an L as one polygon. A wall too thin to cut into pieces
+  about 1 cm wide is refused: add a corner across from the thin part, or draw two walls. A loop (an edge, an outline) can't cross itself, or bring two segments
   within 5 mm (Box2D's `LinearSlop`): `pkg/level` refuses it at every load, with Box2D's own
   `SegmentDistance`. `courtyard` (40 x 24 m) is the default map.
 - **A map holds a spawn for each player.** Each team's Bodies take its spawns in file order, one each
