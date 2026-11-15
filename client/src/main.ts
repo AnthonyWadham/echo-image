@@ -5,6 +5,7 @@ import { Timelines } from './engine/sync/timeline'
 import { AbilitySyncEvent } from './game/ability/ability_sync_event'
 import { cooldowns } from './game/ability/cooldown'
 import type { Cooldown } from './game/ability/cooldown'
+import { MapView } from './game/arena/map_view'
 import { EchoSyncEvent } from './game/echo/echo_sync_event'
 import type { EchoState } from './game/echo/echo_sync_event'
 import { newEchoViews } from './game/echo/echo_view'
@@ -52,6 +53,7 @@ async function play(playerId: string): Promise<void> {
   const shots = timelines.create<ProjectileState[]>()
 
   const stage = new Stage(document.body)
+  const map = new MapView(stage.scene, (id) => predictor.shapes(id))
   const bodyViews = newBodyViews(stage.scene, player)
   const echoViews = newEchoViews(stage.scene, echoes, player)
   // Shots draw last, so one that ended on a Body or Echo ends where this frame draws it.
@@ -93,6 +95,9 @@ async function play(playerId: string): Promise<void> {
     for (const input of player.inputsToSend(dt, held)) net.send(InputCommand, input)
     drawn = timelines.renderTick(dt, player.tickSeconds)
     for (const view of views) view.draw(drawn)
+    map.show(player.mapID)
+    const at = player.drawn
+    if (at && map.bounds) stage.follow(at, map.bounds)
     stage.render()
     hud.draw(net.status, problem)
   }

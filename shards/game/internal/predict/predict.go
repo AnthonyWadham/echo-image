@@ -38,6 +38,7 @@ type Content struct {
 	Effects   status.Tuning
 	History   past.Tuning
 	Maps      map[string]*box2d.World // each map's walls, by ID: queried, never stepped
+	Levels    map[string]level.Map    // each map as decoded, by ID: what a client draws
 }
 
 // Load reads Content from fsys, the content embed.FS, with content.Load, as the shard does: each file
@@ -49,35 +50,35 @@ func Load(fsys fs.FS) (Content, error) {
 	c.Shots, errs[1] = content.Load[flight.Tuning](fsys)
 	c.Effects, errs[2] = content.Load[status.Tuning](fsys)
 	c.History, errs[3] = content.Load[past.Tuning](fsys)
-	c.Maps, errs[4] = loadMaps(fsys)
+	c.Maps, c.Levels, errs[4] = loadMaps(fsys)
 	return c, errors.Join(errs[:]...)
 }
 
-// loadMaps builds each map content/arena lists into a Box2D world of its own, from the files the shard's
-// map plugin builds.
-func loadMaps(fsys fs.FS) (map[string]*box2d.World, error) {
+// loadMaps decodes each map content/arena lists and builds it into a Box2D world of its own, from the
+// files the shard's map plugin builds.
+func loadMaps(fsys fs.FS) (map[string]*box2d.World, map[string]level.Map, error) {
 	t, err := content.Load[arena.ArenaTuning](fsys)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	files, err := t.Files(fsys)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	schema := arena.Schema()
-	worlds := make(map[string]*box2d.World, len(files))
+	worlds, levels := make(map[string]*box2d.World, len(files)), make(map[string]level.Map, len(files))
 	for _, id := range t.Maps {
 		m, err := level.Decode(files[id], schema)
 		if err != nil {
-			return nil, fmt.Errorf("map %s: %w", id, err)
+			return nil, nil, fmt.Errorf("map %s: %w", id, err)
 		}
 		def := box2d.DefaultWorldDef()
-		worlds[id] = box2d.NewWorld(&def)
+		worlds[id], levels[id] = box2d.NewWorld(&def), m
 		if _, err := level.Build(worlds[id], m, schema); err != nil {
-			return nil, fmt.Errorf("map %s: %w", id, err)
+			return nil, nil, fmt.Errorf("map %s: %w", id, err)
 		}
 	}
-	return worlds, nil
+	return worlds, levels, nil
 }
 
 // State is the server's state of your Body and what it started, after Tick, as body_sync sends it.

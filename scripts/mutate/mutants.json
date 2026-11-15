@@ -4222,6 +4222,174 @@
      "new": "\t\tif true && !crosses("
     }
    ]
+  },
+  {
+   "id": "M7-W1",
+   "breaks": "the wasm gives a map's points in units",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\tv := p.Vec2()\n\treturn map[string]any{\"X\": v.X, \"Y\": v.Y}",
+     "new": "\treturn map[string]any{\"X\": float64(p[0]), \"Y\": float64(p[1])}"
+    }
+   ]
+  },
+  {
+   "id": "M7-W2",
+   "breaks": "the wasm gives a round wall's radius in units",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "func meters(units int32) float64 { return float64(units) / level.Unit }",
+     "new": "func meters(units int32) float64 { return float64(units) }"
+    }
+   ]
+  },
+  {
+   "id": "M7-W3",
+   "breaks": "the wasm gives a capsule as an empty polygon",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\tcase s.Capsule != nil:",
+     "new": "\t\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M7-W4",
+   "breaks": "the wasm drops a map's edges",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\"Edges\": loops(m.Edges)",
+     "new": "\"Edges\": loops(nil)"
+    }
+   ]
+  },
+  {
+   "id": "M7-W5",
+   "breaks": "the wasm gives an empty map for one it lacks",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\t\t\tif !ok {\n\t\t\t\treturn nil\n\t\t\t}\n\t\t\treturn shapes(m)",
+     "new": "\t\t\t_ = ok\n\t\t\treturn shapes(m)"
+    }
+   ]
+  },
+  {
+   "id": "M7-V1",
+   "breaks": "the map view redraws every frame",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "    if (id === this.#id) return\n",
+     "new": "    if (false) return\n"
+    }
+   ]
+  },
+  {
+   "id": "M7-V2",
+   "breaks": "the map view keeps the old map's geometry",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "child.geometry.dispose()",
+     "new": "void child.geometry"
+    }
+   ]
+  },
+  {
+   "id": "M7-V3",
+   "breaks": "a capsule's ends bulge the wrong way",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "angle + (3 * Math.PI) / 2, false)",
+     "new": "angle + (3 * Math.PI) / 2, true)"
+    }
+   ]
+  },
+  {
+   "id": "M7-V4",
+   "breaks": "the map's bounds ignore a round wall's radius",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "    min.x = Math.min(min.x, p.X - r)\n",
+     "new": "    min.x = Math.min(min.x, p.X)\n"
+    }
+   ]
+  },
+  {
+   "id": "M7-V5",
+   "breaks": "edges drawn on the walls' tops",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "      [m.Edges, Lift],",
+     "new": "      [m.Edges, WallHeight + Lift],"
+    }
+   ]
+  },
+  {
+   "id": "M7-C1",
+   "breaks": "the camera never stops at the map's bounds",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/render/stage.ts",
+     "old": "  return Math.min(Math.max(at, lo + half), hi - half)",
+     "new": "  return at"
+    }
+   ]
+  },
+  {
+   "id": "M7-C2",
+   "breaks": "the camera follows over a map narrower than the view",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/engine/render/stage.ts",
+     "old": "  if (hi - lo <= 2 * half) return (lo + hi) / 2\n",
+     "new": "  if (false) return (lo + hi) / 2\n"
+    }
+   ]
+  },
+  {
+   "id": "M7-L1",
+   "breaks": "the client draws the map of a shard on another sim",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.received++\n",
+     "new": "    this.received++\n    this.mapID = s.MapID\n"
+    }
+   ]
+  },
+  {
+   "id": "M7-L2",
+   "breaks": "the client keeps its first map",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/player/local_player.ts",
+     "old": "    this.mapID = s.MapID\n",
+     "new": "    this.mapID ??= s.MapID\n"
+    }
+   ]
   }
  ]
 }

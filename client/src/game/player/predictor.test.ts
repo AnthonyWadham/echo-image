@@ -4,6 +4,7 @@ import { beforeAll, expect, inject, test } from 'vitest'
 import type { TargetSync } from '../history/target_sync_event'
 import type { BodySync } from './body_sync_event'
 import type { InputFrame } from './input_command'
+import type { MapShapes } from '../arena/map_view'
 import { loadPredictor } from './predictor'
 import type { EndedShot, PredictedEcho, PredictedKit, PredictedShot, Predictor } from './predictor'
 
@@ -40,10 +41,11 @@ declare module 'vitest' {
   }
 }
 
+// Built by scripts/predictor.mjs, vitest's global setup.
+const wasm = readFileSync(new URL('predictor.wasm', import.meta.url))
 let predictor: Predictor
 beforeAll(async () => {
-  // Built by scripts/predictor.mjs, vitest's global setup.
-  predictor = await loadPredictor(readFileSync(new URL('predictor.wasm', import.meta.url)), content)
+  predictor = await loadPredictor(wasm, content)
 })
 
 // Steps each frame in turn, and returns where the last left her and every shot the steps ended.
@@ -153,4 +155,56 @@ test('an Echo is hit where your screen drew it, unless it died before your frame
     // Your shot ends on it in its first tick, or flies on.
     expect(ended, `an Echo that lived ${until} of its tick`).toHaveLength(hits ? 1 : 0)
   }
+})
+
+// A map file's shapes in meters: 1024 units each (pkg/level's Unit).
+type Units = [number, number]
+interface MapFile {
+  solids: { polygon?: Units[]; circle?: Round; capsule?: Round & { center1: Units; center2: Units } }[]
+  outlines: { points: Units[] }[]
+  edges: { points: Units[] }[]
+}
+type Round = { center: Units; radius: number }
+const meters = ([x, y]: Units) => ({ X: x / 1024, Y: y / 1024 })
+const inMeters = (m: MapFile): MapShapes => ({
+  Solids: m.solids.map(({ polygon, circle, capsule }) => {
+    if (circle) return { Circle: { Center: meters(circle.center), Radius: circle.radius / 1024 } }
+    if (capsule) {
+      const { center1, center2, radius } = capsule
+      return { Capsule: { Center1: meters(center1), Center2: meters(center2), Radius: radius / 1024 } }
+    }
+    return { Polygon: (polygon ?? []).map(meters) }
+  }),
+  Outlines: m.outlines.map((l) => l.points.map(meters)),
+  Edges: m.edges.map((l) => l.points.map(meters)),
+})
+
+test("gives a map's shapes as its file has them, in meters, and none for a map it doesn't have", async () => {
+  // The run's map: a polygon, an outline and an edge.
+  const { default_map: id } = JSON.parse(content['arena/tuning.json']!) as { default_map: string }
+  const file = JSON.parse(content[`arena/${id}.level.json`]!) as MapFile
+  expect(file.solids.length * file.outlines.length * file.edges.length).toBeGreaterThan(0)
+  expect(predictor.shapes(id)).toStrictEqual(inMeters(file))
+  expect(predictor.shapes('no such map')).toBeUndefined()
+  // A round wall and a capsule, in a predictor of their own.
+  const round = [
+    '{',
+    '  "format": 1,',
+    '  "solids": [',
+    '    {"src": 1, "kind": "wall", "circle": {"center": [2048, 3072], "radius": 512}},',
+    '    {"src": 2, "kind": "wall", "capsule": {"center1": [-4096, 0], "center2": [-2048, 1024], "radius": 256}}',
+    '  ],',
+    '  "outlines": [],',
+    '  "edges": [',
+    '    {"src": 3, "kind": "bounds", "points": [[-10240, -10240], [-10240, 10240], [10240, 10240], [10240, -10240]]}',
+    '  ],',
+    '  "objects": []',
+    '}',
+    '',
+  ].join('\n')
+  const other = await loadPredictor(wasm, {
+    'arena/tuning.json': JSON.stringify({ maps: ['round'], default_map: 'round' }),
+    'arena/round.level.json': round,
+  })
+  expect(other.shapes('round')).toStrictEqual(inMeters(JSON.parse(round) as MapFile))
 })

@@ -44,6 +44,7 @@ function predictor(seen: string[] = []): Predictor {
     shots: () => [],
     echo: () => echo,
     kit: () => ({ Tick: 0, Slots: [] }),
+    shapes: () => undefined,
   }
 }
 const newPlayer = (timelines = new Timelines(0.1), seen: string[] = []) =>
@@ -129,8 +130,9 @@ describe('LocalPlayer', () => {
 
   test("plays only while the shard runs your predictor's sim", () => {
     const player = playing()
-    player.onBodySync({ ...bodySync(101), SimVersion: 'another build' })
+    player.onBodySync({ ...bodySync(101), SimVersion: 'another build', MapID: 'theirs' })
     expect(player.otherSim).toBe('another build')
+    expect(player.mapID).toBe('open') // a map your build may not have isn't drawn
     expect(player.playing).toBe(false)
     expect(player.bodies.newestTick).toBe(100) // its Bodies aren't kept
     expect(player.inputsToSend(0.05, { ...still, move: { x: 1, y: 0 } })).toEqual([])
@@ -140,13 +142,14 @@ describe('LocalPlayer', () => {
     expect(player.inputsToSend(0.05, still)).not.toEqual([])
   })
 
-  test('keeps your team and input health from the newest body_sync', () => {
+  test('keeps your team, input health and the live map from the newest body_sync', () => {
     const player = playing()
     const s = bodySync(101)
     const health = { Coasts: 2, DroppedFrames: 1, OversizedInputs: 0, FlooredViews: 3 }
-    player.onBodySync({ ...s, You: { ...s.You, Team: 1, InputHealth: health } })
+    player.onBodySync({ ...s, MapID: 'next', You: { ...s.You, Team: 1, InputHealth: health } })
     expect(player.team).toBe(1)
     expect(player.inputHealth).toEqual(health)
+    expect(player.mapID).toBe('next')
   })
 
   test("asks its predictor to agree only with a body_sync of its own session's", () => {

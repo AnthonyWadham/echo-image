@@ -36,6 +36,8 @@ export class LocalPlayer {
   you: number | undefined
   /** Your team, from the newest body_sync. */
   team: number | undefined
+  /** The live map, from the newest body_sync of your sim. */
+  mapID: string | undefined
   /** What went wrong with your input stream, as the newest body_sync counts it. */
   inputHealth: InputHealth | undefined
   tickSeconds = 0
@@ -138,6 +140,7 @@ export class LocalPlayer {
     this.#timelines.add(this.bodies, s.Tick, s.Bodies)
     this.you = s.You.Body
     this.team = s.You.Team
+    this.mapID = s.MapID
     this.inputHealth = s.You.InputHealth
     this.tickSeconds = s.TickSeconds
     this.#own = { body: this.me?.Serial, echo: s.You.EchoSerial > 0n ? s.You.EchoSerial : undefined }

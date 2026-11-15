@@ -55,6 +55,7 @@ function predictor(): Predictor {
     shots: () => [...shots],
     echo: () => echo,
     kit: () => ({ Tick: tick, Slots: [{ Ability: 'bolt', ReadyTick: 0 }] }),
+    shapes: () => undefined,
   }
 }
 

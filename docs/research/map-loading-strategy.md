@@ -1,9 +1,9 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 to 6 are built (the mover's chain rule, the core
+> **A proposal, not the source of truth.** Steps 0 to 7 are built (the mover's chain rule, the core
 > in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
-> map, movement, shots and the predictor on the map's world, spawns from the map, and the map rules
-> at boot). Code,
+> map, movement, shots and the predictor on the map's world, spawns from the map, the map rules
+> at boot, and the client's grey map and camera). Code,
 > [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
@@ -343,9 +343,10 @@ holds the same bytes. An explicit list makes "which maps ship" a reviewed line.
 
 ### 7.9 Clients
 
-- **Web.** One new wasm export returns the current map's shapes. The client draws grey boxes from
-  it. There is no TypeScript parser, so nothing can drift.
-- **Camera.** Follows your Body and clamps to the map edge.
+- **Web.** One new wasm export returns a map's shapes, by ID: the client asks for the one body_sync
+  names, and draws grey blocks from it. There is no TypeScript parser, so nothing can drift.
+- **Camera.** Follows your Body and stops 1 m past the box around the map's shapes: the edge, for a
+  map whose walls are all inside it.
 - **Wire.** The map ID rides in body_sync (`MapID`), next to SimVersion, which already pins the
   file's bytes. Hash and epoch join when a client needs them, such as a Unity client that reads the
   file itself. Geometry never goes on the wire.
@@ -463,7 +464,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 4 | game | **Done.** One change: movement, shots and the predictor use the live map's world. Wall tests declare maps before boot (`onMap`). The recording meets walls, the edge's joints, a landing and a range end, at both rates. No tie rule yet (7.4) |
 | 5 | game | **Done.** Spawns come from the map: one per player, in file order per team. The boot checks every map has enough, through the plugin's rules hook (`Config.Check`), which step 6 fills |
 | 6 | game | **Done.** The map rules at boot (`arena.CheckMap` over `level.Grid`, 7.11), once per champion radius. A failed landing is logged. Test maps start from the shipped map, so they keep its edge and spawns |
-| 7 | client | wasm export, greybox view, camera |
+| 7 | client | **Done.** The wasm's `shapes(mapID)` gives the map as `pkg/level` decoded it, in meters. `game/arena/map_view.ts` draws it grey: solids as 1 m blocks, outlines on their tops, edges on the ground. The camera follows your drawn Body and stops at the map (`Stage.follow`) |
 | 8 | `pkg/level/bake` | Baker, Tiled reader, project generator |
 | 9 | game | Tiled sources, generated project, staleness test, the first real map |
 

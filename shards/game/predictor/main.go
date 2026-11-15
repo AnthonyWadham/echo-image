@@ -11,6 +11,7 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 
+	"echo_image/pkg/level"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/effect/status"
@@ -102,6 +103,14 @@ func main() {
 			}
 			return map[string]any{"X": at.X, "Y": at.Y, "PrevX": prev.X, "PrevY": prev.Y}
 		}),
+		// shapes is a map's shapes, by ID, in meters: null for one this content doesn't have.
+		"shapes": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			m, ok := rules.Levels[args[0].String()]
+			if !ok {
+				return nil
+			}
+			return shapes(m)
+		}),
 		"kit": js.FuncOf(func(js.Value, []js.Value) any {
 			var slots []any
 			for _, c := range p.Kit() {
@@ -114,6 +123,51 @@ func main() {
 }
 
 func point(v box2d.Vec2) map[string]any { return map[string]any{"x": v.X, "y": v.Y} }
+
+// shapes is m's solids and loops, as map_view.ts's MapShapes.
+func shapes(m level.Map) map[string]any {
+	solids := []any{}
+	for _, s := range m.Solids {
+		switch {
+		case s.Circle != nil:
+			c := s.Circle
+			solids = append(solids, map[string]any{"Circle": map[string]any{
+				"Center": spot(c.Center), "Radius": meters(c.Radius),
+			}})
+		case s.Capsule != nil:
+			c := s.Capsule
+			solids = append(solids, map[string]any{"Capsule": map[string]any{
+				"Center1": spot(c.Center1), "Center2": spot(c.Center2), "Radius": meters(c.Radius),
+			}})
+		default:
+			solids = append(solids, map[string]any{"Polygon": spots(s.Polygon)})
+		}
+	}
+	return map[string]any{"Solids": solids, "Outlines": loops(m.Outlines), "Edges": loops(m.Edges)}
+}
+
+func loops(ls []level.Loop) []any {
+	out := []any{}
+	for _, l := range ls {
+		out = append(out, spots(l.Points))
+	}
+	return out
+}
+
+func spots(points []level.Point) []any {
+	out := make([]any, len(points))
+	for i, p := range points {
+		out[i] = spot(p)
+	}
+	return out
+}
+
+func spot(p level.Point) map[string]any {
+	v := p.Vec2()
+	return map[string]any{"X": v.X, "Y": v.Y}
+}
+
+func meters(units int32) float64 { return float64(units) / level.Unit }
 
 // frame reads an InputFrame.
 func frame(f js.Value) predict.Frame {
