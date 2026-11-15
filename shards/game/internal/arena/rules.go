@@ -19,11 +19,12 @@ import (
 const cell = mover.LandStep
 
 var (
-	// blocked is what stops a Body.
-	blocked = box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(motion.Blockers)}
+	// blocked is where a Body can't rest: what stops it, and the walls' fill.
+	blocked = box2d.QueryFilter{CategoryBits: uint64(interact.Body),
+		MaskBits: uint64(interact.Solid(motion.Blockers))}
 	// walls is what a pass lets a Body into: all but the edge.
 	walls = box2d.QueryFilter{CategoryBits: uint64(interact.Body),
-		MaskBits: uint64(motion.Blockers &^ interact.Bounds)}
+		MaskBits: uint64(interact.Solid(motion.Blockers) &^ interact.Bounds)}
 	// passing is what stops a Body that a pass lets through walls: the edge.
 	passing = box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(interact.Bounds)}
 )

@@ -14,7 +14,7 @@ import (
 	"echo_image/shards/game/internal/physics/mover"
 )
 
-// Blockers is the map kinds that stop a Body. A pass effect drops kinds from its holder's.
+// Blockers is the map kinds that stop a Body's walk. A pass effect drops kinds from its holder's.
 const Blockers = interact.Wall | interact.Bounds
 
 // edge is what a landing never crosses: the map edge.
@@ -53,14 +53,16 @@ type Body struct {
 // Step moves b through world for dt seconds under st, and returns its new center and its velocity
 // clipped against what it touched. A forced velocity replaces input, the folded speed scales input (a
 // stun is zero), and a pass drops map kinds from what stops it. A Body whose center is inside a
-// blocker first lands on the nearest clear spot inside the map, since the mover would walk it out the
-// far side. stuck says it found none: a map the boot's rules should have refused.
+// blocker, or its fill, first lands on the nearest clear spot inside the map, since the mover would
+// walk it out the far side. stuck says it found none: a map the boot's rules should have refused.
 func Step(world *box2d.World, b Body, st status.Status, dt float64) (center, velocity box2d.Vec2, stuck bool) {
-	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(Blockers &^ st.Pass)}
+	blockers := Blockers &^ st.Pass
+	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(blockers)}
+	solid := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(interact.Solid(blockers))}
 	circle := box2d.Circle{Center: b.Center, Radius: b.Radius}
-	if mover.Inside(world, circle.Center, filter) {
+	if mover.Inside(world, circle.Center, solid) {
 		var landed bool
-		circle.Center, landed = Land(world, circle, filter)
+		circle.Center, landed = Land(world, circle, solid)
 		stuck = !landed
 	}
 	v := box2d.Vec2{X: st.VelX, Y: st.VelY}

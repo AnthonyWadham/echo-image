@@ -106,7 +106,7 @@ shards/game/
     area/     package area        areas: area_system.go (each area acts on what overlaps its holder,
                                   by rules), tuning.go (area kinds), doc.go
       component/  package component   Area — area's leaf; a constructor gives its entity an area
-    arena/    package arena       the game's side of its maps: Schema (the kinds wall and bounds, the spawn
+    arena/    package arena       the game's side of its maps: Schema (the kinds wall, fill and bounds, the spawn
                                   type), Spawns and CheckSpawns, CheckMap (rules.go: the map rules a
                                   Body needs), and ArenaTuning (the maps that ship)
                                   — no Cardinal import
@@ -446,8 +446,13 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   the tree found counts too, as does one on what a component saved, found by its own
   `box2d.DynamicTree` (`past.Scene`: the recorded things at an actor's view).
 - **Category bits describe what a shape IS (its kind, `interact.Kind`)** — `Body`, `Echo`, `Shot`,
-  `Wall`, `Bounds` (the map edge), `Area` (an area query) — never whose side it's on. Snapshots keep
-  the bits, so never renumber one.
+  `Wall`, `Bounds` (the map edge), `Area` (an area query), `Fill` (a wall's inside) — never whose side
+  it's on. Snapshots keep the bits, so never renumber one.
+- **A wall that isn't convex is an outline plus fill.** Its outline (kind `wall`, a chain) stops a walk.
+  Convex `fill` pieces say where its inside is. A walk never asks for fill: pieces under one face hook a
+  Body at their seam. What rests or flies asks with `interact.Solid(kinds)`, which adds the fill of the
+  walls among them: where a Body lands (`motion.Step`), the map rules, a shot's cast. A pass through
+  walls passes their fill, and a shot that ends on fill ends on a wall. No content names `fill`.
 - **A map shape's category is its map kind, and its mask is all bits.** Each query's mask lists the
   kinds that stop it (`motion.Blockers`, or the map kinds a shot's rules stop at). A per-Body rule,
   like a pass through walls, changes that Body's query mask, never a shape's bits.

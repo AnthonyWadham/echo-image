@@ -10,8 +10,8 @@ import (
 	"echo_image/pkg/level/bake"
 )
 
-// The project holds a class for each kind and each object type, the type's members its props' fields
-// with their zero values, as Tiled's project file has them.
+// The project holds a class for each kind but a fill, which nobody draws, and each object type, the
+// type's members its props' fields with their zero values, as Tiled's project file has them.
 func TestProjectIsTheSchema(t *testing.T) {
 	data, err := bake.Project(config)
 	if err != nil {

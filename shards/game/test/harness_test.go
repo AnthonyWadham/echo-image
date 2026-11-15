@@ -471,7 +471,7 @@ const mapsDir = "../../../maps"
 // them (go test ./shards/game/test -run TestMapsAreBaked -update).
 func TestMapsAreBaked(t *testing.T) {
 	movement := tuningOf[player.MovementTuning](t)
-	c := bake.Config{Schema: arena.Schema(), Edges: []string{"bounds"},
+	c := bake.Config{Schema: arena.Schema(), Edges: []string{"bounds"}, Fills: map[string]string{"wall": "fill"},
 		Check: arena.Rules(movement.DevPlayers(), movement.Radii())}
 	listed := tuningOf[arena.ArenaTuning](t).Maps
 	sources, err := filepath.Glob(filepath.Join(mapsDir, "*.tmj"))

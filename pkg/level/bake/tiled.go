@@ -150,6 +150,8 @@ func (r *reader) object(o tiledObject) error {
 		return errors.New("is text: only shapes and points bake")
 	case o.Class == "":
 		return errors.New("has no class: give it a kind or an object type")
+	case r.c.fills(o.Class):
+		return fmt.Errorf("class %q is a fill, which the baker makes: draw the wall it fills", o.Class)
 	}
 	r.ids[o.ID] = true
 	if _, ok := r.c.Schema.Kinds[o.Class]; ok {

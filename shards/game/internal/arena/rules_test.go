@@ -113,6 +113,16 @@ func TestCheckMap(t *testing.T) {
 			m.Outlines = append(m.Outlines,
 				loop("wall", [2]float64{0, 10}, [2]float64{3, 10}, [2]float64{3, 13}, [2]float64{0, 13}))
 		}, []string{"no Body walks to the open space at (0.75, 10.75) and"}},
+		{"an L wall a Body fits in, outlined and filled", func(m *level.Map) {
+			m.Outlines = append(m.Outlines, loop("wall", [2]float64{0, 10}, [2]float64{6, 10}, [2]float64{6, 12},
+				[2]float64{2, 12}, [2]float64{2, 16}, [2]float64{0, 16}))
+			m.Solids = append(m.Solids, box("fill", 3, 11, 3, 1), box("fill", 1, 14, 1, 2))
+		}, nil},
+		{"an outlined and filled wall too thick to land out of", func(m *level.Map) {
+			m.Solids[0] = box("fill", 0, 0, 6.75, 6.75)
+			m.Outlines = append(m.Outlines, loop("wall", [2]float64{-6.75, -6.75}, [2]float64{6.75, -6.75},
+				[2]float64{6.75, 6.75}, [2]float64{-6.75, 6.75}))
+		}, []string{"a Body in the wall at (-1.25, -1.25) and 120 more spots can't land where Bodies walk"}},
 		{"room walled off", func(m *level.Map) { // 2 x 2 m inside walls 1 m thick: its walls land into it
 			m.Solids = append(m.Solids, box("wall", 0, 10.5, 2, 0.5), box("wall", 0, 13.5, 2, 0.5),
 				box("wall", -1.5, 12, 0.5, 1), box("wall", 1.5, 12, 0.5, 1))

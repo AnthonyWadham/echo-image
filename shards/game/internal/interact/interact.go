@@ -21,10 +21,21 @@ const (
 	Shot   Kind = 1 << 3 // a shot: no Box2D body, only a query filter
 	Bounds Kind = 1 << 4 // a map kind: the map edge, which no effect passes
 	Area   Kind = 1 << 5 // an area's query: a Body or Echo masks it so areas can find it
+	Fill   Kind = 1 << 6 // a map kind: the inside of a wall drawn as an outline. It stops no walk: see Solid
 )
 
 // Map is the map's kinds. The map is Neutral and has no tags.
-const Map = Wall | Bounds
+const Map = Wall | Bounds | Fill
+
+// Solid is kinds with the walls' fill among them: ask with it for where a thing can't rest, or what it
+// flies into. A walk asks without, since a wall's outline stops it and fill pieces would hook it at
+// their seams.
+func Solid(kinds Kind) Kind {
+	if kinds&Wall != 0 {
+		return kinds | Fill
+	}
+	return kinds
+}
 
 // Tags are states that several features read. Effects grant them. Snapshots keep the bits, so never
 // renumber one. State only one champion reads stays in that champion's own component.

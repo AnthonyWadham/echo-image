@@ -46,11 +46,13 @@ func CheckSpawns(m level.Map, players map[uint8]int) error {
 	return errors.Join(errs...)
 }
 
-// Schema is what the game's maps may hold: walls and the edge, by their interact kinds, and spawns. Like
-// every map shape, each masks all bits, so each query's mask decides whether it stops there.
+// Schema is what the game's maps may hold: walls, their fill and the edge, by their interact kinds, and
+// spawns. Like every map shape, each masks all bits, so each query's mask decides whether it stops there.
 func Schema() level.Schema {
 	return level.Schema{
-		Kinds: level.Kinds{"wall": mapKind(interact.Wall), "bounds": mapKind(interact.Bounds)},
+		Kinds: level.Kinds{
+			"wall": mapKind(interact.Wall), "fill": mapKind(interact.Fill), "bounds": mapKind(interact.Bounds),
+		},
 		Types: level.Types{"spawn": reflect.TypeFor[Spawn]()},
 	}
 }

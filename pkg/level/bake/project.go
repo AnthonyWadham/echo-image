@@ -21,8 +21,8 @@ const (
 	tiledString = "string"
 )
 
-// Project returns the Tiled project (.tiled-project) for c: a class for each kind, to draw shapes with,
-// and one for each object type, with a member for each of its props. A designer picks a class from a list
+// Project returns the Tiled project (.tiled-project) for c: a class for each kind but the fills, to draw
+// shapes with, and one for each object type, with a member for each of its props. A designer picks a class from a list
 // and sets typed props, so a map names only what the game has. Tiled doesn't reload the file while it's
 // open.
 func Project(c Config) ([]byte, error) {
@@ -38,7 +38,9 @@ func Project(c Config) ([]byte, error) {
 		})
 	}
 	for _, kind := range slices.Sorted(maps.Keys(c.Schema.Kinds)) {
-		class(kind, []any{})
+		if !c.fills(kind) {
+			class(kind, []any{})
+		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Schema.Types)) {
 		fs, err := fields(c.Schema.Types[name])

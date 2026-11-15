@@ -20,6 +20,9 @@ type Config struct {
 	// Edges are the kinds drawn around the play area: each of their shapes becomes an edge loop. Every
 	// other kind's shape is a solid.
 	Edges []string
+	// Fills names, for a kind, the kind of the pieces that fill a shape of it drawn as an outline. The
+	// baker makes those pieces: no shape is drawn with a fill kind.
+	Fills map[string]string
 	// Check is the game's rules for a built map, as its shard runs them at boot. Nil checks nothing.
 	Check func(m level.Map, world *box2d.World) error
 }
@@ -56,13 +59,20 @@ func Bake(name string, tmj []byte, c Config) ([]byte, error) {
 	return data, nil
 }
 
-// check returns an error unless each edge kind is a kind, and no name is both a kind and a type: Tiled
-// has one class per name.
+// check returns an error unless each edge kind, filled kind and fill kind is a kind, and no name is both
+// a kind and a type: Tiled has one class per name.
 func (c Config) check() error {
 	var errs []error
 	for _, kind := range c.Edges {
 		if _, ok := c.Schema.Kinds[kind]; !ok {
 			errs = append(errs, fmt.Errorf("bake: edge kind %q isn't one of the schema's kinds", kind))
+		}
+	}
+	for _, kind := range slices.Sorted(maps.Keys(c.Fills)) {
+		for _, k := range []string{kind, c.Fills[kind]} {
+			if _, ok := c.Schema.Kinds[k]; !ok {
+				errs = append(errs, fmt.Errorf("bake: fill of %q: %q isn't one of the schema's kinds", kind, k))
+			}
 		}
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Schema.Types)) {
@@ -71,4 +81,14 @@ func (c Config) check() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// fills reports whether kind is the fill of another.
+func (c Config) fills(kind string) bool {
+	for _, fill := range c.Fills {
+		if fill == kind {
+			return true
+		}
+	}
+	return false
 }

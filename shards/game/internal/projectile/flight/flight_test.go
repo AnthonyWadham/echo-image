@@ -47,3 +47,38 @@ func TestFlyEndsWhereAndWhenTheSweepSays(t *testing.T) {
 		}
 	}
 }
+
+// A shot stops at an outlined wall from outside, and at once when it starts in the wall's fill, where
+// the outline alone would let it out. Either way it ends on a wall.
+func TestFlyMeetsAnOutlinedWallAndItsFill(t *testing.T) {
+	var tuning Tuning
+	if err := json.Unmarshal([]byte(`{"defaults": [{"kinds": ["wall"], "do": "stop"}]}`), &tuning); err != nil {
+		t.Fatal(err)
+	}
+	worldDef := box2d.DefaultWorldDef()
+	world := box2d.NewWorld(&worldDef)
+	bodyDef := box2d.DefaultBodyDef()
+	body := world.CreateBody(&bodyDef)
+	chain := box2d.DefaultChainDef() // a 4 x 4 m wall from x = 2
+	chain.Points = []box2d.Vec2{{X: 2, Y: -2}, {X: 6, Y: -2}, {X: 6, Y: 2}, {X: 2, Y: 2}}
+	chain.IsLoop = true
+	chain.Filter.CategoryBits = uint64(interact.Wall)
+	world.CreateChain(body, &chain)
+	fill := box2d.MakeOffsetBox(2, 2, box2d.Vec2{X: 4}, box2d.RotIdentity)
+	shape := box2d.DefaultShapeDef()
+	shape.Filter.CategoryBits = uint64(interact.Fill)
+	world.CreatePolygonShape(body, &shape, &fill)
+
+	def := Shot{Speed: 15, Range: 20, Radius: 0.15}
+	a := past.Actor{Side: interact.Side{Owner: 1}, View: judged}
+	for _, c := range []struct {
+		name      string
+		from, end float64
+	}{{"from outside", 1.5, 2 - def.Radius}, {"from inside", 4, 4}} {
+		f := Flight{Pos: box2d.Vec2{X: c.from}, Velocity: box2d.Vec2{X: def.Speed}, Radius: def.Radius, Remaining: 20}
+		_, end, over := tuning.Fly(world, def, f, a, sceneOf(false), 0.05)
+		if !over || math.Abs(end.At.X-c.end) > 2*box2d.LinearSlop || end.Hit.Kind != interact.Wall || end.Hit.OnTarget() {
+			t.Errorf("%s: ended %+v (over %v), want at x %v on a wall", c.name, end, over, c.end)
+		}
+	}
+}

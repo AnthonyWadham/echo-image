@@ -139,7 +139,8 @@ func (t Tuning) firstHit(world *box2d.World, def Shot, start, end box2d.Vec2, ra
 	proxy.Points[0] = start
 	proxy.Count = 1
 	proxy.Radius = radius
-	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Shot), MaskBits: uint64(mask)}
+	// A shot that starts inside a wall meets its fill: a chain outline stops it only from outside.
+	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Shot), MaskBits: uint64(interact.Solid(mask))}
 	world.CastShape(&proxy, box2d.Vec2{X: end.X - start.X, Y: end.Y - start.Y}, filter, meetShape, c)
 	return c.first, c.found
 }
@@ -162,8 +163,11 @@ func meetShape(shape box2d.ShapeID, _, _ box2d.Vec2, fraction float64, ctx any) 
 	if c.world.IsShapeSensor(shape) {
 		return -1 // skip sensors
 	}
-	category := interact.Kind(c.world.ShapeFilter(shape).CategoryBits)
-	h := hit{fraction: fraction, rule: c.mapRule, kind: category & interact.Map, meet: Meet{Do: Stop}}
+	kind := interact.Kind(c.world.ShapeFilter(shape).CategoryBits) & interact.Map
+	if kind == interact.Fill {
+		kind = interact.Wall // a wall's fill is the wall
+	}
+	h := hit{fraction: fraction, rule: c.mapRule, kind: kind, meet: Meet{Do: Stop}}
 	if !c.found || h.before(c.first) {
 		c.first, c.found = h, true
 	}

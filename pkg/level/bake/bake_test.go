@@ -32,10 +32,12 @@ var config = bake.Config{
 		Kinds: level.Kinds{
 			"wall":   {CategoryBits: 1, MaskBits: math.MaxUint64},
 			"bounds": {CategoryBits: 2, MaskBits: math.MaxUint64},
+			"fill":   {CategoryBits: 4, MaskBits: math.MaxUint64},
 		},
 		Types: level.Types{"spawn": reflect.TypeFor[spawn]()},
 	},
 	Edges: []string{"bounds"},
+	Fills: map[string]string{"wall": "fill"},
 }
 
 // golden fails unless got is the file at path, or rewrites it with -update.
@@ -189,6 +191,7 @@ func TestBakeRefuses(t *testing.T) {
 		{"a tile", set(2, map[string]any{"gid": 5}), "is a tile"},
 		{"text", set(2, map[string]any{"text": map[string]any{"text": "hi"}}), "is text"},
 		{"no class", set(2, map[string]any{"type": ""}), "has no class"},
+		{"a shape drawn as a fill", set(2, map[string]any{"type": "fill"}), `class "fill" is a fill, which the baker makes`},
 		{"a class the game lacks", set(2, map[string]any{"type": "lava"}),
 			`bake: object 2 (lava) at (-6.5, 1): class "lava" is no kind or object type`},
 		{"an ellipse", set(5, map[string]any{"width": 64}), "ellipse 64 x 48 px: a wall is a circle"},
@@ -275,13 +278,15 @@ func TestBakeRunsTheGamesRules(t *testing.T) {
 	}
 }
 
-// A config whose edge isn't a kind, or with a name both a kind and an object type, bakes nothing.
+// A config whose edge or fill isn't a kind, or with a name both a kind and an object type, bakes nothing.
 func TestBakeRefusesABadConfig(t *testing.T) {
 	c := config
 	c.Edges = []string{"fence"}
+	c.Fills = map[string]string{"wall": "glue"}
 	c.Schema.Types = level.Types{"spawn": reflect.TypeFor[spawn](), "wall": reflect.TypeFor[spawn]()}
 	_, err := bake.Bake("yard", yard(t), c)
-	for _, want := range []string{`edge kind "fence"`, `"wall" is both a kind and an object type`} {
+	for _, want := range []string{`edge kind "fence"`, `fill of "wall": "glue" isn't`,
+		`"wall" is both a kind and an object type`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("got %v, want an error with %q", err, want)
 		}

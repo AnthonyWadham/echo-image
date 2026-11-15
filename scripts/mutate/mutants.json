@@ -4739,6 +4739,126 @@
      "new": "\tfor _, files := range patches {"
     }
    ]
+  },
+  {
+   "id": "M10-M1",
+   "breaks": "a Body's walk meets a wall's fill, and hooks on its seams",
+   "check": "motion",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/motion/motion.go",
+     "old": "MaskBits: uint64(blockers)}",
+     "new": "MaskBits: uint64(interact.Solid(blockers))}"
+    }
+   ]
+  },
+  {
+   "id": "M10-M2",
+   "breaks": "a Body in a wall's fill isn't landed out of it",
+   "check": "motion",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/motion/motion.go",
+     "old": "if mover.Inside(world, circle.Center, solid) {",
+     "new": "if mover.Inside(world, circle.Center, filter) {"
+    }
+   ]
+  },
+  {
+   "id": "M10-M3",
+   "breaks": "a Body lands inside a wall's fill",
+   "check": "motion",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/motion/motion.go",
+     "old": "circle.Center, landed = Land(world, circle, solid)",
+     "new": "circle.Center, landed = Land(world, circle, filter)"
+    }
+   ]
+  },
+  {
+   "id": "M10-R1",
+   "breaks": "the map rules take a wall's fill for open space",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "MaskBits: uint64(interact.Solid(motion.Blockers))}",
+     "new": "MaskBits: uint64(motion.Blockers)}"
+    }
+   ]
+  },
+  {
+   "id": "M10-R2",
+   "breaks": "the map rules check no landing out of a wall's fill",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "MaskBits: uint64(interact.Solid(motion.Blockers) &^ interact.Bounds)}",
+     "new": "MaskBits: uint64(motion.Blockers &^ interact.Bounds)}"
+    }
+   ]
+  },
+  {
+   "id": "M10-F1",
+   "breaks": "a shot that starts in a wall's fill flies out",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "MaskBits: uint64(interact.Solid(mask))}",
+     "new": "MaskBits: uint64(mask)}"
+    }
+   ]
+  },
+  {
+   "id": "M10-F2",
+   "breaks": "a shot that ends on a wall's fill ends on no wall",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/flight/flight.go",
+     "old": "kind = interact.Wall // a wall's fill is the wall",
+     "new": "kind = interact.Fill"
+    }
+   ]
+  },
+  {
+   "id": "M10-B1",
+   "breaks": "a shape drawn as a fill bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tcase r.c.fills(o.Class):",
+     "new": "\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M10-B2",
+   "breaks": "the Tiled project has a class to draw a fill with",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/project.go",
+     "old": "\t\tif !c.fills(kind) {",
+     "new": "\t\tif true {"
+    }
+   ]
+  },
+  {
+   "id": "M10-B3",
+   "breaks": "a fill kind the schema lacks bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/bake.go",
+     "old": "if _, ok := c.Schema.Kinds[k]; !ok {",
+     "new": "if _, ok := c.Schema.Kinds[k]; false && !ok {"
+    }
+   ]
   }
  ]
 }
