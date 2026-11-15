@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/pkg/levelstate"
+	abilitycomp "echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/arena"
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	historycomp "echo_image/shards/game/internal/history/component"
@@ -16,8 +17,8 @@ import (
 )
 
 // bodyRow is a player Body: identity, champion, team, owner (itself), input, speed, the physics2d trio,
-// its effect list, and its history (the rows screens draw it from and shots meet it by). Deliberately NO
-// Health — the Body is invincible; Health lives on the Echo.
+// its effect list, its cooldowns, and its history (the rows screens draw it from and shots meet it by).
+// Deliberately NO Health — the Body is invincible; Health lives on the Echo.
 type bodyRow struct {
 	Spawn     ref.Spawn
 	Player    component.Player
@@ -30,6 +31,7 @@ type bodyRow struct {
 	Velocity  physics2d.Velocity2D
 	Body      physics2d.PhysicsBody2D
 	Effects   effectcomp.Effects
+	Abilities abilitycomp.Abilities
 	History   historycomp.History
 }
 

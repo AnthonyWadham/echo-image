@@ -25,6 +25,34 @@ type Row struct {
 	Until  float64 // the part of the tick it lived: 1, or when it died in it
 }
 
+// Ring is a thing's rows in a ring: tick t's row at t % Len, kept if its Tick is t.
+type Ring interface {
+	Len() int
+	At(i int) Row
+}
+
+// RowAt is ring's row of tick, if it is kept.
+func RowAt[R Ring](ring R, tick uint64) (Row, bool) {
+	n := ring.Len()
+	if n == 0 {
+		return Row{}, false
+	}
+	if r := ring.At(int(tick % uint64(n))); r.Tick == tick {
+		return r, true
+	}
+	return Row{}, false
+}
+
+// AppendKept appends ring's kept rows of the ticks before before that it spans, oldest first.
+func AppendKept[R Ring](dst []Row, ring R, before uint64) []Row {
+	for tick := before - min(before, uint64(ring.Len())); tick < before; tick++ {
+		if r, ok := RowAt(ring, tick); ok {
+			dst = append(dst, r)
+		}
+	}
+	return dst
+}
+
 // RowTicks is the ticks of the rows view v is drawn from: b - 1 and b = ⌈v⌉. v is t = v - (b - 1) of the
 // way through tick b, 0 < t <= 1, so a whole tick is its end. The client's Timeline.sample picks the
 // same two.

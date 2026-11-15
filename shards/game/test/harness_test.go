@@ -241,7 +241,7 @@ func primary(t *testing.T) (cast.Def, flight.Shot) {
 	t.Helper()
 	id := kit(t)[0]
 	def := tuningOf[ability.AbilityTuning](t).Abilities[id]
-	hook, err := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz)
+	hook, err := hooks.Bind(def.Hook, def.Params)
 	if err != nil || len(hook.Refs.Shots) != 1 {
 		t.Fatalf("kit slot 0 holds %q, which launches no one shot (%v)", id, err)
 	}
@@ -415,7 +415,8 @@ func flyFor(w *cardinal.TestWorld, n int) {
 	}
 }
 
-// Content fails the boot when a key is unknown (a typo would load as 0), an ID one file names is missing
+// Content fails the boot when a key is unknown (a typo would load as 0), repeated or in the wrong case
+// (a copied row would replace the first), an ID one file names is missing
 // from another, or a map breaks the game's rules, so every boot, test or shard, checks the content it runs.
 func TestBadContentFailsTheBoot(t *testing.T) {
 	for _, c := range []struct{ name, file, patch, want string }{
@@ -457,6 +458,18 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 	if err := shard.CheckContent(onMap(t, content.Overlay{}, edgeless)); err == nil ||
 		!strings.Contains(err.Error(), "map test: arena: a Body walks off the map") {
 		t.Fatalf("a map with no edge loaded with error %v", err)
+	}
+	raw, err := content.FS.ReadFile("projectile/tuning.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, file := range map[string]string{
+		"repeated key":   strings.Replace(string(raw), `"shots": {`, `"shots": {"bolt": {}, `, 1),
+		"wrong-case key": strings.Replace(string(raw), `"shots"`, `"Shots"`, 1),
+	} {
+		if err := shard.CheckContent(content.Overlay{"projectile/tuning.json": []byte(file)}); err == nil {
+			t.Errorf("a file with a %s loaded", name)
+		}
 	}
 	if err := shard.CheckContent(content.FS); err != nil {
 		t.Fatalf("the shipped content fails: %v", err)

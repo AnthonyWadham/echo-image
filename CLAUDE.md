@@ -36,8 +36,9 @@ one is the *what*.
   `cardinal.NewTestWorld`, so a missing registration fails there; they also pin the client-sync,
   prediction, ability, shot, Echo, area, damage and effect rules below.
 - **Mutation checks:** `go run ./scripts/mutate` breaks each rule in `scripts/mutate/mutants.json` once,
-  in a temporary copy (never the working tree), and fails if a test misses one or its old text is gone.
-  Add a mutant with each new rule; run it when a rule changes.
+  in a temporary copy (never the working tree), and fails if a check fails with no mutant, a test misses
+  one, or its old text is gone. `scripts/check.sh` runs `go run ./scripts/mutate -anchors`, which checks
+  only the old texts. Add a mutant with each new rule; run it when a rule changes.
 - **Random play:** `TestRandomPlayIsPredicted` plays 2,000 random but honest ticks from a new seed
   each run, and checks prediction every tick. A failure names its seed; `-seed` reruns it.
   `FuzzFlyMeetsAMovingTargetWhenTheyTouch` (`go test -fuzz`) fuzzes when a shot meets a moving target.
@@ -120,7 +121,7 @@ shards/game/
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
                                   elimination_system.go, tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
-    ability/  package ability     casting: equip_system.go (cooldowns on claim) → cast_system.go (the
+    ability/  package ability     casting: cast_system.go (the
                                   gate; the one writer of cooldowns) → cast_hook_system.go (runs each
                                   cast's hook, turns its requests into intents), sync_system.go,
                                   tuning.go (AbilityTuning: cast.Tuning plus its kit-size check),
@@ -130,7 +131,7 @@ shards/game/
       cast/       package cast        the cast gate (Gate), Cooldowns, Tuning (kits, abilities, their
                                       bound hooks) — no Cardinal import
       hooks/      package hooks       what abilities do: one hook per name (launch_hook.go,
-                                      dash_hook.go), Bind, Out — standard library and timestep only
+                                      dash_hook.go), Bind, Out — standard library, timestep and status only
     projectile/ package projectile  shots: launch_system.go (the one shot constructor) →
                                   flight_system.go (flies each shot, a predicted one at its client's
                                   view, acts on what it meets), sync_system.go, tuning.go
@@ -144,7 +145,7 @@ shards/game/
                                   past.Tuning), doc.go
       component/  package component   History (the ring of a thing's rows; a constructor adds it) —
                                       history's leaf
-      past/       package past        the one record and view rule (Row, RowTicks, AtView, Across), the
+      past/       package past        the one record, ring and view rule (Row, RowAt, RowTicks, AtView, Across), the
                                       Window a view may lag (Ticks, KeptRows, Clamp), and the Scene
                                       every judge queries (Thing, Actor, Query, Contact, Cast) — no
                                       Cardinal import
@@ -191,7 +192,7 @@ combat's and projectile's leaves import ability's leaf for `Cause`, projectile's
 — a feature can read another's components without ever closing a cycle.
 The shared sim code imports no Cardinal: `physics/timestep` imports only math, `physics/mover` only box2d;
 `interact`, `effect/status` and `ability/hooks` only the standard library (and `interact`, and
-`physics/timestep` for hooks); and
+`physics/timestep` and `effect/status` for hooks); and
 `history/past`, `ability/cast`, `projectile/flight`, `player/motion` and `predict` only those and box2d. So the client
 predictor builds them for wasm, and any feature may import them like a leaf. Player's leaf imports
 `player/motion` for `InputFrame.Move`. `content` is a leaf too, standard library only (imported by
@@ -323,7 +324,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Tags are a closed Go list, append only** (snapshots keep the bits). Add one only when several
   features read it; state one champion alone reads stays in its own component. What a tag does to
   other effects is data: an effect kind's `ends` (the holder's entries it removes as it lands) and
-  `blocked_by` (holder tags that stop it), and the abilities' `blocked_by` (the cast gate).
+  `blocked_by` (holder tags that stop it), and each ability's `blocked_by`, or the file's (the cast gate).
 - **Areas test who is inside every tick.** An `area/component.Area{Kind, Start}` makes its entity's
   first shape act on what overlaps it: one Box2D circle overlap (`Physics.Engine().OverlapShape`), then
   the first matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
@@ -526,8 +527,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
-  before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem` and
-  `ability.AttachAbilitiesSystem`, `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
+  before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem`,
+  `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
   which emits `LaunchIntent` before `projectile.LaunchSystem`; every `DamageIntent` and `HealIntent`
   emitter (`projectile.FlightSystem`, `area.AreaSystem`) before `combat.DamageResolveSystem`; and every
   `EffectIntent` emitter (`ability.CastHookSystem`, and `echo.EliminationSystem`, which reads `Died`
@@ -535,8 +536,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Every receiver sorts its intents by a full key before it acts,** because emit order can change
   after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs). Only one whose
   every intent touches its own entity, and whose own emits a later receiver sorts, may walk them in
-  emit order (`echo.SpawnSystem`, `ability.AttachAbilitiesSystem`, `ability.CastHookSystem`).
-- **`player.InputSystem`, `ability.AttachAbilitiesSystem`, `ability.CastSystem`, then `player.MovementSystem`
+  emit order (`echo.SpawnSystem`, `ability.CastHookSystem`).
+- **`player.InputSystem`, `ability.CastSystem`, then `player.MovementSystem`
   run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
   just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
   depends on this (`TestFrameMovesBodySameTickAsAck`). The predictor steps in the same order: input,
@@ -555,8 +556,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   to `history.SceneSystem` and to each judge (`projectile.FlightSystem`), as it does the physics plugin.
   That shared pointer is the one place the leaf rule bends.
 - **Hooks, shots and areas run in Update:** `ability.CastHookSystem` → `projectile.LaunchSystem` →
-  `projectile.FlightSystem` → `area.AreaSystem`. A Body can cast the tick it is claimed (Equip runs
-  before Cast), and a shot launched this tick moves this tick, its path starting at the shooter.
+  `projectile.FlightSystem` → `area.AreaSystem`. A Body can cast the tick it is claimed (its constructor
+  gives it Abilities), and a shot launched this tick moves this tick, its path starting at the shooter.
 - **`effect.ResolveSystem` runs last in Update.** What it adds applies from the next tick, and it
   drops what is over by then, so a whole tick reads one status.
 - **Update writes the tick; PostUpdate reads it.** PostUpdate runs after every Update system, so no
@@ -579,7 +580,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **A definition is a Go type implementing `JSONFile()`** (`content.File`). Optional: `Bind()`
   (binds what decoding can't, e.g. `cast.Tuning` binds each ability's hook) and `Validate()` (one
   file's invariants).
-- **The shard loads every file once at boot** (`loadCatalog` in `shards/game/catalog.go`), then checks
+- **The shard loads every file once at boot** (`loadCatalog` in `shards/game/shard/catalog.go`), then checks
   the IDs one file names in another: each ability's shots and effect kinds (hooks list theirs in
   `Refs`), and each champion's kit, Echo and Echo area. A champion with no Echo could never be
   eliminated. `TestBadContentFailsTheBoot` pins both kinds of failure.
@@ -587,14 +588,14 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   the catalog. Content never changes after boot, so a system reads it directly, never a copy per
   entity.
 - **Tests change content with `withContent`** (`harness_test.go`): it deep-merges JSON patches into the
-  shipped files and boots the real `registerWith` from that `fs.FS`; `patched` gives a predictor the same.
+  shipped files and boots the real `shard.RegisterWith` from that `fs.FS`; `patched` gives a predictor the same.
   Use it for test-only shot types and champions; never add test content to the shipped files.
   A test with walls declares its map before boot: `onMap` writes a test map into the files, and
   `duelOn` and `fxDuelOn` are `duel` and `fxDuel` on one. The shard's own world has no wall to add.
   World tests play the shipped open map: `patched` lists only it (`onOpen`), so a new shipped map moves
   none of them. A test map starts from it (`openMap`, `openWith`), so it keeps the edge and spawns the
   map rules need.
-  A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
+  A test that reads metrics passes its own meter provider to `shard.RegisterWith`. Never swap otel's global
   one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
   (`dev_spawns` in `content/player/tuning.json`), gives it a map with a spawn for each (`twoVsTwo`),
@@ -840,7 +841,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   in `content/echo/tuning.json`. A new champion is JSON entries, never new code.
 - **The cast gate decides whether a cast happens.** A Body casts from its champion's kit.
   `cast.Gate`, which `ability.CastSystem` and the predictor both run, checks the button, cooldown and
-  aim, and that the Body has no tag in the abilities' `blocked_by` (`stunned`, `out`), then starts the cooldown; `CastSystem` emits
+  aim, and that the Body has no tag the ability is blocked by (its own `blocked_by`, or the file's: `stunned`, `out`), then starts the cooldown; `CastSystem` emits
   `AbilityCast{Cause, Aim}`. Cooldowns are kept per ability ID, so a cooldown
   follows its ability into whichever slot holds it.
 - **What an ability does is its hook.** Every ability row names a hook in `ability/hooks` and gives
@@ -891,8 +892,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 ## Engine cheat-sheet (Cardinal)
 
 - **Systems** are structs with `Run(w *cardinal.World)`, registered in `shard.go` with
-  `world.RegisterSystem(&feature.FooSystem{...}, cardinal.WithHook(...))`. Dependencies (the data
-  plugin) are struct fields set there. Log with `w.Logger()`.
+  `world.RegisterSystem(&feature.FooSystem{...}, cardinal.WithHook(...))`. Dependencies (content,
+  plugins) are struct fields set there. Log with `w.Logger()`.
 - **Search rows:** `w.Contains[Row]()` / `w.Exact[Row]()`, where `Row` is a struct whose fields are
   component types. `.Iter()` yields `cardinal.Entity` handles; `.GetByID(id)` fetches one (error if it
   doesn't match). `w.Create[Row]()` spawns an entity with those components, zeroed. On a handle:

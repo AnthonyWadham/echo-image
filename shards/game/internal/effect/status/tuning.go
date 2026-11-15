@@ -18,8 +18,8 @@ type Tuning struct {
 type KindDef struct {
 	Tags      interact.Tags `json:"tags"`       // states it grants the holder: "stunned", "cc", "ends_on_cc", "unstoppable"
 	Passes    interact.Kind `json:"passes"`     // map kinds the holder moves through: only "wall"
-	Stat      string        `json:"stat"`       // the stat Value changes: "move_speed", or "" for none
-	Stacking  string        `json:"stacking"`   // "merge", "per_source" or "instanced"
+	Stat      Stat          `json:"stat"`       // the stat Value changes: "move_speed", or "" for none
+	Stacking  *Stacking     `json:"stacking"`   // "merge", "per_source" or "instanced"
 	Ends      interact.Tags `json:"ends"`       // it removes the holder's entries with any of these tags as it lands
 	BlockedBy interact.Tags `json:"blocked_by"` // it doesn't land on a holder with any of these tags
 }
@@ -48,13 +48,13 @@ func (t Tuning) Validate() error {
 	return nil
 }
 
-// Compare orders intents by target, then the kinds something can block last, so an unstoppable added
-// the same tick blocks a stun. The rest of the key keeps emit order out of it, since that can change
-// after a restore.
+// Compare orders intents by target, then the kinds that read the holder's tags last, so an unstoppable
+// added the same tick blocks a stun and a root ends a dash, whatever their sources. The rest of the key
+// keeps emit order out of it, since that can change after a restore.
 func (t Tuning) Compare(a, b Intent) int {
 	return cmp.Or(
 		cmp.Compare(a.Target, b.Target),
-		cmp.Compare(t.blockable(a.Kind), t.blockable(b.Kind)),
+		cmp.Compare(t.readsTags(a.Kind), t.readsTags(b.Kind)),
 		cmp.Compare(a.Source, b.Source),
 		cmp.Compare(a.Kind, b.Kind),
 		cmp.Compare(a.Ticks, b.Ticks),
@@ -83,9 +83,9 @@ func (t Tuning) Apply(list []Entry, next *uint32, in Intent, tick uint64) ([]Ent
 	return Add(list, next, e, rule, tick, in.Ticks), true
 }
 
-// blockable is 1 for a kind a tag can block and 0 for any other.
-func (t Tuning) blockable(kind string) int {
-	if t.Kinds[kind].BlockedBy != 0 {
+// readsTags is 1 for a kind a tag can block or that ends tagged entries, and 0 for any other.
+func (t Tuning) readsTags(kind string) int {
+	if k := t.Kinds[kind]; k.BlockedBy|k.Ends != 0 {
 		return 1
 	}
 	return 0
@@ -103,42 +103,25 @@ func (t Tuning) entry(kind string) (Entry, Stacking, bool) {
 
 // resolve turns def into an entry for kind and its stacking rule.
 func (def KindDef) resolve(kind string) (Entry, Stacking, error) {
-	unknown := func(what, name string) error {
-		return fmt.Errorf("effect_tuning: kind %q: unknown %s %q", kind, what, name)
-	}
-	e := Entry{Kind: kind, Tags: def.Tags, Pass: def.Passes}
+	e := Entry{Kind: kind, Tags: def.Tags, Pass: def.Passes, Stat: def.Stat}
 	if def.Passes&^interact.Wall != 0 {
 		return e, 0, fmt.Errorf("effect_tuning: kind %q: a Body can move through walls only", kind)
 	}
-	var ok bool
-	if e.Stat, ok = statNamed(def.Stat); !ok {
-		return e, 0, unknown("stat", def.Stat)
+	if def.Stacking == nil {
+		return e, 0, fmt.Errorf("effect_tuning: kind %q: no stacking", kind)
 	}
-	rule, ok := stackingNamed(def.Stacking)
-	if !ok {
-		return e, 0, unknown("stacking", def.Stacking)
-	}
-	return e, rule, nil
+	return e, *def.Stacking, nil
 }
 
-func statNamed(name string) (Stat, bool) {
-	switch name {
-	case "":
-		return NoStat, true
-	case "move_speed":
-		return MoveSpeed, true
-	}
-	return 0, false
-}
+var (
+	statNames     = map[string]Stat{"": NoStat, "move_speed": MoveSpeed}
+	stackingNames = map[string]Stacking{"merge": Merge, "per_source": PerSource, "instanced": Instanced}
+)
 
-func stackingNamed(name string) (Stacking, bool) {
-	switch name {
-	case "merge":
-		return Merge, true
-	case "per_source":
-		return PerSource, true
-	case "instanced":
-		return Instanced, true
-	}
-	return 0, false
+// UnmarshalJSON reads a stat name. An unknown one fails, so bad content fails the boot.
+func (s *Stat) UnmarshalJSON(b []byte) error { return interact.Name(b, "stat", statNames, s) }
+
+// UnmarshalJSON reads a stacking name. An unknown one fails, so bad content fails the boot.
+func (s *Stacking) UnmarshalJSON(b []byte) error {
+	return interact.Name(b, "stacking", stackingNames, s)
 }

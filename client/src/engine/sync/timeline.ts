@@ -66,7 +66,7 @@ export class Timeline<T> {
 
   /**
    * The states view v is drawn from: those at ticks ⌈v⌉ - 1 and ⌈v⌉, so a whole tick is its own end.
-   * Undefined without both. The server judges your shots by the same rule (flight.RowTicks, AtView).
+   * Undefined without both. The server judges your shots by the same rule (past.RowTicks, AtView).
    */
   sample(v: number): Sample<T> | undefined {
     const b = Math.ceil(v)

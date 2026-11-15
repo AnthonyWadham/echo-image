@@ -14,7 +14,7 @@ import (
 type Tuning struct {
 	Kits      map[string][]string `json:"kits"`       // by champion ID: its ability IDs, slot 0 first
 	Abilities map[string]Def      `json:"abilities"`  // by ability ID
-	BlockedBy interact.Tags       `json:"blocked_by"` // a caster with any of these tags casts nothing
+	BlockedBy interact.Tags       `json:"blocked_by"` // by default, a caster with any of these tags casts nothing
 	bound     map[string]hooks.Hook
 }
 
@@ -24,6 +24,7 @@ type Def struct {
 	Aimed           bool            `json:"aimed"`            // needs an aim direction to cast
 	Hook            string          `json:"hook"`             // what it does: a hook name in ability/hooks
 	Params          json.RawMessage `json:"params"`           // the hook's numbers and IDs
+	BlockedBy       *interact.Tags  `json:"blocked_by"`       // its own blocked tags; nil uses the file's
 }
 
 // JSONFile is the path within the content embed.FS.
@@ -39,7 +40,7 @@ func (d Def) CooldownTicks() uint64 {
 func (t *Tuning) Bind() error {
 	t.bound = map[string]hooks.Hook{}
 	for id, d := range t.Abilities {
-		h, err := hooks.Bind(d.Hook, d.Params, timestep.Rate)
+		h, err := hooks.Bind(d.Hook, d.Params)
 		if err != nil {
 			return fmt.Errorf("ability_tuning: %q: %w", id, err)
 		}

@@ -6,6 +6,7 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	playercomp "echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"fmt"
 	"math"
 	"testing"
 
@@ -159,6 +160,22 @@ func TestStunnedBodyCannotCast(t *testing.T) {
 	}
 	if ready, _ := readyTick(t, w, "alice", body.EntityID); ready != 0 {
 		t.Fatalf("ReadyTick = %d, want 0: no cooldown spent", ready)
+	}
+}
+
+// An ability's own blocked_by replaces the file's: one with none casts while stunned.
+func TestOwnBlockedByLetsAStunnedBodyCast(t *testing.T) {
+	fx := &emitter{}
+	own := map[string]string{"ability/tuning.json": fmt.Sprintf(`{"abilities": {%q: {"blocked_by": []}}}`, kit(t)[0])}
+	w := cardinal.NewTestWorld(t, withEmitter(withContent(t, effectKinds, own), fx))
+	alice, _ := claim(t, w)
+	body := yourBody(t, bodiesFor(t, w, "alice"))
+	fx.effect(body, effectcomp.EffectIntent{Kind: "stun", Ticks: 5})
+	w.Tick() // the stun applies from the next tick
+	alice.fire(0, 1)
+	w.Tick()
+	if ready, _ := readyTick(t, w, "alice", body.EntityID); ready == 0 {
+		t.Fatal("a stunned Body didn't cast an ability whose own blocked_by is empty")
 	}
 }
 

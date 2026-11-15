@@ -15,7 +15,7 @@ type inputRow struct {
 	Input  component.InputQueue
 }
 
-// InputSystem (PreUpdate, first) queues each Input command's frames on the sender's Body, then
+// InputSystem (PreUpdate, the first system) queues each Input command's frames on the sender's Body, then
 // applies exactly one queued frame per Body per tick, in Seq order. One frame per tick keeps the Body,
 // and the Echo replaying it, smooth when frames arrive late or bunched. The client paces its frames by
 // the queue's depth, which YouState sends, so the queue's cap only stops abuse. Systems act on the

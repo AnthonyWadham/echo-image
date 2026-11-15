@@ -19,16 +19,7 @@ type History struct {
 func (History) Name() string { return "history" }
 
 // At is the row of tick, if it is kept.
-func (t History) At(tick uint64) (past.Row, bool) {
-	n := t.Rows.Len()
-	if n == 0 {
-		return past.Row{}, false
-	}
-	if r := t.Rows.At(int(tick % uint64(n))); r.Tick == tick {
-		return r, true
-	}
-	return past.Row{}, false
-}
+func (t History) At(tick uint64) (past.Row, bool) { return past.RowAt(t.Rows, tick) }
 
 // Record is t with r in its tick's slot of keep, in place: Set it after. A new keep (its first row, or a
 // window change) sizes the ring once and keeps the rows it still spans. An empty slot holds r, whose
@@ -49,10 +40,5 @@ func (t History) Record(r past.Row, keep int) History {
 
 // AppendRows appends t's kept rows of the ticks before before that the ring spans, oldest first.
 func (t History) AppendRows(dst []past.Row, before uint64) []past.Row {
-	for tick := before - min(before, uint64(t.Rows.Len())); tick < before; tick++ {
-		if r, ok := t.At(tick); ok {
-			dst = append(dst, r)
-		}
-	}
-	return dst
+	return past.AppendKept(dst, t.Rows, before)
 }

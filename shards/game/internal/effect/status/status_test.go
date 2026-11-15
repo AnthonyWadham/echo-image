@@ -118,6 +118,7 @@ func kinds(t *testing.T) Tuning {
 		"dash": {"tags": ["ends_on_cc"], "stacking": "merge"},
 		"stun": {"tags": ["stunned", "cc"], "ends": ["ends_on_cc"], "blocked_by": ["unstoppable"], "stacking": "merge"},
 		"slow": {"tags": ["cc"], "stat": "move_speed", "blocked_by": ["unstoppable"], "stacking": "per_source"},
+		"root": {"tags": ["cc"], "ends": ["ends_on_cc"], "stacking": "merge"},
 		"unstoppable": {"tags": ["unstoppable"], "stacking": "merge"}}}`), &tu); err != nil {
 		t.Fatal(err)
 	}
@@ -167,6 +168,23 @@ func TestSameTickUnstoppableBlocksStun(t *testing.T) {
 	}
 	if s := Fold(slices.Values(l), 11); s.Tags&interact.Stunned != 0 || s.Tags&interact.Unstoppable == 0 {
 		t.Fatalf("want unstoppable and no stun: %+v", l)
+	}
+}
+
+// A same-tick root ends a dash whichever source ID is lower, though nothing can block the root.
+func TestSameTickRootEndsDashFromAnySource(t *testing.T) {
+	tu := kinds(t)
+	for _, src := range [][2]uint32{{2, 9}, {9, 2}} {
+		next := uint32(0)
+		intents := []Intent{{Target: 1, Kind: "dash", Ticks: 10, VelX: 20, Source: src[0]}, {Target: 1, Kind: "root", Ticks: 10, Source: src[1]}}
+		slices.SortFunc(intents, tu.Compare)
+		var l []Entry
+		for _, in := range intents {
+			l, _ = tu.Apply(l, &next, in, 10)
+		}
+		if s := Fold(slices.Values(l), 11); s.VelX != 0 {
+			t.Fatalf("dash from %d, root from %d: want the dash ended: %+v", src[0], src[1], l)
+		}
 	}
 }
 

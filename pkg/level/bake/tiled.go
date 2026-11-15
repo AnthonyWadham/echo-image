@@ -32,6 +32,8 @@ type tiledLayer struct {
 	Type    string        `json:"type"`
 	Name    string        `json:"name"`
 	Objects []tiledObject `json:"objects"`
+	OffsetX float64       `json:"offsetx"`
+	OffsetY float64       `json:"offsety"`
 }
 
 // tiledObject is one drawn object, in pixels: x right and y down from the canvas's top left. A shape's
@@ -94,6 +96,10 @@ func read(tmj []byte, c Config) (level.Map, error) {
 			errs = append(errs, fmt.Errorf("bake: layer %q is a %s: only object layers bake", layer.Name, layer.Type))
 			continue
 		}
+		if layer.OffsetX != 0 || layer.OffsetY != 0 {
+			errs = append(errs, fmt.Errorf("bake: layer %q is moved by an offset: move its objects instead", layer.Name))
+			continue
+		}
 		for _, o := range layer.Objects {
 			if err := r.object(o); err != nil {
 				errs = append(errs, fmt.Errorf("bake: object %d (%s) at %s: %w", o.ID, o.Class, r.canvas.at(o), err))
@@ -151,7 +157,7 @@ func (r *reader) object(o tiledObject) error {
 	case o.Class == "":
 		return errors.New("has no class: give it a kind or an object type")
 	case r.c.fills(o.Class):
-		return fmt.Errorf("class %q is a fill, which the baker makes: draw the wall it fills", o.Class)
+		return fmt.Errorf("class %q is a fill, which the baker makes: draw a shape of the kind it fills", o.Class)
 	}
 	r.ids[o.ID] = true
 	if _, ok := r.c.Schema.Kinds[o.Class]; ok {
@@ -195,8 +201,10 @@ func (r *reader) shape(o tiledObject) error {
 		r.m.Edges = append(r.m.Edges, level.Loop{Src: o.ID, Kind: o.Class, Points: loop(points, -1)})
 		return nil
 	}
-	polygon, err := convex(points)
-	if err == nil && !slices.Equal(loop(points, 1), loop(polygon, 1)) {
+	polygon, err := level.Hull(points)
+	if err != nil {
+		err = fmt.Errorf("%w: its kind has no fill, so it must be convex", err)
+	} else if !slices.Equal(loop(points, 1), loop(polygon, 1)) {
 		err = errors.New("crosses itself") // its corners make a hull, but not in the order drawn
 	}
 	if fill, ok := r.c.Fills[o.Class]; err != nil && ok {
@@ -209,7 +217,7 @@ func (r *reader) shape(o tiledObject) error {
 	return nil
 }
 
-// outlined adds o, a wall Box2D takes as no one polygon, as its outline and the pieces that fill it.
+// outlined adds o, a shape Box2D takes as no one polygon, as its outline and the pieces that fill it.
 func (r *reader) outlined(o tiledObject, points []level.Point, fill string) error {
 	outline := level.Loop{Src: o.ID, Kind: o.Class, Points: loop(points, 1)}
 	// The loader's own check, before the cut: a loop that crosses itself has no pieces.
@@ -301,28 +309,6 @@ func propsOf(properties []tiledProperty, t reflect.Type) (any, error) {
 		}
 	}
 	return v.Interface(), nil
-}
-
-// convex is a wall's corners in box2d.ComputeHull's order, which a map file holds them in, or an error
-// unless every corner is on the hull.
-func convex(points []level.Point) ([]level.Point, error) {
-	if n := len(points); n > box2d.MaxPolygonVertices {
-		return nil, fmt.Errorf("has %d corners, more than Box2D's %d", n, box2d.MaxPolygonVertices)
-	}
-	vecs := make([]box2d.Vec2, len(points))
-	for i, p := range points {
-		vecs[i] = p.Vec2()
-	}
-	hull := box2d.ComputeHull(vecs)
-	if hull.Count != len(points) || !box2d.ValidateHull(&hull) {
-		return nil, errors.New("is concave, or has a corner on a line or within 5 mm of another: " +
-			"its kind has no fill, so it must be convex")
-	}
-	out := make([]level.Point, hull.Count)
-	for i, v := range hull.Points[:hull.Count] {
-		out[i] = level.Point{int32(math.Round(v.X * level.Unit)), int32(math.Round(v.Y * level.Unit))}
-	}
-	return out, nil
 }
 
 // loop is a loop's corners from its lowest, then leftmost, wound winding: 1 counter-clockwise (an

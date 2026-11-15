@@ -10,7 +10,6 @@ import (
 	"echo_image/shards/game/internal/ability/hooks"
 	"echo_image/shards/game/internal/effect/status"
 	"echo_image/shards/game/internal/interact"
-	"echo_image/shards/game/internal/physics/timestep"
 )
 
 // Cooldown is when an ability can be cast again.
@@ -47,18 +46,18 @@ func (c Cooldowns) index(ability string) int {
 
 // Gate returns what a frame casts at tick for a caster playing champion: each ready ability in the
 // champion's kit whose button is held, in slot order, and the cooldowns after them. Bit N of buttons
-// is held for kit slot N, and aim is a unit vector or zero. A caster with a tag in BlockedBy (stunned)
-// casts nothing, and an aimed ability needs an aim.
+// is held for kit slot N, and aim is a unit vector or zero. A caster with a tag an ability is blocked by
+// (stunned) doesn't cast it, and an aimed ability needs an aim.
 func (t Tuning) Gate(champion string, cooldowns Cooldowns, tags interact.Tags, buttons uint32, aim hooks.Vec2,
 	tick uint64,
 ) (Cooldowns, []string) {
-	if buttons == 0 || tags&t.BlockedBy != 0 {
+	if buttons == 0 {
 		return cooldowns, nil
 	}
 	var casts []string
 	for slot, id := range t.Kits[champion] {
 		def, known := t.Abilities[id]
-		if !known || buttons&(1<<slot) == 0 || tick < cooldowns.ReadyTick(id) {
+		if !known || buttons&(1<<slot) == 0 || tick < cooldowns.ReadyTick(id) || tags&t.blockedBy(def) != 0 {
 			continue
 		}
 		if def.Aimed && aim == (hooks.Vec2{}) {
@@ -68,6 +67,14 @@ func (t Tuning) Gate(champion string, cooldowns Cooldowns, tags interact.Tags, b
 		casts = append(casts, id)
 	}
 	return cooldowns, casts
+}
+
+// blockedBy is def's own blocked tags, or the file's when it has none.
+func (t Tuning) blockedBy(def Def) interact.Tags {
+	if def.BlockedBy != nil {
+		return *def.BlockedBy
+	}
+	return t.BlockedBy
 }
 
 // Launch is a shot a cast asks for: the cast's Launch-th, of type Shot, from From along Dir, a unit
@@ -87,21 +94,20 @@ type Sink interface {
 	Effect(in status.Intent)
 }
 
-// Run runs ability id's hook, if it has one, for c at the rate Bind bound it at, and hands sink what it
+// Run runs ability id's hook, if it has one, for c, and hands sink what it
 // asks for in order: each launch from c.Pos, numbered within the cast, then each effect, from c.Caster.
 func (t Tuning) Run(id string, c hooks.Cast, sink Sink) {
 	h, ok := t.bound[id]
 	if !ok || h.OnCast == nil {
 		return
 	}
-	c.TickRate = timestep.Rate
 	var out hooks.Out
 	h.OnCast(c, &out)
 	for i, l := range out.Launches {
 		sink.Launch(Launch{Ability: id, Launch: uint32(i), Shot: l.Shot, From: c.Pos, Dir: l.Dir})
 	}
 	for _, e := range out.Effects {
-		sink.Effect(status.Intent{Target: e.Target, Kind: e.Kind, Ticks: e.Ticks, VelX: e.Vel.X, VelY: e.Vel.Y,
-			Source: c.Caster})
+		e.Source = c.Caster
+		sink.Effect(e)
 	}
 }

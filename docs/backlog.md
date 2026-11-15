@@ -15,7 +15,7 @@ Each entry has a status:
 - **Status:** idea
 - **Added:** 2026-11-02
 - **Today:** only walls and bounds block a Body (`motion.Blockers = Wall | Bounds`). Bodies pass
-  through each other. The predictor's Box2D world is empty, so it can't see walls yet either.
+  through each other. The predictor builds every map's walls and walks the live map, like the server.
 
 **How it would work**
 1. Each frame, place each blocking unit in the predictor's Box2D world as an obstacle. Don't simulate
@@ -42,5 +42,32 @@ that unit's past position.
 **Recommendation**
 - Static and predictable blockers: add them to the predictor world.
 - Player blocking player: decide the design first. If needed, use soft push, not hard collision.
-- Do the map walls in the predictor first (see `map-system-findings.md`). Same mechanism, and it fixes
-  today's wall mispredict.
+
+---
+
+## Touching walls: bake them into one outline
+
+- **Status:** decided (step 1 not built)
+- **Added:** 2026-11-15
+- **Today:** two walls drawn as separate shapes that touch bake as two solids. The mover can stop at
+  the seam between them. Measured with the mover tests' slide harness (two boxes (-6,-2)-(0,0) and
+  (0,-2)-(6,0) against one box): sliding +x along the top, pressed at 84° or steeper, it stops at the
+  seam in 46 of 144 runs (12 press angles x 3 radii x 2 speeds x 20 and 60 Hz). Sliding -x never stops.
+  Touching walls are common in maps, so refusing them at bake is the wrong fix.
+
+**Why:** a mover sliding over two separate shapes catches the inner corner where they meet: Box2D's
+"ghost collision". Our mover is already Box2D's own (`CollideMover`, `SolvePlanes`, `CastMover`), so
+the fix belongs in the geometry, not the mover.
+
+**What real engines do**
+- Box2D: chain shapes for level geometry; ghost vertices smooth the joins. Our outlines are chains.
+- Unity: Composite Collider 2D merges child colliders into one, as outlines or polygons.
+- Godot 4.5: tile layers merge their collision shapes automatically, in chunks; its docs call bumps on
+  shared tile edges a known issue.
+
+**Plan**
+1. In the baker, merge same-kind polygons that share an edge (no overlap) into one outline, then let
+   the existing outline + fill path cut it. Whole-number points, so exact maths; no library (bake
+   imports only box2d, the standard library and level). About 250 lines and 100 test lines, 1-2 days.
+   Circles and capsules stay separate.
+2. Only if a map needs it: overlapping shapes and holes (a ring of walls). About a week.

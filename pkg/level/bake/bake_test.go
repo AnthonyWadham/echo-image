@@ -220,9 +220,9 @@ func TestBakeRefuses(t *testing.T) {
 		}
 	}
 	refuses(unfilled,
-		refusal{"a concave wall", set(4, map[string]any{"polygon": points(0, 0, 64, 0, 32, -48, 32, -8)}), "is concave"},
+		refusal{"a concave wall", set(4, map[string]any{"polygon": points(0, 0, 64, 0, 32, -48, 32, -8)}), "isn't convex"},
 		refusal{"a wall on a line", set(4, map[string]any{"polygon": points(0, 0, 32, 0, 64, 0, 32, -48)}), "on a line"},
-		refusal{"nine corners", set(4, map[string]any{"polygon": points(nine...)}), "9 corners, more than Box2D's 8"},
+		refusal{"nine corners", set(4, map[string]any{"polygon": points(nine...)}), "has 9 points, want 3 to 8"},
 		refusal{"a wall whose corners cross", set(4, map[string]any{"polygon": points(0, 0, 64, 0, 0, -48, 64, -48)}),
 			"crosses itself"},
 	)
@@ -235,6 +235,9 @@ func TestBakeRefuses(t *testing.T) {
 		{"a tile layer", func(m map[string]any) {
 			m["layers"] = append(m["layers"].([]any), map[string]any{"type": "tilelayer", "name": "ground"})
 		}, `layer "ground" is a tilelayer`},
+		{"a layer moved by an offset", func(m map[string]any) {
+			m["layers"].([]any)[0].(map[string]any)["offsetx"] = 64.0
+		}, "is moved by an offset: move its objects instead"},
 		{"two objects with one id", set(3, map[string]any{"id": 2.0}), "object 2 (wall) at (4, 4): its id"},
 		{"a template", set(2, map[string]any{"template": "wall.tx"}), "template"},
 		{"a tile", set(2, map[string]any{"gid": 5}), "is a tile"},

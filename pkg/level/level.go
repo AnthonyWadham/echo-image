@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
@@ -28,7 +29,7 @@ func (p Point) Vec2() box2d.Vec2 { return box2d.Vec2{X: meters(p[0]), Y: meters(
 // A Map is a map file's contents, each list in file order.
 type Map struct {
 	Solids   []Solid
-	Outlines []Loop // loops that keep things out, around walls
+	Outlines []Loop // loops that keep things out, around solid shapes
 	Edges    []Loop // loops that keep things in, around the play area
 	Objects  []Object
 }
@@ -64,7 +65,7 @@ type Loop struct {
 	Points []Point `json:"points"`
 }
 
-// An Object is a typed point in the map, such as a spawn. ID is unique in the map, from 1, but a
+// An Object is a typed point in the map, such as a start point. ID is unique in the map, from 1, but a
 // rebake can change it. Props is a value of the struct the schema gives Type, not a pointer to one.
 type Object struct {
 	ID    uint32
@@ -274,24 +275,36 @@ func (s Solid) check(kinds Kinds) error {
 }
 
 func checkPolygon(points []Point) error {
+	hull, err := Hull(points)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(hull, points) {
+		return errors.New("polygon's points aren't in box2d.ComputeHull's order")
+	}
+	return nil
+}
+
+// Hull returns points in box2d.ComputeHull's order, the order a map file holds a polygon in, or an error
+// unless they are 3 to 8 points in range, all on a valid hull.
+func Hull(points []Point) ([]Point, error) {
 	if n := len(points); n < 3 || n > box2d.MaxPolygonVertices {
-		return fmt.Errorf("polygon has %d points, want 3 to %d", n, box2d.MaxPolygonVertices)
+		return nil, fmt.Errorf("polygon has %d points, want 3 to %d", n, box2d.MaxPolygonVertices)
 	}
 	for _, p := range points {
 		if err := inRange(p[0], p[1]); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	hull := box2d.ComputeHull(vecs(points))
 	if hull.Count != len(points) || !box2d.ValidateHull(&hull) {
-		return errors.New("polygon isn't convex, or has points within LinearSlop (5 mm) or on a line")
+		return nil, errors.New("polygon isn't convex, or has points within LinearSlop (5 mm) or on a line")
 	}
-	for i, p := range points {
-		if hull.Points[i] != p.Vec2() {
-			return errors.New("polygon's points aren't in box2d.ComputeHull's order")
-		}
+	out := make([]Point, hull.Count)
+	for i, v := range hull.Points[:hull.Count] {
+		out[i] = Point{int32(math.Round(v.X * Unit)), int32(math.Round(v.Y * Unit))}
 	}
-	return nil
+	return out, nil
 }
 
 // checkRound checks a radius of at least one unit, and that it and the centers are in range.

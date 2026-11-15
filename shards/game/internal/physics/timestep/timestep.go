@@ -10,7 +10,4 @@ import "math"
 const Seconds = 1.0 / float64(Rate)
 
 // Ticks is seconds as whole ticks at Rate.
-func Ticks(seconds float64) int { return TicksAt(seconds, Rate) }
-
-// TicksAt is seconds as whole ticks at rate, for code handed a rate.
-func TicksAt(seconds float64, rate int) int { return int(math.Round(seconds * float64(rate))) }
+func Ticks(seconds float64) int { return int(math.Round(seconds * float64(Rate))) }

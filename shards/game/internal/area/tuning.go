@@ -1,7 +1,6 @@
 package area
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"echo_image/shards/game/internal/interact"
@@ -67,15 +66,7 @@ func (k KindDef) meets() interact.Kind {
 	return kinds
 }
 
+var toNames = map[string]To{"self": Self}
+
 // UnmarshalJSON reads who a rule acts on. An unknown name fails, so bad content fails the boot.
-func (t *To) UnmarshalJSON(b []byte) error {
-	var name string
-	if err := json.Unmarshal(b, &name); err != nil {
-		return err
-	}
-	if name != "self" {
-		return fmt.Errorf("unknown to %q", name)
-	}
-	*t = Self
-	return nil
-}
+func (t *To) UnmarshalJSON(b []byte) error { return interact.Name(b, "to", toNames, t) }

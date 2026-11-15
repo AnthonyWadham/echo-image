@@ -6,11 +6,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-unformatted=$(gofmt -l ./*.go shards pkg)
+unformatted=$(gofmt -l ./*.go shards pkg scripts)
 if [ -n "$unformatted" ]; then
 	echo "gofmt: not formatted: $unformatted" >&2
 	exit 1
 fi
+go run ./scripts/mutate -anchors
 for tags in "" rate60; do
 	go vet -tags "$tags" ./...
 	GOOS=js GOARCH=wasm go vet -tags "$tags" ./shards/game/predictor

@@ -66,10 +66,7 @@ func launch(w *cardinal.World, in component.LaunchIntent, def flight.Shot) {
 
 func compareLaunch(a, b component.LaunchIntent) int {
 	return cmp.Or(
-		cmp.Compare(a.Cause.Caster, b.Cause.Caster),
-		cmp.Compare(a.Cause.Ability, b.Cause.Ability),
-		cmp.Compare(a.Cause.Tick, b.Cause.Tick),
-		cmp.Compare(a.Cause.Seq, b.Cause.Seq),
+		a.Cause.Compare(b.Cause),
 		cmp.Compare(a.Launch, b.Launch),
 		cmp.Compare(a.Shot, b.Shot),
 		cmp.Compare(a.Owner, b.Owner),

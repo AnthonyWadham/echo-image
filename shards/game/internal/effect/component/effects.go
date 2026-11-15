@@ -1,13 +1,22 @@
 // Package component holds the effect feature's ECS data: the effect list and EffectIntent. Any feature
 // reads an entity's status here, and asks for a change by emitting EffectIntent. It imports only the
-// engine and the pure effect/status core.
+// engine, the pure effect/status core and interact.
 package component
 
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
 	"echo_image/shards/game/internal/effect/status"
+	"echo_image/shards/game/internal/interact"
 )
+
+// TagsOf is the tags e's effects give it at tick, or none if it has no Effects.
+func TagsOf(e cardinal.Entity, tick uint64) interact.Tags {
+	if !e.Has[Effects]() {
+		return 0
+	}
+	return e.Get[Effects]().Status(tick).Tags
+}
 
 // Effects is an entity's timed effects, in the order they were added. Only effect.ResolveSystem
 // writes it. Next numbers the entries.

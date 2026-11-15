@@ -1,19 +1,19 @@
-// Package level reads a baked map file and builds its walls into a Box2D world.
+// Package level reads a baked map file and builds its shapes into a Box2D world.
 //
-// A map is content, not state. The same bytes build the same walls on every platform, so a server and
+// A map is content, not state. The same bytes build the same shapes on every platform, so a server and
 // its clients agree without sending geometry. The package imports only Box2D and the standard library,
 // and names no game's kinds or types: the game passes a [Schema].
 //
 // # What a map holds
 //
 //   - Solids: convex pieces. Each is one polygon, circle or capsule.
-//   - Outlines: closed chains around walls, counter-clockwise. They keep things out.
+//   - Outlines: closed chains around solid shapes, counter-clockwise. They keep things out.
 //   - Edges: closed chains around the play area, clockwise. They keep things in.
-//   - Objects: typed points with props, such as spawns.
+//   - Objects: typed points with props, such as start points.
 //
 // Every point is a whole number of units, [Unit] to a meter, so it is an exact float64.
 //
-// A wall Box2D takes as no one polygon (an L, say) is an outline plus solids that fill it. The game
+// A shape Box2D takes as no one polygon (an L, say) is an outline plus solids that fill it. The game
 // gives those pieces a kind of their own, so a walk meets only the outline.
 //
 // # How it is used

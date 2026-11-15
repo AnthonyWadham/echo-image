@@ -6,6 +6,20 @@ import (
 	"github.com/argus-labs/world-engine/pkg/box2d"
 )
 
+// Load decodes data and builds it into a new default world.
+func Load(data []byte, schema Schema) (Map, *box2d.World, error) {
+	m, err := Decode(data, schema)
+	if err != nil {
+		return Map{}, nil, err
+	}
+	def := box2d.DefaultWorldDef()
+	world := box2d.NewWorld(&def)
+	if _, err := Build(world, m, schema); err != nil {
+		return Map{}, nil, err
+	}
+	return m, world, nil
+}
+
 // Build adds m's shapes to world on one new static body at the origin, and returns the body. Shapes go
 // in file order (solids, outlines, edges), with the filter the schema gives their kind, and each one's
 // user data is its place in that order, from 1; each segment of a loop takes its own place, in point

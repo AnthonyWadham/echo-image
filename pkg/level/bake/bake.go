@@ -40,12 +40,8 @@ func Bake(name string, tmj []byte, c Config) ([]byte, error) {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	// From here, what a shard does with the file.
-	if m, err = level.Decode(data, c.Schema); err != nil {
-		return nil, fmt.Errorf("%s: %w", name, err)
-	}
-	def := box2d.DefaultWorldDef()
-	world := box2d.NewWorld(&def)
-	if _, err := level.Build(world, m, c.Schema); err != nil {
+	m, world, err := level.Load(data, c.Schema)
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if c.Check != nil {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
-	abilitycomp "echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/combat/component"
 )
 
@@ -77,15 +76,10 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 
 func compareDamage(a, b component.DamageIntent) int {
 	return cmp.Or(cmp.Compare(a.Target, b.Target), cmp.Compare(a.Until, b.Until), cmp.Compare(a.Credit, b.Credit),
-		compareCause(a.Cause, b.Cause), cmp.Compare(a.Amount, b.Amount))
+		a.Cause.Compare(b.Cause), cmp.Compare(a.Amount, b.Amount))
 }
 
 func compareHeal(a, b component.HealIntent) int {
-	return cmp.Or(cmp.Compare(a.Target, b.Target), cmp.Compare(a.Credit, b.Credit), compareCause(a.Cause, b.Cause),
+	return cmp.Or(cmp.Compare(a.Target, b.Target), cmp.Compare(a.Credit, b.Credit), a.Cause.Compare(b.Cause),
 		cmp.Compare(a.Amount, b.Amount))
-}
-
-func compareCause(a, b abilitycomp.Cause) int {
-	return cmp.Or(cmp.Compare(a.Caster, b.Caster), cmp.Compare(a.Ability, b.Ability), cmp.Compare(a.Tick, b.Tick),
-		cmp.Compare(a.Seq, b.Seq))
 }

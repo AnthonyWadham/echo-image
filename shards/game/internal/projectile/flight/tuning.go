@@ -1,7 +1,6 @@
 package flight
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"echo_image/shards/game/internal/interact"
@@ -101,19 +100,9 @@ func (t Tuning) rule(s Shot, i int) Meet {
 	return t.Defaults[i-len(s.Meets)]
 }
 
+var responseNames = map[string]Response{"pass": Pass, "stop": Stop}
+
 // UnmarshalJSON reads a response name. An unknown one fails, so bad content fails the boot.
 func (r *Response) UnmarshalJSON(b []byte) error {
-	var name string
-	if err := json.Unmarshal(b, &name); err != nil {
-		return err
-	}
-	switch name {
-	case "pass":
-		*r = Pass
-	case "stop":
-		*r = Stop
-	default:
-		return fmt.Errorf("unknown response %q", name)
-	}
-	return nil
+	return interact.Name(b, "response", responseNames, r)
 }

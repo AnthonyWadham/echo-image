@@ -47,9 +47,10 @@ func (s *ReplaySystem) Run(w *cardinal.World) {
 		// Record the Body's current pose as the newest frame, then read the oldest slot — the pose from
 		// delayTicks ago, since the ring is delayTicks+1 long — and drive the Echo there.
 		h.Head = (h.Head + 1) % n
-		h.Poses = h.Poses.With(h.Head, component.EchoFrame{Pose: body.Get[physics2d.Transform2D]()})
-		oldest := (h.Head + 1) % n
-		r.Set(h.Poses.At(oldest).Pose)
+		h.Poses = h.Poses.With(h.Head, body.Get[physics2d.Transform2D]().Position)
+		pose := r.Get[physics2d.Transform2D]()
+		pose.Position = h.Poses.At((h.Head + 1) % n) // the oldest
+		r.Set(pose)
 		r.Set(h)
 	}
 }

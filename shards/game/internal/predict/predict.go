@@ -68,15 +68,11 @@ func loadMaps(fsys fs.FS) (map[string]*box2d.World, map[string]level.Map, error)
 	schema := arena.Schema()
 	worlds, levels := make(map[string]*box2d.World, len(files)), make(map[string]level.Map, len(files))
 	for _, id := range t.Maps {
-		m, err := level.Decode(files[id], schema)
+		m, world, err := level.Load(files[id], schema)
 		if err != nil {
 			return nil, nil, fmt.Errorf("map %s: %w", id, err)
 		}
-		def := box2d.DefaultWorldDef()
-		worlds[id], levels[id] = box2d.NewWorld(&def), m
-		if _, err := level.Build(worlds[id], m, schema); err != nil {
-			return nil, nil, fmt.Errorf("map %s: %w", id, err)
-		}
+		worlds[id], levels[id] = world, m
 	}
 	return worlds, levels, nil
 }
@@ -166,26 +162,14 @@ type recorded struct {
 	id     uint32
 	serial uint64
 	last   uint64 // the newest tick a sync showed it
-	rows   []past.Row
+	rows   ring
 }
 
-// at is t's row of tick, if a kept sync showed it.
-func (t *recorded) at(tick uint64) (past.Row, bool) {
-	if r := t.rows[tick%uint64(len(t.rows))]; r.Tick == tick {
-		return r, true
-	}
-	return past.Row{}, false
-}
+// ring is a past.Ring over a slice.
+type ring []past.Row
 
-// appendRows appends t's rows of the ticks before before that its ring spans, oldest first.
-func (t *recorded) appendRows(dst []past.Row, before uint64) []past.Row {
-	for tick := before - min(before, uint64(len(t.rows))); tick < before; tick++ {
-		if r, ok := t.at(tick); ok {
-			dst = append(dst, r)
-		}
-	}
-	return dst
-}
+func (r ring) Len() int          { return len(r) }
+func (r ring) At(i int) past.Row { return r[i] }
 
 // stepped is the state a frame's step left, without its EchoPath, and whether a judge looked without
 // the target syncs of its view.
@@ -221,7 +205,7 @@ func (p *Predictor) See(tick uint64, sights []Sight) {
 		})
 		if !ok { // sized at its first row: every other slot holds it, at a tick not its own
 			p.recorded = slices.Insert(p.recorded, i, recorded{id: s.ID, serial: s.Serial,
-				rows: slices.Repeat([]past.Row{s.Row}, int(keep))})
+				rows: slices.Repeat(ring{s.Row}, int(keep))})
 		}
 		t := &p.recorded[i]
 		t.rows[tick%keep], t.last = s.Row, max(t.last, tick)
@@ -255,7 +239,7 @@ func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Sc
 	p.scene.Reset(s.Tick)
 	for i := range p.recorded {
 		t := &p.recorded[i]
-		now, ok := t.at(p.newest)
+		now, ok := past.RowAt(t.rows, p.newest)
 		if !ok || now.Until < 1 {
 			continue
 		}
@@ -266,7 +250,7 @@ func (p *Predictor) sceneAt(view float64, prev box2d.Vec2) (past.Actor, *past.Sc
 		case hasEcho && t.serial == s.EchoSerial:
 			th.Predicted, th.From, th.To = true, echoPrev, echo
 		}
-		p.kept = t.appendRows(p.kept[:0], p.newest)
+		p.kept = past.AppendKept(p.kept[:0], t.rows, p.newest)
 		p.scene.Add(th, p.kept)
 	}
 	p.scene.Build()

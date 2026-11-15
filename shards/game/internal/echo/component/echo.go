@@ -8,20 +8,14 @@ import (
 	physics2dcomp "github.com/argus-labs/world-engine/pkg/plugin/physics2d/component"
 )
 
-// EchoFrame is one tick's snapshot of the Body. Pose alone captures dashes/blinks/knockback — we record
-// the tick's OUTCOME, not the input that caused it. Grow it only when the Echo must re-enact more than
-// movement (a Fired flag, an ability id, …).
-type EchoFrame struct {
-	Pose physics2dcomp.Transform2D
-}
-
-// PathHistory is the Echo's ring buffer of the Body's recent poses, driving the delayed replay. Poses is
+// PathHistory is the Echo's ring buffer of the Body's recent positions, driving the delayed replay: the
+// tick's outcome, not the input, so dashes and knockback replay too. Poses is
 // sized once at spawn to delayTicks+1 (delay_seconds × the server tick rate, +1 so the read slot never
 // collides with the write slot) — it holds exactly the configured delay, no hardcoded ceiling. It's an
 // ECS component (not a Go map) so snapshots capture the trail and an in-flight match resumes on it
 // (GDD §11). Head indexes the newest frame.
 type PathHistory struct {
-	Poses cardinal.Slice[EchoFrame]
+	Poses cardinal.Slice[physics2dcomp.Vec2]
 	Head  int
 }
 
@@ -40,7 +34,7 @@ func (h PathHistory) Path(n int) []physics2dcomp.Vec2 {
 	}
 	path := make([]physics2dcomp.Vec2, min(n, size-1)+1)
 	for i := range path {
-		path[i] = h.Poses.At((h.Head + 1 + i) % size).Pose.Position // the oldest first
+		path[i] = h.Poses.At((h.Head + 1 + i) % size) // the oldest first
 	}
 	return path
 }

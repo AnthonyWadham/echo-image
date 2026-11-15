@@ -6,7 +6,7 @@ type launchParams struct {
 	Shot string `json:"shot"` // the shot type it fires
 }
 
-func (p launchParams) Validate(int) error {
+func (p launchParams) Validate() error {
 	if p.Shot == "" {
 		return errors.New("launch needs a shot")
 	}

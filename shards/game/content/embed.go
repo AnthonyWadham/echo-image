@@ -5,11 +5,9 @@
 package content
 
 import (
-	"bytes"
 	"embed"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
-	"io"
 	"io/fs"
 	"testing/fstest"
 )
@@ -34,21 +32,16 @@ func (o Overlay) Open(name string) (fs.File, error) {
 // File is a content file's Go type.
 type File interface{ JSONFile() string }
 
-// Load decodes T's file from fsys strictly, so an unknown key fails, then binds and checks it. A
-// returned error fails the boot.
+// Load decodes T's file from fsys strictly, so an unknown, repeated or wrong-case key fails, then binds
+// and checks it. A returned error fails the boot.
 func Load[T File](fsys fs.FS) (T, error) {
 	var v T
 	raw, err := fs.ReadFile(fsys, v.JSONFile())
 	if err != nil {
 		return v, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&v); err != nil {
+	if err := json.Unmarshal(raw, &v, json.RejectUnknownMembers(true)); err != nil {
 		return v, fmt.Errorf("%s: %w", v.JSONFile(), err)
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return v, fmt.Errorf("%s: data after the object", v.JSONFile())
 	}
 	if b, ok := any(&v).(interface{ Bind() error }); ok {
 		if err := b.Bind(); err != nil {

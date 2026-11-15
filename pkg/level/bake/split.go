@@ -8,8 +8,8 @@ import (
 	"echo_image/pkg/level"
 )
 
-// split cuts a wall's outline, counter-clockwise, into triangles between its corners, each a polygon a
-// map file takes: the first such cut in a fixed order, so every machine cuts alike. A wall has none when
+// split cuts a shape's outline, counter-clockwise, into triangles between its corners, each a polygon a
+// map file takes: the first such cut in a fixed order, so every machine cuts alike. A shape has none when
 // a part of it is so thin that every cut leaves a sliver there.
 //
 // It tries every triangulation (O'Rourke, Computational Geometry in C, 1.6 and 1.4): cut[i][j] is the
@@ -18,7 +18,7 @@ func split(p []level.Point) ([][]level.Point, error) {
 	n := len(p)
 	side := func(i, j int) bool { return j == i+1 || i == 0 && j == n-1 || diagonal(p, i, j) }
 	piece := func(i, k, j int) bool {
-		_, err := convex([]level.Point{p[i], p[k], p[j]})
+		_, err := level.Hull([]level.Point{p[i], p[k], p[j]})
 		return err == nil
 	}
 	cut := make([][]int, n)
@@ -40,7 +40,7 @@ func split(p []level.Point) ([][]level.Point, error) {
 	}
 	if cut[0][n-1] < 0 {
 		return nil, errors.New("can't be cut into pieces Box2D takes: part of it is so thin that every cut " +
-			"leaves a piece under about 1 cm wide. Add a corner across from the thin part, or draw two walls")
+			"leaves a piece under about 1 cm wide. Add a corner across from the thin part, or draw two shapes")
 	}
 	var pieces [][]level.Point
 	var take func(i, j int)
@@ -49,7 +49,7 @@ func split(p []level.Point) ([][]level.Point, error) {
 			return
 		}
 		k := cut[i][j]
-		triangle, _ := convex([]level.Point{p[i], p[k], p[j]})
+		triangle, _ := level.Hull([]level.Point{p[i], p[k], p[j]})
 		pieces = append(pieces, triangle)
 		take(i, k)
 		take(k, j)

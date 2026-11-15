@@ -70,7 +70,7 @@ func (s *AreaSystem) act(w *cardinal.World, world *box2d.World, e cardinal.Entit
 			return true
 		}
 		kind := interact.Kind(world.ShapeFilter(id).CategoryBits)
-		if rule, _, ok := interact.First(def.Rules, kind, relation(side, thing), tags(thing, tick)); ok {
+		if rule, _, ok := interact.First(def.Rules, kind, relation(side, thing), effectcomp.TagsOf(thing, tick)); ok {
 			// Self is the only To so far.
 			w.EmitSystemEvent(combatcomp.DamageIntent{
 				Target: e.ID(), Credit: cardinal.EntityID(side.Owner), Amount: rule.DamagePerSecond * physics.SecondsPerTick,
@@ -87,12 +87,4 @@ func relation(side interact.Side, thing cardinal.Entity) interact.Relation {
 		return interact.Neutral
 	}
 	return side.Relation(team.SideOf(thing))
-}
-
-// tags returns the tags thing's effects give it at tick.
-func tags(thing cardinal.Entity, tick uint64) interact.Tags {
-	if !thing.Has[effectcomp.Effects]() {
-		return 0
-	}
-	return thing.Get[effectcomp.Effects]().Status(tick).Tags
 }

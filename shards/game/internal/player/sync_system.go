@@ -135,9 +135,7 @@ func you(e cardinal.Entity, shots []ShotState) YouState {
 		InputSession: q.Session, InputAck: q.Ack(), InputQueued: uint32(q.Pending.Len()), InputHealth: q.Health,
 		MoveSpeed: e.Get[component.MoveSpeed]().Value, Champion: e.Get[component.Champion]().ID,
 	}
-	if e.Has[abilitycomp.Abilities]() {
-		y.Cooldowns = e.Get[abilitycomp.Abilities]().Cooldowns
-	}
+	y.Cooldowns = e.Get[abilitycomp.Abilities]().Cooldowns
 	if e.Has[effectcomp.Effects]() {
 		fx := e.Get[effectcomp.Effects]()
 		y.Effects, y.EffectsNext = fx.List, fx.Next

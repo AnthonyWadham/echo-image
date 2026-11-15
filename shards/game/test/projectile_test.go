@@ -427,7 +427,7 @@ func TestShotExpiresAtRange(t *testing.T) {
 	w := cardinal.NewTestWorld(t, withEmitter(withContent(t), fx))
 	claim(t, w)
 	def, shot := primary(t)
-	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
+	hook, _ := hooks.Bind(def.Hook, def.Params) // primary checked it
 	steps := int(math.Ceil(shot.Range / (shot.Speed * physics.SecondsPerTick)))
 
 	const n = 16 // 6 of these got stuck at a remainder above 0
@@ -467,7 +467,7 @@ func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
 	w := cardinal.NewTestWorld(t, withEmitter(withContent(t), fx))
 	claim(t, w)
 	def, shot := primary(t)
-	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
+	hook, _ := hooks.Bind(def.Hook, def.Params) // primary checked it
 	launch := func(k uint64) {
 		emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: k},
 			From: physics2d.Vec2{X: 100, Y: 100}, Dir: physics2d.Vec2{X: 1}}) // far from everyone
@@ -569,7 +569,7 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	// alice's shot flies up past the Echo's leading edge next tick: it touches the Echo there, and
 	// would miss it a step behind.
 	def, shot := primary(t)
-	hook, _ := hooks.Bind(def.Hook, def.Params, physics.ServerTickRateHz) // primary checked it
+	hook, _ := hooks.Bind(def.Hook, def.Params) // primary checked it
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	x := now.X + step + tuningOf[echo.EchoTuning](t).HitRadius + shot.Radius - step/2
 	emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Owner: cardinal.EntityID(a.EntityID), Team: a.Team,

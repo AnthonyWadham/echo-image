@@ -1,6 +1,10 @@
 package component
 
-import "github.com/argus-labs/world-engine/pkg/cardinal"
+import (
+	"cmp"
+
+	"github.com/argus-labs/world-engine/pkg/cardinal"
+)
 
 // Cause is the cast that started something. The shots, damage and effects a cast produces carry it, so
 // what a cast started can be found later, even after credit moves (a reflect). CasterSerial is the
@@ -12,6 +16,12 @@ type Cause struct {
 	Ability      string
 	Tick         uint64
 	Seq          uint32
+}
+
+// Compare orders causes by their full key.
+func (c Cause) Compare(o Cause) int {
+	return cmp.Or(cmp.Compare(c.Caster, o.Caster), cmp.Compare(c.CasterSerial, o.CasterSerial),
+		cmp.Compare(c.Ability, o.Ability), cmp.Compare(c.Tick, o.Tick), cmp.Compare(c.Seq, o.Seq))
 }
 
 // AbilityCast is emitted the tick a Body casts an ability, as its Cause. Aim is a unit vector, or (0, 0)

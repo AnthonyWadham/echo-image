@@ -77,13 +77,8 @@ func NewPlugin(config Config) (*Plugin, error) {
 			return nil, errors.New("levelstate: a map has no ID")
 		}
 		data := config.Maps[id]
-		m, err := level.Decode(data, config.Schema)
+		m, world, err := level.Load(data, config.Schema)
 		if err != nil {
-			return nil, fmt.Errorf("levelstate: map %s: %w", id, err)
-		}
-		worldDef := box2d.DefaultWorldDef()
-		world := box2d.NewWorld(&worldDef)
-		if _, err := level.Build(world, m, config.Schema); err != nil {
 			return nil, fmt.Errorf("levelstate: map %s: %w", id, err)
 		}
 		if config.Check != nil {

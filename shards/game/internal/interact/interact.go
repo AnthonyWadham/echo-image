@@ -122,6 +122,20 @@ func (t *Tags) UnmarshalJSON(b []byte) error { return decode(b, "tag", tagNames,
 // UnmarshalJSON reads a list of relation names. An unknown name fails, so bad content fails the boot.
 func (r *Relation) UnmarshalJSON(b []byte) error { return decode(b, "relation", relationNames, r) }
 
+// Name sets out to the value of a JSON name. An unknown name fails, so bad content fails the boot.
+func Name[T any](b []byte, what string, names map[string]T, out *T) error {
+	var name string
+	if err := json.Unmarshal(b, &name); err != nil {
+		return fmt.Errorf("want a %s name: %w", what, err)
+	}
+	v, ok := names[name]
+	if !ok {
+		return fmt.Errorf("unknown %s %q", what, name)
+	}
+	*out = v
+	return nil
+}
+
 // decode sets out to the bits of a JSON list of names.
 func decode[T ~uint8 | ~uint64](b []byte, what string, names map[string]T, out *T) error {
 	var list []string

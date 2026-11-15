@@ -44,26 +44,9 @@ type echoRow struct {
 	History   historycomp.History
 }
 
-// SpawnSystem gives a Body its one Echo the tick it is first claimed — when player.InputSystem takes
-// the Body's first Input command and emits BodyClaimed. Registered on Update; InputSystem emits in
-// PreUpdate, and system events last until the tick ends, so the claim is visible here.
-//
-// Claim-triggered (not Init, not presence-reactive) for two reasons:
-//   - No resurrection. A presence check ("Body has no Echo → spawn one") would hand a fresh full-HP Echo
-//     to the invincible Body the tick after combat.DeathSystem removes the old one, defeating "Echo
-//     death = out for the round" (GDD §8). BodyClaimed fires exactly once per Body (Persona is set once
-//     and never cleared), so each Body gets exactly one Echo, dead or alive: a match is one round until
-//     rounds exist.
-//   - No pre-death. Spawning at Init gave every dev Body an Echo that then warmed up and self-destructed
-//     to anti-camp DoT while the Body sat unclaimed at spawn — so a client connecting seconds later saw
-//     no Echoes. Tying spawn to the claim means an Echo exists only once a live player drives its Body,
-//     appearing fresh (its area not started yet) the moment they first move.
-//
-// On snapshot restore no BodyClaimed events replay (Bodies are already claimed), so Echoes are rebuilt
-// from saved state and none re-spawn — the no-resurrection guarantee holds across restore too.
-//
-// TODO(matchmaking): when Bodies join mid-match this generalizes cleanly — spawn stays edge-triggered on
-// the join/claim, and a dead Echo still stays dead.
+// SpawnSystem (Update) gives a Body its one Echo on its BodyClaimed, which fires once per Body: no
+// resurrection (a dead Echo stays dead, across restore too) and no pre-death (no Echo burns down
+// before its player first moves).
 type SpawnSystem struct {
 	Tuning EchoTuning
 }
@@ -75,10 +58,7 @@ func (s *SpawnSystem) Run(w *cardinal.World) {
 		if err != nil {
 			continue // claimed Body vanished the same tick — nothing to shadow
 		}
-		// Read tuning only when a Body is actually claimed (rare) — this Update system runs every tick,
-		// but the common no-claim tick does no work. Eagerly loaded at RegisterPlugin, so always valid.
-		tuning := s.Tuning
-		spawnEcho(w, tuning, body)
+		spawnEcho(w, s.Tuning, body)
 	}
 }
 
@@ -97,7 +77,7 @@ func spawnEcho(w *cardinal.World, tuning EchoTuning, body cardinal.Entity) {
 	// Size the trail to exactly the champion's delay (delay+1 so the read slot never collides with the
 	// write slot) and prefill it with the spawn pose: for the first delay window the Echo sits at spawn
 	// ("you were at spawn N seconds ago") instead of snapping in from the origin.
-	hist := component.PathHistory{Poses: cardinal.SliceOf(component.EchoFrame{Pose: pose}).Repeat(delay + 1)}
+	hist := component.PathHistory{Poses: cardinal.SliceOf(pose.Position).Repeat(delay + 1)}
 
 	e := w.Create[echoRow]()
 	e.Set(ref.Spawn{Serial: ref.Next(w)})

@@ -95,20 +95,20 @@
    "edits": [
     {
      "file": "shards/game/internal/ability/cast/cast.go",
-     "old": "Source: c.Caster})",
-     "new": "Source: c.Owner})"
+     "old": "\t\te.Source = c.Caster\n",
+     "new": "\t\te.Source = c.Owner\n"
     }
    ]
   },
   {
    "id": "11-G3",
-   "breaks": "no tick rate",
-   "check": "go",
+   "breaks": "dash speed at 20 Hz",
+   "check": "go60",
    "edits": [
     {
-     "file": "shards/game/internal/ability/cast/cast.go",
-     "old": "\tc.TickRate = timestep.Rate\n",
-     "new": "\t_ = timestep.Rate\n"
+     "file": "shards/game/internal/ability/hooks/dash_hook.go",
+     "old": "speed := p.Distance * float64(timestep.Rate) / float64(n)",
+     "new": "speed := p.Distance * 20 / float64(n)"
     }
    ]
   },
@@ -364,9 +364,9 @@
    "check": "go",
    "edits": [
     {
-     "file": "shards/game/internal/history/component/history.go",
-     "old": "uint64(t.Rows.Len())); tick < before; tick++ {",
-     "new": "uint64(t.Rows.Len())); tick <= before; tick++ {"
+     "file": "shards/game/internal/history/past/view.go",
+     "old": "uint64(ring.Len())); tick < before; tick++ {",
+     "new": "uint64(ring.Len())); tick <= before; tick++ {"
     }
    ]
   },
@@ -2058,9 +2058,9 @@
    "check": "go60",
    "edits": [
     {
-     "file": "shards/game/internal/ability/hooks/hooks.go",
-     "old": "timestep.TicksAt(seconds, c.TickRate)",
-     "new": "timestep.TicksAt(seconds, 20)"
+     "file": "shards/game/internal/ability/hooks/dash_hook.go",
+     "old": "n := uint64(timestep.Ticks(p.Seconds))",
+     "new": "n := uint64(timestep.Ticks(p.Seconds * 20 / timestep.Rate))"
     }
    ]
   },
@@ -2173,18 +2173,6 @@
    ]
   },
   {
-   "id": "F31-M1",
-   "breaks": "AttachAbilities after Cast: a Body can't cast the tick it's claimed",
-   "check": "go",
-   "edits": [
-    {
-     "file": "shards/game/shard/shard.go",
-     "old": "\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n",
-     "new": "\tworld.RegisterSystem(&ability.CastSystem{Tuning: c.abilities}, cardinal.WithHook(cardinal.PreUpdate))\n\tworld.RegisterSystem(&ability.AttachAbilitiesSystem{}, cardinal.WithHook(cardinal.PreUpdate))\n"
-    }
-   ]
-  },
-  {
    "id": "F14-B7",
    "breaks": "the bad network's backlog ends before her bolt reaches bob",
    "check": "go60",
@@ -2215,8 +2203,8 @@
    "edits": [
     {
      "file": "shards/game/internal/physics/timestep/timestep.go",
-     "old": "return TicksAt(seconds, Rate)",
-     "new": "return TicksAt(seconds, 20)"
+     "old": "return int(math.Round(seconds * float64(Rate)))",
+     "new": "return int(math.Round(seconds * 20))"
     }
    ]
   },
@@ -2227,8 +2215,8 @@
    "edits": [
     {
      "file": "shards/game/content/embed.go",
-     "old": "\tdec.DisallowUnknownFields()\n",
-     "new": ""
+     "old": "json.Unmarshal(raw, &v, json.RejectUnknownMembers(true))",
+     "new": "json.Unmarshal(raw, &v)"
     }
    ]
   },
@@ -2323,8 +2311,8 @@
    "edits": [
     {
      "file": "shards/game/internal/ability/cast/cast.go",
-     "old": "\tif buttons == 0 || tags&t.BlockedBy != 0 {",
-     "new": "\tif buttons == 0 {"
+     "old": "tick < cooldowns.ReadyTick(id) || tags&t.blockedBy(def) != 0 {",
+     "new": "tick < cooldowns.ReadyTick(id) {"
     }
    ]
   },
@@ -2335,8 +2323,8 @@
    "edits": [
     {
      "file": "shards/game/internal/effect/status/tuning.go",
-     "old": "\t\tcmp.Compare(t.blockable(a.Kind), t.blockable(b.Kind)),",
-     "new": "\t\tcmp.Compare(t.blockable(b.Kind), t.blockable(a.Kind)),"
+     "old": "\t\tcmp.Compare(t.readsTags(a.Kind), t.readsTags(b.Kind)),",
+     "new": "\t\tcmp.Compare(t.readsTags(b.Kind), t.readsTags(a.Kind)),"
     }
    ]
   },
@@ -3375,8 +3363,8 @@
    "edits": [
     {
      "file": "pkg/level/level.go",
-     "old": "\t\tif hull.Points[i] != p.Vec2() {",
-     "new": "\t\tif false && hull.Points[i] != p.Vec2() {"
+     "old": "\tif !slices.Equal(hull, points) {",
+     "new": "\tif false && !slices.Equal(hull, points) {"
     }
    ]
   },
@@ -3663,13 +3651,13 @@
   },
   {
    "id": "M2-P2",
-   "breaks": "a map that doesn't decode is skipped",
+   "breaks": "a map that doesn't load is skipped",
    "check": "levelstate",
    "edits": [
     {
      "file": "pkg/levelstate/levelstate.go",
-     "old": "\t\tm, err := level.Decode(data, config.Schema)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"levelstate: map %s: %w\", id, err)\n\t\t}\n",
-     "new": "\t\tm, err := level.Decode(data, config.Schema)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n"
+     "old": "\t\tm, world, err := level.Load(data, config.Schema)\n\t\tif err != nil {\n\t\t\treturn nil, fmt.Errorf(\"levelstate: map %s: %w\", id, err)\n\t\t}\n",
+     "new": "\t\tm, world, err := level.Load(data, config.Schema)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}\n"
     }
    ]
   },
@@ -3853,7 +3841,7 @@
    "edits": [
     {
      "file": "shards/game/shard/shard.go",
-     "old": "\t// Map (Init, and PreUpdate first): makes the map state names live before any system reads it.\n\tworld.RegisterPlugin(c.levels)\n",
+     "old": "\t// Map (Init, then PreUpdate first): the live map is set before any system reads it.\n\tworld.RegisterPlugin(c.levels)\n",
      "new": ""
     },
     {
@@ -3930,8 +3918,8 @@
    "edits": [
     {
      "file": "shards/game/internal/predict/predict.go",
-     "old": "\t\tif _, err := level.Build(worlds[id], m, schema); err != nil {\n",
-     "new": "\t\tif _, err := level.Build(box2d.NewWorld(&def), m, schema); err != nil {\n"
+     "old": "\t\tworlds[id], levels[id] = world, m\n",
+     "new": "\t\tdef := box2d.DefaultWorldDef()\n\t\t_ = world\n\t\tworlds[id], levels[id] = box2d.NewWorld(&def), m\n"
     }
    ]
   },
@@ -4586,11 +4574,11 @@
   },
   {
    "id": "M8-H1",
-   "breaks": "a concave wall bakes as its hull",
+   "breaks": "a concave shape bakes as its hull",
    "check": "bake",
    "edits": [
     {
-     "file": "pkg/level/bake/tiled.go",
+     "file": "pkg/level/level.go",
      "old": "\tif hull.Count != len(points) || !box2d.ValidateHull(&hull) {",
      "new": "\tif false {"
     }
@@ -4975,8 +4963,44 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\tif err == nil && !slices.Equal(loop(points, 1), loop(polygon, 1)) {",
+     "old": "\t} else if !slices.Equal(loop(points, 1), loop(polygon, 1)) {",
+     "new": "\t} else if false {"
+    }
+   ]
+  },
+  {
+   "id": "F4-02-M1",
+   "breaks": "a same-tick root lands before a dash from a higher source, so the dash survives",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/effect/status/tuning.go",
+     "old": "\tif k := t.Kinds[kind]; k.BlockedBy|k.Ends != 0 {",
+     "new": "\tif k := t.Kinds[kind]; k.BlockedBy != 0 {"
+    }
+   ]
+  },
+  {
+   "id": "F4-05-M1",
+   "breaks": "an ability's own blocked_by is ignored",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/ability/cast/cast.go",
+     "old": "\tif def.BlockedBy != nil {",
      "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "F6-02-M1",
+   "breaks": "a wrong-case content key loads",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/content/embed.go",
+     "old": "json.Unmarshal(raw, &v, json.RejectUnknownMembers(true))",
+     "new": "json.Unmarshal(raw, &v, json.RejectUnknownMembers(true), json.MatchCaseInsensitiveNames(true))"
     }
    ]
   }

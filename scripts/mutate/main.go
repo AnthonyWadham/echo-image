@@ -3,13 +3,15 @@
 //
 //	go run ./scripts/mutate          every mutant
 //	go run ./scripts/mutate 12-G1 X8  only mutants whose id starts with one of these
+//	go run ./scripts/mutate -anchors  only check each mutant's old text is there once (check.sh runs it)
 //
-// It fails when a mutant survives (unless it is marked survives), breaks the build, or no longer
-// applies because its old text is gone.
+// It fails when a check fails with no mutant, a mutant survives (unless it is marked survives), breaks
+// the build, or no longer applies because its old text is gone.
 package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/fs"
 	"os"
@@ -39,13 +41,15 @@ type list struct {
 }
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	anchors := flag.Bool("anchors", false, "only check that each mutant's old text is there once")
+	flag.Parse()
+	if err := run(flag.Args(), *anchors); err != nil {
 		fmt.Fprintln(os.Stderr, "mutate:", err)
 		os.Exit(1)
 	}
 }
 
-func run(only []string) error {
+func run(only []string, anchors bool) error {
 	raw, err := os.ReadFile("scripts/mutate/mutants.json")
 	if err != nil {
 		return fmt.Errorf("run it from the repo root: %w", err)
@@ -71,6 +75,9 @@ func run(only []string) error {
 	if len(bad) > 0 {
 		return fmt.Errorf("stale mutants, update mutants.json:\n  %s", strings.Join(bad, "\n  "))
 	}
+	if anchors {
+		return nil
+	}
 
 	tmp, err := os.MkdirTemp("", "mutate-")
 	if err != nil {
@@ -84,6 +91,18 @@ func run(only []string) error {
 	files, err := copyTree(".", root)
 	if err != nil {
 		return err
+	}
+
+	ran := map[string]bool{}
+	for _, m := range l.Mutants {
+		if !wanted(m.ID, only) || ran[m.Check] {
+			continue
+		}
+		ran[m.Check] = true
+		if out, err := runCheck(root, l.Checks[m.Check]); err != nil {
+			return fmt.Errorf("check %s fails with no mutant, so it can catch nothing:\n%s", m.Check, indent(out))
+		}
+		restore(root, files)
 	}
 
 	var failed []string
@@ -120,17 +139,23 @@ func try(root string, m mutant, check string) (verdict, out string) {
 		src := must(os.ReadFile(p))
 		must0(os.WriteFile(p, []byte(strings.Replace(string(src), e.Old, e.New, 1)), 0o644))
 	}
-	cmd := exec.Command("sh", "-c", check)
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "GOFLAGS=-count=1")
-	b, err := cmd.CombinedOutput()
-	switch out = string(b); {
+	out, err := runCheck(root, check)
+	switch {
 	case strings.Contains(out, "[build failed]") || strings.Contains(out, "[setup failed]"):
 		return "broken", out
 	case err != nil:
 		return "caught", out
 	}
 	return "survived", out
+}
+
+// runCheck runs check in the copy at root.
+func runCheck(root, check string) (string, error) {
+	cmd := exec.Command("sh", "-c", check)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GOFLAGS=-count=1")
+	b, err := cmd.CombinedOutput()
+	return string(b), err
 }
 
 // restore puts back every file of the copy that a mutant or its check changed (an -update rewrites

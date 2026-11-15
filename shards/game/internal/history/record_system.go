@@ -63,15 +63,7 @@ func rowOf(e cardinal.Entity, tick uint64) past.Row {
 		Side:   team.SideOf(e),
 		Center: box2d.Vec2(e.Get[physics2d.Transform2D]().Position),
 		Radius: shape.Radius,
-		Tags:   tagsAt(e, tick+1),
+		Tags:   effectcomp.TagsOf(e, tick+1),
 		Until:  1,
 	}
-}
-
-// tagsAt is the tags e's effects give it at tick.
-func tagsAt(e cardinal.Entity, tick uint64) interact.Tags {
-	if !e.Has[effectcomp.Effects]() {
-		return 0
-	}
-	return e.Get[effectcomp.Effects]().Status(tick).Tags
 }

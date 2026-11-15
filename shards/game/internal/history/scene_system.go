@@ -4,6 +4,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	effectcomp "echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/history/component"
 	"echo_image/shards/game/internal/history/past"
 	playercomp "echo_image/shards/game/internal/player/component"
@@ -44,7 +45,7 @@ func (s *SceneSystem) Run(w *cardinal.World) {
 			continue
 		}
 		tr, now := e.Get[component.History](), rowOf(e, tick)
-		now.Tags = tagsAt(e, tick)
+		now.Tags = effectcomp.TagsOf(e, tick)
 		from := now.Center
 		if prev, ok := tr.At(tick - 1); ok {
 			from = prev.Center
