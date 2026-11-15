@@ -12,7 +12,8 @@
   "levelstate": "go test ./pkg/levelstate",
   "arena": "go test ./shards/game/internal/arena",
   "motion": "go test ./shards/game/internal/player/motion",
-  "boot": "go test ./shards/game/test -run TestBadContentFailsTheBoot"
+  "boot": "go test ./shards/game/test -run TestBadContentFailsTheBoot",
+  "bake": "go test ./pkg/level/bake"
  },
  "mutants": [
   {
@@ -3845,7 +3846,7 @@
    "edits": [
     {
      "file": "sim.go",
-     "old": "\n//go:embed pkg/level pkg/levelstate",
+     "old": "\n//go:embed pkg/level/*.go pkg/levelstate/*.go",
      "new": ""
     }
    ]
@@ -4388,6 +4389,270 @@
      "file": "client/src/game/player/local_player.ts",
      "old": "    this.mapID = s.MapID\n",
      "new": "    this.mapID ??= s.MapID\n"
+    }
+   ]
+  },
+  {
+   "id": "M8-Y1",
+   "breaks": "a map bakes with y down",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "ux, uy := c.units(px-c.cx), c.units(c.cy-py)",
+     "new": "ux, uy := c.units(px-c.cx), c.units(py-c.cy)"
+    }
+   ]
+  },
+  {
+   "id": "M8-O1",
+   "breaks": "a map's origin is its top left",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "ux, uy := c.units(px-c.cx), c.units(c.cy-py)",
+     "new": "ux, uy := c.units(px), c.units(c.cy-py)"
+    }
+   ]
+  },
+  {
+   "id": "M8-R1",
+   "breaks": "a turned object turns counter-clockwise",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\t\tpx = o.X + float64(x*cos) - float64(y*sin)\n\t\tpy = o.Y + float64(x*sin) + float64(y*cos)",
+     "new": "\t\tpx = o.X + float64(x*cos) + float64(y*sin)\n\t\tpy = o.Y - float64(x*sin) + float64(y*cos)"
+    }
+   ]
+  },
+  {
+   "id": "M8-R2",
+   "breaks": "a turned object bakes unturned",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif o.Rotation != 0 {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-V1",
+   "breaks": "a map an older Tiled saved bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "!ok || major < 1 || major == 1 && minor < 12",
+     "new": "!ok || major < 1 || major == 1 && minor < 10"
+    }
+   ]
+  },
+  {
+   "id": "M8-I1",
+   "breaks": "two objects with one id bake",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tcase o.ID == 0 || r.ids[o.ID]:",
+     "new": "\tcase o.ID == 0:"
+    }
+   ]
+  },
+  {
+   "id": "M8-E1",
+   "breaks": "an ellipse bakes as a circle",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif o.Width != o.Height {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-C1",
+   "breaks": "a tall capsule lies along x",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif o.Height > o.Width {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-W1",
+   "breaks": "an edge keeps the way it was drawn",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif area(loop) > 0 { // counter-clockwise",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-S1",
+   "breaks": "an edge starts where it was drawn",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\treturn append(loop[first:], loop[:first]...), nil",
+     "new": "\treturn loop, nil"
+    }
+   ]
+  },
+  {
+   "id": "M8-X1",
+   "breaks": "an edge crossing itself bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif crosses(points) {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-X2",
+   "breaks": "an edge folding back on itself bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\treturn d1 == 0 && on(c, d, a) || d2 == 0 && on(c, d, b) || d3 == 0 && on(a, b, c) || d4 == 0 && on(a, b, d)",
+     "new": "\treturn false"
+    }
+   ]
+  },
+  {
+   "id": "M8-H1",
+   "breaks": "a concave wall bakes as its hull",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif hull.Count != len(points) {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-P1",
+   "breaks": "a property's Tiled type is unchecked",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\t\tcase p.Type != fs[i].tiled:",
+     "new": "\t\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M8-P2",
+   "breaks": "a property the type lacks is dropped",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\t\t\treturn nil, fmt.Errorf(\"has property %q, which a %v doesn't\", p.Name, t)",
+     "new": "\t\t\tcontinue"
+    }
+   ]
+  },
+  {
+   "id": "M8-T1",
+   "breaks": "an object type bakes from any shape",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tif !o.Point {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-K1",
+   "breaks": "a wall's properties are ignored",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\tcase len(o.Properties) > 0:",
+     "new": "\tcase false:"
+    }
+   ]
+  },
+  {
+   "id": "M8-L1",
+   "breaks": "a tile layer is skipped",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/tiled.go",
+     "old": "\t\t\terrs = append(errs, fmt.Errorf(\"bake: layer %q is a %s: only object layers bake\", layer.Name, layer.Type))",
+     "new": "\t\t\t_ = layer"
+    }
+   ]
+  },
+  {
+   "id": "M8-G1",
+   "breaks": "the game's rules don't run at bake",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/bake.go",
+     "old": "\tif c.Check != nil {",
+     "new": "\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-N1",
+   "breaks": "an edge kind needn't be a kind",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/bake.go",
+     "old": "\t\tif _, ok := c.Schema.Kinds[kind]; !ok {",
+     "new": "\t\tif false {"
+    }
+   ]
+  },
+  {
+   "id": "M8-J1",
+   "breaks": "the project's members are all strings",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/project.go",
+     "old": "\"type\": f.tiled, \"value\": zero(f.tiled)",
+     "new": "\"type\": tiledString, \"value\": zero(f.tiled)"
+    }
+   ]
+  },
+  {
+   "id": "M8-J2",
+   "breaks": "a uint field has no Tiled type",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/bake/project.go",
+     "old": "\tcase k >= reflect.Int && k <= reflect.Uint64: // every int and uint, not uintptr",
+     "new": "\tcase k >= reflect.Int && k <= reflect.Int64:"
     }
    ]
   }

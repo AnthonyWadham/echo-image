@@ -21,7 +21,7 @@ import (
 //go:embed shards/game/main.go shards/game/shard/shard.go shards/game/shard/catalog.go
 //go:embed shards/game/content shards/game/internal
 //go:embed shards/game/predictor
-//go:embed pkg/level pkg/levelstate
+//go:embed pkg/level/*.go pkg/levelstate/*.go
 var source embed.FS
 
 // SimVersion is the Go release, the build tags (rate60 picks 60 Hz) and a hash of source without its

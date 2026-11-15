@@ -47,9 +47,10 @@ one is the *what*.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
   `projectile_test.go`, … in `shards/game/test`). One harness: shared helpers live in
   `harness_test.go`. Never a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
-- **`pkg/level` and `pkg/levelstate` are built to move to world-engine,** so they follow
-  world-engine's rules, not this repo's: `level` imports only `box2d` and the standard library,
-  `levelstate` adds `cardinal` and `level`, and neither names a game word; JSON is `goccy/go-json`;
+- **`pkg/level`, `pkg/level/bake` and `pkg/levelstate` are built to move to world-engine,** so they
+  follow world-engine's rules, not this repo's: `level` imports only `box2d` and the standard library,
+  `bake` adds `level`, `levelstate` adds `cardinal` and `level`, and none names a game word; JSON is
+  `goccy/go-json`;
   tests are external packages (`level_test`). Lint them with world-engine's config and its pinned
   linter (v2.15.0, built with this repo's Go): `golangci-lint run --config
   ../world-engine/.golangci.yaml --fix=false ./pkg/level/... ./pkg/levelstate/...`.

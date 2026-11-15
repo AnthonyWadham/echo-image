@@ -366,6 +366,14 @@ holds the same bytes. An explicit list makes "which maps ship" a reviewed line.
   split concave shapes → encode → load with the runtime's own code → check → write.
 - **Stale files.** A test rebakes every map and compares bytes.
 - **Conventions.** 1 tile = 1 m. Origin = canvas centre. Hidden objects are still baked.
+- **As built (step 8).** A shape's class is its kind; the game names its edge kinds (`bounds`), whose
+  rectangles and polygons become edge loops, clockwise from the lowest, then leftmost, corner. Every
+  other shape is a solid: a rectangle or convex polygon (in `ComputeHull`'s order), a circle (an
+  ellipse as wide as it's tall) or a capsule (half its short side as radius). A point's class is its
+  object type, its properties the type's fields; an unset one keeps its zero value, which is the
+  project's default. A solid's `src` and an object's `id` are its Tiled ID. Objects go in layer order,
+  then the layer's own order. Rotation is turned at bake time, each product its own float64 so
+  no platform fuses it. Errors name the object, its ID and its origin in meters.
 
 **Tiled traps the baker must handle.** Checked in Tiled's source. [test]
 - Tiled 1.12 writes `"version": "1.11"`. Gate on `tiledversion`.
@@ -465,7 +473,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 5 | game | **Done.** Spawns come from the map: one per player, in file order per team. The boot checks every map has enough, through the plugin's rules hook (`Config.Check`), which step 6 fills |
 | 6 | game | **Done.** The map rules at boot (`arena.CheckMap` over `level.Grid`, 7.11), once per champion radius. A failed landing is logged. Test maps start from the shipped map, so they keep its edge and spawns |
 | 7 | client | **Done.** The wasm's `shapes(mapID)` gives the map as `pkg/level` decoded it, in meters. `game/arena/map_view.ts` draws it grey: solids as 1 m blocks, outlines on their tops, edges on the ground. The camera follows your drawn Body and stops at the map (`Stage.follow`) |
-| 8 | `pkg/level/bake` | Baker, Tiled reader, project generator |
+| 8 | `pkg/level/bake` | **Done.** `Bake` reads Tiled's JSON, converts, snaps, encodes, then decodes, builds and runs the game's rules as a shard does. `Project` writes the Tiled project from the schema. The splitter waits for the fill kind: a concave wall is refused |
 | 9 | game | Tiled sources, generated project, staleness test, the first real map |
 
 - Step 4 must not be split. Server walls without predictor walls make every wall stop a correction (F8).

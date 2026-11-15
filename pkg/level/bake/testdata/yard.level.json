@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "solids": [
+    {"src": 2, "kind": "wall", "polygon": [[-6656, 1024], [-6656, -1024], [-5632, -1024], [-5632, 1024]]},
+    {"src": 3, "kind": "wall", "polygon": [[4096, 4096], [3072, 2322], [3959, 1810], [4983, 3584]]},
+    {"src": 4, "kind": "wall", "polygon": [[5120, -4096], [7168, -4096], [6144, -2560]]},
+    {"src": 5, "kind": "wall", "circle": {"center": [0, 3072], "radius": 768}},
+    {"src": 6, "kind": "wall", "capsule": {"center1": [-1024, -3072], "center2": [1024, -3072], "radius": 512}},
+    {"src": 7, "kind": "wall", "capsule": {"center1": [-4608, 4096], "center2": [-4608, 2048], "radius": 512}},
+    {"src": 10, "kind": "wall", "capsule": {"center1": [8704, 4608], "center2": [8704, 2560], "radius": 512}}
+  ],
+  "outlines": [],
+  "edges": [
+    {"src": 1, "kind": "bounds", "points": [[-10240, -6144], [-10240, 6144], [10240, 6144], [10240, -6144]]}
+  ],
+  "objects": [
+    {"id": 8, "type": "spawn", "at": [-8192, 0], "props": {"team":0}},
+    {"id": 9, "type": "spawn", "at": [8192, 0], "props": {"team":1}}
+  ]
+}
