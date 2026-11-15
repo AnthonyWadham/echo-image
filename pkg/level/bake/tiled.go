@@ -383,7 +383,8 @@ type canvas struct {
 }
 
 // point is the point (x, y) pixels from o's origin, turned with o, in units. Each product is its own
-// float64, so no platform fuses them and every machine bakes the same file.
+// float64, so no platform fuses them. math.Sincos can still differ in its last digit on arm64: a turned
+// corner that rounds on a half unit could bake one unit off there.
 func (c canvas) point(o tiledObject, x, y float64) (level.Point, error) {
 	px, py := o.X+x, o.Y+y
 	if o.Rotation != 0 {
