@@ -1,8 +1,9 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 to 5 are built (the mover's chain rule, the core
+> **A proposal, not the source of truth.** Steps 0 to 6 are built (the mover's chain rule, the core
 > in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
-> map, movement, shots and the predictor on the map's world, and spawns from the map). Code,
+> map, movement, shots and the predictor on the map's world, spawns from the map, and the map rules
+> at boot). Code,
 > [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
@@ -226,6 +227,7 @@ The cause: where a Body rests on one piece, Box2D also reports the corner of the
 - Convex fill pieces under their own kind bit answer "is this point in a wall?" for landing and
   shots. A hollow outline can't. Not built yet: the fill kind comes with the first concave wall.
   Until then, a wall to land out of is a convex solid, and a Body in a hollow outline walks out.
+  The map rules still refuse a hollow outline a Body fits in: open space no Body walks to (7.11).
 - The mover meets a chain as Box2D's chains collide: from the front only, and with ghost vertices
   (where the Body is over the next segment's face, the joint's corner plane is dropped). The pinned
   `CollideMover` does neither, so echo_image's mover adds it. Built and tested:
@@ -382,10 +384,19 @@ One tier: errors.
 | Runs at | Checks |
 |---|---|
 | every load (shard, wasm, bake) | format known; canonical bytes; kinds and types known; props strict; each polygon is its own convex hull; each loop has 4+ points and the right winding; segments and capsules longer than LinearSlop; every point inside Box2D's world |
-| bake and shard boot | the game's rules, on the built world, through Box2D queries: spawns clear of walls; map sealed; every clear cell reachable; every wall cell can land (F26) |
+| bake and shard boot | the game's rules, on the built world, through Box2D queries, for each champion radius: spawns clear of walls; every spawn reachable from the first; map sealed; every clear cell reachable; every wall cell a pass reaches lands where Bodies walk (F26). Built at boot in step 6 |
 | bake only | Tiled rules: every object has a class; no tiles, templates or infinite maps; no polygon crosses itself |
 
 A message names the file, the object, its ID and its position.
+
+**How the boot rules run (step 6).** `level.Grid` samples the map on 0.25 m cells (the landing
+step) for a circle of the Body's radius: one Box2D AABB query per 8 x 8 block, then one circle
+overlap per cell of a block with a shape near. A scanline flood from the first spawn, and one from
+the ring around the grid, answer reach, sealed and clear cells. Landing runs the mover's own search
+(`mover.LandWhere`) with the grid's cells as its "does it fit" answers: the same queries, made once.
+A gap narrower than a cell can slip through, as in every sampled check. A landing the rules missed
+is logged at run time. Cost, measured: about 2 ms a boot on the 100 x 100 m open map, about 5 ms
+with two walls; the world tests pay about 0.2 s in all (first draft: 11.6 ms and 35 ms).
 
 **Why one tier.** Engines have a strict mode for CI. We make it the only mode. [R1]
 
@@ -451,7 +462,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 3 | game | **Done.** `arena` package. An open default map (a 100 x 100 m edge, two spawns where they are today). Cardinal side registered first. Map ID in body_sync |
 | 4 | game | **Done.** One change: movement, shots and the predictor use the live map's world. Wall tests declare maps before boot (`onMap`). The recording meets walls, the edge's joints, a landing and a range end, at both rates. No tie rule yet (7.4) |
 | 5 | game | **Done.** Spawns come from the map: one per player, in file order per team. The boot checks every map has enough, through the plugin's rules hook (`Config.Check`), which step 6 fills |
-| 6 | game | Game rules, with the library's rule helpers (a flood fill over Box2D queries). A failed landing is logged |
+| 6 | game | **Done.** The map rules at boot (`arena.CheckMap` over `level.Grid`, 7.11), once per champion radius. A failed landing is logged. Test maps start from the shipped map, so they keep its edge and spawns |
 | 7 | client | wasm export, greybox view, camera |
 | 8 | `pkg/level/bake` | Baker, Tiled reader, project generator |
 | 9 | game | Tiled sources, generated project, staleness test, the first real map |

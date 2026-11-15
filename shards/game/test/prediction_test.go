@@ -516,11 +516,12 @@ var recorded = map[string]string{
 }
 
 // recordedMap is the map TestPredictionMatchesServer's run plays. Its spawns start her Body at (-5, 0)
-// and bob's at (5, 0). Wall 1 is under her, a solid, and wall 2 an outline up and to her left. The
-// edge's top has joints, and its left side is past a bolt's range from her.
+// and bob's at (5, 0). Wall 1 is under her, a solid, and wall 2 an outline up and to her left, too
+// narrow for a Body inside (an outline has no fill). The edge's top has joints, and its left side is past
+// a bolt's range from her.
 var recordedMap = level.Map{
 	Solids:   []level.Solid{wall(box2d.Vec2{X: -4.75, Y: -3.9375}, box2d.Vec2{X: 3.25, Y: 3.0625})},
-	Outlines: []level.Loop{mapLoop("wall", [][2]float64{{-10, 2.5}, {-8, 2.5}, {-8, 5}, {-10, 5}})},
+	Outlines: []level.Loop{mapLoop("wall", [][2]float64{{-8.75, 2.5}, {-8, 2.5}, {-8, 5}, {-8.75, 5}})},
 	Edges: []level.Loop{mapLoop("bounds", [][2]float64{{-25, 6}, {-4, 6}, {-2, 6}, {0, 6}, {2, 6}, {4, 6}, {7, 6},
 		{7, -15}, {-25, -15}})},
 	Objects: []level.Object{spawnAt(0, -5, 0), spawnAt(1, 5, 0)},

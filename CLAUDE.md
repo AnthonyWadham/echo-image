@@ -106,7 +106,8 @@ shards/game/
                                   by rules), tuning.go (area kinds), doc.go
       component/  package component   Area — area's leaf; a constructor gives its entity an area
     arena/    package arena       the game's side of its maps: Schema (the kinds wall and bounds, the spawn
-                                  type), Spawns and CheckSpawns, and ArenaTuning (the maps that ship)
+                                  type), Spawns and CheckSpawns, CheckMap (rules.go: the map rules a
+                                  Body needs), and ArenaTuning (the maps that ship)
                                   — no Cardinal import
     player/   package player      player Body: spawn_system.go (the one Body constructor),
                                   input_system.go, movement_system.go, input_command.go,
@@ -114,7 +115,7 @@ shards/game/
       component/  package component   Player, Champion, InputQueue + InputFrame, MoveSpeed,
                                       BodyClaimed — player's leaf
       motion/     package motion      how a Body moves each tick: Step (the server's move, and the
-                                      predictor's), Unit, Blockers — no Cardinal import
+                                      predictor's), Land, Unit, Blockers — no Cardinal import
     echo/     package echo        the Echo replay: spawn_system.go, replay_system.go, sync_system.go,
                                   elimination_system.go, tuning.go, doc.go
       component/  package component   Echo, PathHistory — echo's leaf
@@ -171,7 +172,7 @@ the **team**, **interact** and **ref** primitives, **netsync**, and any **`<feat
 it reads — never another feature's behavior package (`player → {physics, physics/timestep, interact,
 team, ref, netsync, player/component, player/motion, effect/component, effect/status, ability/component,
 ability/cast, combat/component, echo/component, projectile/component, history/component,
-pkg/levelstate, arena}`, `arena → {interact, pkg/level}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
+pkg/levelstate, arena}`, `arena → {interact, pkg/level, physics/mover, player/motion}`, `ability → {ability/hooks, ability/cast, team, ref, netsync, player/component,
 ability/component, effect/component, effect/status, projectile/component}`, `projectile → {physics,
 team, ref, netsync, combat/component, projectile/component, projectile/flight, history/past,
 pkg/levelstate}`, `history →
@@ -502,8 +503,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **A Body whose center is inside a blocker lands first** (`mover.Land`: the nearest spot on a 0.25 m
   grid within `mover.LandReach` where the whole circle is clear, and the straight way there doesn't
   cross the map edge). The mover can't push a center out, so it would walk out the far side. This
-  covers a phase ending inside a wall. Map walls must be thinner than twice `LandReach`, with no sealed
-  pockets.
+  covers a phase ending inside a wall. The boot's map rules make sure every wall cell a pass reaches
+  lands; `Step` says `stuck` if one doesn't, and `MovementSystem` logs it as an error.
 - **The mover is shared sim code** the client predictor runs too, so it must stay deterministic: no
   Cardinal import, FMA-free arithmetic (`float64(a*b)`, or box2d helpers like `box2d.MulAdd`), and
   planes sorted by `(Normal.X, Normal.Y, Offset)`, never by ShapeID. So must the cast gate, hooks,
@@ -584,6 +585,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   Use it for test-only shot types and champions; never add test content to the shipped files.
   A test with walls declares its map before boot: `onMap` writes a test map into the files, and
   `duelOn` and `fxDuelOn` are `duel` and `fxDuel` on one. The shard's own world has no wall to add.
+  A test map starts from the shipped one (`shippedMap`, `shippedWith`), so it keeps the edge and
+  spawns the map rules need.
   A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
   one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
@@ -605,6 +608,12 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **A map holds a spawn for each player.** Each team's Bodies take its spawns in file order, one each
   (`arena.Spawns`), as team games' maps do. The boot fails if any map has fewer spawns for a team than
   the dev roster puts on it: the game's rules run on every map through `levelstate.Config.Check`.
+- **The map rules** (`arena.CheckMap`, once per champion radius) refuse a map where a spawn touches a
+  wall, a Body can't walk between spawns, it walks off the map, open space can't be walked to (a
+  walled-off room, or a hollow outline a Body fits in), or a wall cell a pass reaches can't land where
+  Bodies walk. They sample a 0.25 m grid (`level.Grid`) of Box2D queries, so a gap narrower than a
+  cell can slip through. They cost about 2 ms a boot on the open map; keep them free of allocations
+  per cell.
 - **Content is code.** It is embedded and hashed into `SimVersion`, so a shard resumes a snapshot on
   the content its build carries; changing content is a new build.
 - **Prefer typed per-feature config structs** over a single stringly-typed global settings bag

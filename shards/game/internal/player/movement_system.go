@@ -39,12 +39,16 @@ func (s *MovementSystem) Run(w *cardinal.World) {
 	tick := w.TickHeight()
 	for body := range w.Contains[movableRow]().Iter() {
 		pose := body.Get[physics2d.Transform2D]()
-		center, v := motion.Step(engine, motion.Body{
+		center, v, stuck := motion.Step(engine, motion.Body{
 			Center: box2d.Vec2(pose.Position),
 			Radius: radius(body),
 			Move:   move(body, tick, timeout),
 			Speed:  body.Get[component.MoveSpeed]().Value,
 		}, body.Get[effectcomp.Effects]().Status(tick), physics.SecondsPerTick)
+		if stuck {
+			w.Logger().Error().Uint32("body", uint32(body.ID())).Float64("x", pose.Position.X).
+				Float64("y", pose.Position.Y).Msg("a Body inside a wall found nowhere to land")
+		}
 		pose.Position = physics2d.Vec2(center)
 		body.Set(pose)
 		body.Set(physics2d.Velocity2D{Linear: physics2d.Vec2(v)})

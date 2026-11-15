@@ -47,7 +47,7 @@ func loadCatalog(fsys fs.FS) (catalog, error) {
 	c.effects, errs[4] = content.Load[effect.EffectTuning](fsys)
 	c.areas, errs[5] = content.Load[area.AreaTuning](fsys)
 	c.history, errs[6] = content.Load[history.HistoryTuning](fsys)
-	c.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers())
+	c.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers(), c.movement.Radii())
 	if err := errors.Join(errs[:]...); err != nil {
 		return c, err
 	}
@@ -55,8 +55,9 @@ func loadCatalog(fsys fs.FS) (catalog, error) {
 }
 
 // loadLevels decodes each map arena/tuning.json lists, builds it into a Box2D world of its own, and checks
-// it holds a spawn for each player the dev roster puts on each team.
-func loadLevels(fsys fs.FS, players map[uint8]int) (*levelstate.Plugin, error) {
+// it holds a spawn for each player the dev roster puts on each team, and that a Body of each radius can
+// play all of it.
+func loadLevels(fsys fs.FS, players map[uint8]int, radii []float64) (*levelstate.Plugin, error) {
 	t, err := content.Load[arena.ArenaTuning](fsys)
 	if err != nil {
 		return nil, err
@@ -66,7 +67,13 @@ func loadLevels(fsys fs.FS, players map[uint8]int) (*levelstate.Plugin, error) {
 		return nil, err
 	}
 	return levelstate.NewPlugin(levelstate.Config{Maps: files, Schema: arena.Schema(), Default: t.DefaultMap,
-		Check: func(m level.Map, _ *box2d.World) error { return arena.CheckSpawns(m, players) }})
+		Check: func(m level.Map, world *box2d.World) error {
+			errs := []error{arena.CheckSpawns(m, players)}
+			for _, r := range radii {
+				errs = append(errs, arena.CheckMap(m, world, r))
+			}
+			return errors.Join(errs...)
+		}})
 }
 
 // lineUp checks the IDs one file names in another: each ability's shots and effect kinds, and each

@@ -440,7 +440,7 @@ func (a *asks) Effect(in status.Intent) {
 func (p *Predictor) move(moveX, moveY float64, st status.Status) box2d.Vec2 {
 	s := &p.state
 	x, y := motion.Unit(moveX, moveY)
-	center, _ := motion.Step(p.world, motion.Body{
+	center, _, _ := motion.Step(p.world, motion.Body{
 		Center: s.Center,
 		Radius: s.Radius,
 		Move:   box2d.Vec2{X: x, Y: y},

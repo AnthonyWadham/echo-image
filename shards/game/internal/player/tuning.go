@@ -2,6 +2,7 @@ package player
 
 import (
 	"fmt"
+	"slices"
 
 	"echo_image/shards/game/internal/physics"
 	"echo_image/shards/game/internal/physics/timestep"
@@ -35,6 +36,16 @@ func (t MovementTuning) DevPlayers() map[uint8]int {
 		players[d.Team]++
 	}
 	return players
+}
+
+// Radii is each champion's Body radius, once each, smallest first: the sizes a map must fit.
+func (t MovementTuning) Radii() []float64 {
+	var radii []float64
+	for _, c := range t.Champions {
+		radii = append(radii, c.Radius)
+	}
+	slices.Sort(radii)
+	return slices.Compact(radii)
 }
 
 // ChampionDef is a champion's Body.

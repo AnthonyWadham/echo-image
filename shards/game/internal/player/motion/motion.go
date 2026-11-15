@@ -17,6 +17,20 @@ import (
 // Blockers is the map kinds that stop a Body. A pass effect drops kinds from its holder's.
 const Blockers = interact.Wall | interact.Bounds
 
+// edge is what a landing never crosses: the map edge.
+var edge = box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(interact.Bounds)}
+
+// Land is where a Body's circle, inside a blocker filter accepts, lands: the nearest clear spot whose way
+// there doesn't cross the map edge, or ok=false with none within mover.LandReach.
+func Land(world *box2d.World, circle box2d.Circle, filter box2d.QueryFilter) (box2d.Vec2, bool) {
+	return mover.Land(world, circle, filter, edge)
+}
+
+// LandWhere is Land with clear saying where the Body fits, for a caller that already has those answers.
+func LandWhere(world *box2d.World, center box2d.Vec2, clear func(box2d.Vec2) bool) (box2d.Vec2, bool) {
+	return mover.LandWhere(world, center, edge, clear)
+}
+
 // Unit returns (x, y) scaled to length 1, or (0, 0) for a ~zero, huge or non-finite input, so a bad
 // client frame never reaches physics or gameplay as NaN. Its length is box2d's, never math.Hypot,
 // which fuses a multiply-add on arm64 and so gives other bits there than in the browser.
@@ -40,18 +54,20 @@ type Body struct {
 // clipped against what it touched. A forced velocity replaces input, the folded speed scales input (a
 // stun is zero), and a pass drops map kinds from what stops it. A Body whose center is inside a
 // blocker first lands on the nearest clear spot inside the map, since the mover would walk it out the
-// far side.
-func Step(world *box2d.World, b Body, st status.Status, dt float64) (center, velocity box2d.Vec2) {
+// far side. stuck says it found none: a map the boot's rules should have refused.
+func Step(world *box2d.World, b Body, st status.Status, dt float64) (center, velocity box2d.Vec2, stuck bool) {
 	filter := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(Blockers &^ st.Pass)}
 	circle := box2d.Circle{Center: b.Center, Radius: b.Radius}
 	if mover.Inside(world, circle.Center, filter) {
-		edge := box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(interact.Bounds)}
-		circle.Center, _ = mover.Land(world, circle, filter, edge)
+		var landed bool
+		circle.Center, landed = Land(world, circle, filter)
+		stuck = !landed
 	}
 	v := box2d.Vec2{X: st.VelX, Y: st.VelY}
 	if !st.Forced {
 		speed := st.Speed(b.Speed)
 		v = box2d.Vec2{X: b.Move.X * speed, Y: b.Move.Y * speed}
 	}
-	return mover.Move(world, circle, v, dt, filter)
+	center, velocity = mover.Move(world, circle, v, dt, filter)
+	return center, velocity, stuck
 }

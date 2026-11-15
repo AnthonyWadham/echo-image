@@ -11,12 +11,12 @@ import (
 // or a circle in its middle can't land.
 const LandReach = 6.0
 
-// landStep is the spacing of the grid Land searches: a power of two, so every grid offset is exact.
-const landStep = 0.25
+// LandStep is the spacing of the grid Land searches: a power of two, so every grid offset is exact.
+const LandStep = 0.25
 
 // landGrid is every grid offset within LandReach, nearest first, ties in a fixed order. Built once.
 var landGrid = func() []box2d.Vec2 {
-	const n = int(LandReach / landStep)
+	const n = int(LandReach / LandStep)
 	type cell struct{ i, j int }
 	var cells []cell
 	for i := -n; i <= n; i++ {
@@ -31,7 +31,7 @@ var landGrid = func() []box2d.Vec2 {
 	})
 	grid := make([]box2d.Vec2, len(cells))
 	for k, c := range cells {
-		grid[k] = box2d.Vec2{X: float64(c.i) * landStep, Y: float64(c.j) * landStep}
+		grid[k] = box2d.Vec2{X: float64(c.i) * LandStep, Y: float64(c.j) * LandStep}
 	}
 	return grid
 }()
@@ -39,7 +39,7 @@ var landGrid = func() []box2d.Vec2 {
 // Inside reports whether point lies in a shape filter accepts. Move can't push a circle out of a shape
 // its center is in, so a caller lands it first.
 func Inside(world *box2d.World, point box2d.Vec2, filter box2d.QueryFilter) bool {
-	return overlaps(world, point, 0, filter)
+	return Overlaps(world, point, 0, filter)
 }
 
 // Land returns the nearest point to circle's center, on a grid within LandReach, where the whole circle
@@ -47,17 +47,26 @@ func Inside(world *box2d.World, point box2d.Vec2, filter box2d.QueryFilter) bool
 // edge), or ok=false when there is none. Ties go in a fixed order, so every platform lands in the same
 // spot. Call it outside a Box2D step, like Move.
 func Land(world *box2d.World, circle box2d.Circle, filter, edge box2d.QueryFilter) (box2d.Vec2, bool) {
+	return LandWhere(world, circle.Center, edge, func(p box2d.Vec2) bool {
+		return !Overlaps(world, p, circle.Radius, filter)
+	})
+}
+
+// LandWhere is Land with clear saying where the circle fits, for a caller that already has those answers.
+func LandWhere(world *box2d.World, center box2d.Vec2, edge box2d.QueryFilter, clear func(box2d.Vec2) bool) (
+	box2d.Vec2, bool,
+) {
 	for _, step := range landGrid {
-		p := box2d.Vec2{X: circle.Center.X + step.X, Y: circle.Center.Y + step.Y}
-		if !overlaps(world, p, circle.Radius, filter) && !crosses(world, circle.Center, step, edge) {
+		p := box2d.Vec2{X: center.X + step.X, Y: center.Y + step.Y}
+		if clear(p) && !crosses(world, center, step, edge) {
 			return p, true
 		}
 	}
-	return circle.Center, false
+	return center, false
 }
 
-// overlaps reports whether a circle at center touches a shape filter accepts.
-func overlaps(world *box2d.World, center box2d.Vec2, radius float64, filter box2d.QueryFilter) bool {
+// Overlaps reports whether a circle at center touches a shape filter accepts.
+func Overlaps(world *box2d.World, center box2d.Vec2, radius float64, filter box2d.QueryFilter) bool {
 	proxy := box2d.MakeProxy([]box2d.Vec2{center}, 1, radius)
 	hit := false
 	world.OverlapShape(&proxy, filter, func(box2d.ShapeID, any) bool {

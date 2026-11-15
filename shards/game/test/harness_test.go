@@ -44,7 +44,7 @@ func frame(seq uint32, x, y float64) playercomp.InputFrame {
 }
 
 // tuningOf reads the shipped tuning for T as the shard loads it, so tests follow the real numbers.
-func tuningOf[T content.File](t *testing.T) T {
+func tuningOf[T content.File](t testing.TB) T {
 	t.Helper()
 	v, err := content.Load[T](content.FS)
 	if err != nil {
@@ -281,9 +281,9 @@ func twoVsTwo(t testing.TB, patches ...map[string]string) content.Overlay {
 	t.Helper()
 	roster := map[string]string{"player/tuning.json": `{"dev_spawns": [{"team": 0}, {"team": 1}, {"team": 0},
 		{"team": 1}]}`}
-	return onMap(t, patched(t, append([]map[string]string{roster}, patches...)...), level.Map{Objects: []level.Object{
-		spawnAt(0, -5, 0), spawnAt(0, -3, 0), spawnAt(1, 5, 0), spawnAt(1, 3, 0),
-	}})
+	m := shippedMap(t)
+	m.Objects = []level.Object{spawnAt(0, -5, 0), spawnAt(0, -3, 0), spawnAt(1, 5, 0), spawnAt(1, 3, 0)}
+	return onMap(t, patched(t, append([]map[string]string{roster}, patches...)...), m)
 }
 
 // skirmish is a 3v3 that fights on (test content: no Echo dies). Each step, every player walks up or
@@ -295,9 +295,11 @@ func skirmish(tb testing.TB) (step func()) {
 			{"team": 1}]}`,
 		"echo/tuning.json": `{"max_hp": 1e9}`,
 	})
-	w := cardinal.NewTestWorld(tb, withFiles(onMap(tb, files, level.Map{Objects: []level.Object{
+	m := shippedMap(tb)
+	m.Objects = []level.Object{
 		spawnAt(0, -5, 0), spawnAt(0, -5, 3), spawnAt(0, -5, -3), spawnAt(1, 5, 0), spawnAt(1, 5, 3), spawnAt(1, 5, -3),
-	}})))
+	}
+	w := cardinal.NewTestWorld(tb, withFiles(onMap(tb, files, m)))
 	var players []*client
 	for _, id := range []string{"a1", "b1", "a2", "b2", "a3", "b3"} {
 		players = append(players, &client{w: w, id: id, session: 1, back: drawLag})
@@ -407,8 +409,8 @@ func flyFor(w *cardinal.TestWorld, n int) {
 	}
 }
 
-// Content fails the boot when a key is unknown (a typo would load as 0) or an ID one file names is
-// missing from another, so every boot, test or shard, checks the content it runs.
+// Content fails the boot when a key is unknown (a typo would load as 0), an ID one file names is missing
+// from another, or a map breaks the game's rules, so every boot, test or shard, checks the content it runs.
 func TestBadContentFailsTheBoot(t *testing.T) {
 	for _, c := range []struct{ name, file, patch, want string }{
 		{"typo key", "ability/tuning.json", `{"abilities": {"bolt": {"cooldown_secnds": 2}}}`, "cooldown_secnds"},
@@ -434,6 +436,8 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 		{"map that doesn't decode", "arena/open.level.json", `{"format": 2}`, "map open: level: format 2"},
 		{"map short of spawns", "player/tuning.json", `{"dev_spawns": [{"team": 0}, {"team": 0}]}`,
 			"map open: arena: team 0 has spawns for 1 of its 2 players"},
+		{"champion too big for a map", "player/tuning.json", `{"champions": {"rook": {"move_speed": 5, "radius": 60}}}`,
+			"map open: arena: the first spawn, at (-5, 0), has no room for a Body"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			err := shard.CheckContent(patched(t, map[string]string{c.file: c.patch}))
@@ -441,6 +445,12 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 				t.Fatalf("loaded with error %v, want one naming %s", err, c.want)
 			}
 		})
+	}
+	edgeless := shippedMap(t)
+	edgeless.Edges = nil
+	if err := shard.CheckContent(onMap(t, content.Overlay{}, edgeless)); err == nil ||
+		!strings.Contains(err.Error(), "map test: arena: a Body walks off the map") {
+		t.Fatalf("a map with no edge loaded with error %v", err)
 	}
 	if err := shard.CheckContent(content.FS); err != nil {
 		t.Fatalf("the shipped content fails: %v", err)
@@ -531,7 +541,7 @@ func spawnOf(t *testing.T, i int) (box2d.Vec2, float64) {
 }
 
 // shippedMap is the shipped default map.
-func shippedMap(t *testing.T) level.Map {
+func shippedMap(t testing.TB) level.Map {
 	t.Helper()
 	tuning := tuningOf[arena.ArenaTuning](t)
 	files, err := tuning.Files(content.FS)
@@ -545,16 +555,13 @@ func shippedMap(t *testing.T) level.Map {
 	return m
 }
 
-// shippedSpawns are the shipped default map's spawns, for a test map where Bodies start as they do there.
-func shippedSpawns(t *testing.T) []level.Object {
+// shippedWith is the shipped default map with solids in place of its own: a test map inside its edge,
+// where Bodies start as they do there.
+func shippedWith(t testing.TB, solids ...level.Solid) level.Map {
 	t.Helper()
-	var spawns []level.Object
-	for _, o := range shippedMap(t).Objects {
-		if _, ok := o.Props.(arena.Spawn); ok {
-			spawns = append(spawns, o)
-		}
-	}
-	return spawns
+	m := shippedMap(t)
+	m.Solids = solids
+	return m
 }
 
 // spawnAt is a spawn of team at (x, y), for a test map.
@@ -627,20 +634,19 @@ func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
 	return files
 }
 
-// duelOn is duel on a test map of solids, with the shipped map's spawns.
+// duelOn is duel on the shipped map with solids in place of its own.
 func duelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client) {
 	t.Helper()
-	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, level.Map{Solids: solids,
-		Objects: shippedSpawns(t)})))
+	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, shippedWith(t, solids...))))
 	alice, bob = claim(t, w)
 	return w, alice, bob
 }
 
-// fxDuelOn is fxDuel on a test map of solids, with the shipped map's spawns.
+// fxDuelOn is fxDuel on the shipped map with solids in place of its own.
 func fxDuelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client, fx *emitter) {
 	t.Helper()
 	fx = &emitter{}
-	files := onMap(t, patched(t, effectKinds), level.Map{Solids: solids, Objects: shippedSpawns(t)})
+	files := onMap(t, patched(t, effectKinds), shippedWith(t, solids...))
 	w = cardinal.NewTestWorld(t, withEmitter(withFiles(files), fx))
 	alice, bob = claim(t, w)
 	return w, alice, bob, fx

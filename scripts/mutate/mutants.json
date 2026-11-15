@@ -9,7 +9,10 @@
   "prediction-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; go test ./shards/game/test -run 'TestPrediction|TestPredictor'",
   "ts-rerecorded": "go test ./shards/game/test -run 'TestPredictionMatchesServer' -update -count=1 >/dev/null 2>&1; cd client && bun run test",
   "level": "go test ./pkg/level",
-  "levelstate": "go test ./pkg/levelstate"
+  "levelstate": "go test ./pkg/levelstate",
+  "arena": "go test ./shards/game/internal/arena",
+  "motion": "go test ./shards/game/internal/player/motion",
+  "boot": "go test ./shards/game/test -run TestBadContentFailsTheBoot"
  },
  "mutants": [
   {
@@ -3830,8 +3833,8 @@
    "edits": [
     {
      "file": "shards/game/shard/catalog.go",
-     "old": "\tc.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers())\n",
-     "new": "\tc.levels, _ = loadLevels(fsys, c.movement.DevPlayers())\n"
+     "old": "\tc.levels, errs[7] = loadLevels(fsys, c.movement.DevPlayers(), c.movement.Radii())\n",
+     "new": "\tc.levels, _ = loadLevels(fsys, c.movement.DevPlayers(), c.movement.Radii())\n"
     }
    ]
   },
@@ -3988,6 +3991,235 @@
      "file": "shards/game/internal/player/tuning.go",
      "old": "\t\tplayers[d.Team]++\n",
      "new": "\t\tplayers[d.Team] = 1\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-G1",
+   "breaks": "a block query near a shape says nothing is near",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/grid.go",
+     "old": "\tif !q.hit {\n",
+     "new": "\tif true || !q.hit {\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-G2",
+   "breaks": "a cell near a shape opens without its own query",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/grid.go",
+     "old": "\t\t\tg.open[k] = !q.hit\n",
+     "new": "\t\t\tg.open[k] = true\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-G3",
+   "breaks": "the ring around the grid touches the map's shapes",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/grid.go",
+     "old": "int(math.Ceil(radius/cell)) + 1",
+     "new": "int(math.Ceil(radius/cell)) - 1"
+    }
+   ]
+  },
+  {
+   "id": "M6-G4",
+   "breaks": "a flood runs through shut cells",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/grid.go",
+     "old": "for lo > row && g.open[lo-1] && !reached[lo-1] {",
+     "new": "for lo > row && !reached[lo-1] {"
+    }
+   ]
+  },
+  {
+   "id": "M6-G5",
+   "breaks": "a flood never seeds the row below",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/grid.go",
+     "old": "\t\tseeds = g.seed(seeds, lo-g.w, hi-g.w, reached)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "M6-R1",
+   "breaks": "a spawn touching a wall passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\tcase mover.Overlaps(world, p, radius, blocked):\n",
+     "new": "\t\tcase false:\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R2",
+   "breaks": "a first spawn with no room floods from nowhere",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\tif !walk.Open(first) { // nothing to walk from\n",
+     "new": "\tif false { // nothing to walk from\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R3",
+   "breaks": "a spawn no Body walks to passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\tcase !in[k]:\n",
+     "new": "\t\tcase false && !in[k]:\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R4",
+   "breaks": "a map with no edge passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\tif in[k] {\n",
+     "new": "\t\tif false && in[k] {\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R5",
+   "breaks": "open space no Body walks to passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\tif walk.Open(k) && !in[k] && !out[k] {\n",
+     "new": "\t\tif false && walk.Open(k) && !in[k] && !out[k] {\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R6",
+   "breaks": "a wall too thick to land out of passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\treturn errors.Join(append(errs, landings(m, world, radius, walk, in, spawns[0].At.Vec2()))...)\n",
+     "new": "\treturn errors.Join(errs...)\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-R7",
+   "breaks": "a wall past the edge must land too",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "if f, _ := free.Nearest(c); !reach[f] {",
+     "new": "if f, _ := free.Nearest(c); false && !reach[f] {"
+    }
+   ]
+  },
+  {
+   "id": "M6-R8",
+   "breaks": "a wall landing into a walled-off room passes",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "!ok || !in[l] {",
+     "new": "!ok || false && !in[l] {"
+    }
+   ]
+  },
+  {
+   "id": "M6-R9",
+   "breaks": "a landing check says a Body fits everywhere",
+   "check": "arena",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\t\treturn on && walk.Open(at)\n",
+     "new": "\t\t\treturn on || walk.Open(at)\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-C1",
+   "breaks": "the boot skips the map rules",
+   "check": "boot",
+   "edits": [
+    {
+     "file": "shards/game/shard/catalog.go",
+     "old": "\t\t\t\terrs = append(errs, arena.CheckMap(m, world, r))\n",
+     "new": "\t\t\t\t_ = r\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-C2",
+   "breaks": "the rules check one champion radius only",
+   "check": "boot",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/tuning.go",
+     "old": "\treturn slices.Compact(radii)\n",
+     "new": "\treturn slices.Compact(radii)[:min(1, len(radii))]\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-M1",
+   "breaks": "Step never says a Body is stuck",
+   "check": "motion",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/motion/motion.go",
+     "old": "\t\tstuck = !landed\n",
+     "new": "\t\tstuck = !landed && false\n"
+    }
+   ]
+  },
+  {
+   "id": "M6-M2",
+   "breaks": "a stuck Body logs nothing",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/player/movement_system.go",
+     "old": "\t\tif stuck {\n",
+     "new": "\t\tif false && stuck {\n"
+    }
+   ],
+   "survives": "the boot refuses every map that strands a Body, so no world test reaches the log"
+  },
+  {
+   "id": "M6-L1",
+   "breaks": "a landing ignores where the circle fits",
+   "check": "go",
+   "edits": [
+    {
+     "file": "shards/game/internal/physics/mover/land.go",
+     "old": "\t\tif clear(p) && !crosses(",
+     "new": "\t\tif true && !crosses("
     }
    ]
   }

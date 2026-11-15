@@ -233,8 +233,8 @@ func TestWallStopsBody(t *testing.T) {
 func TestBodySlidesAlongWall(t *testing.T) {
 	spawn, r := spawnOf(t, 0)
 	half := box2d.Vec2{X: 0.5, Y: 5}
-	// Its face touches her right side.
-	w, alice, _ := duelOn(t, wall(box2d.Vec2{X: spawn.X + r + 0.5, Y: spawn.Y}, half))
+	// Its face is 1 unit (1/1024 m) from her right side: a map's rules refuse a spawn touching a wall.
+	w, alice, _ := duelOn(t, wall(box2d.Vec2{X: spawn.X + r + 1.0/level.Unit + 0.5, Y: spawn.Y}, half))
 
 	alice.move(1, 1)
 	w.Tick() // settles against the wall
