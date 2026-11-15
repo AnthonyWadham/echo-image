@@ -1,8 +1,3 @@
-// Package level reads a baked map file and builds its walls into a Box2D world. A map holds walls
-// (convex solids and chain loops) and objects (typed points, such as spawns). A map is content, not
-// state: the same bytes build the same walls on every platform, so a server and its clients agree
-// without sending geometry. It imports only Box2D and the standard library, and the game's schema names
-// every kind and type, so any game can use it.
 package level
 
 import (

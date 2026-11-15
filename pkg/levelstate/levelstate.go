@@ -1,10 +1,3 @@
-// Package levelstate keeps one live map in a Cardinal world. State names it. Memory holds every map the
-// build ships, each decoded, built into a Box2D world of its own and checked by the game's rules at boot,
-// so a change is a swap.
-//
-// One system runs at Init and first in every tick. It takes a requested change, refuses a map the build
-// lacks, takes the build's file for the live map, and points memory at it. When a tick changes the live
-// map, it emits Changed.
 package levelstate
 
 import (

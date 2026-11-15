@@ -1,6 +1,3 @@
-// Package bake turns a map drawn in Tiled into the map file pkg/level reads, and writes the Tiled project
-// whose classes are a game's kinds and object types. It reads Tiled's JSON itself, so no editor runs in
-// CI. Like pkg/level, it names no game's kinds or types: the game passes its Config.
 package bake
 
 import (
