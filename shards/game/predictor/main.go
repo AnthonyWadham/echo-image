@@ -124,7 +124,7 @@ func main() {
 
 func point(v box2d.Vec2) map[string]any { return map[string]any{"x": v.X, "y": v.Y} }
 
-// shapes is m's solids and loops, as map_view.ts's MapShapes.
+// shapes is m's solids, loops and bounds, as map_view.ts's MapShapes.
 func shapes(m level.Map) map[string]any {
 	solids := []any{}
 	for _, s := range m.Solids {
@@ -143,7 +143,11 @@ func shapes(m level.Map) map[string]any {
 			solids = append(solids, map[string]any{"Polygon": spots(s.Polygon)})
 		}
 	}
-	return map[string]any{"Solids": solids, "Outlines": loops(m.Outlines), "Edges": loops(m.Edges)}
+	out := map[string]any{"Solids": solids, "Outlines": loops(m.Outlines), "Edges": loops(m.Edges)}
+	if low, high, ok := m.Bounds(); ok {
+		out["Bounds"] = map[string]any{"min": point(low), "max": point(high)}
+	}
+	return out
 }
 
 func loops(ls []level.Loop) []any {

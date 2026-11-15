@@ -4285,6 +4285,30 @@
    ]
   },
   {
+   "id": "M7-W6",
+   "breaks": "the wasm drops a map's bounds",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "shards/game/predictor/main.go",
+     "old": "\tif low, high, ok := m.Bounds(); ok {",
+     "new": "\tif low, high, ok := m.Bounds(); ok && false {"
+    }
+   ]
+  },
+  {
+   "id": "M7-V6",
+   "breaks": "the map view keeps no bounds for the camera",
+   "check": "ts",
+   "edits": [
+    {
+     "file": "client/src/game/arena/map_view.ts",
+     "old": "    this.bounds = m.Bounds\n",
+     "new": ""
+    }
+   ]
+  },
+  {
    "id": "M7-V1",
    "breaks": "the map view redraws every frame",
    "check": "ts",
@@ -4323,12 +4347,12 @@
   {
    "id": "M7-V4",
    "breaks": "the map's bounds ignore a round wall's radius",
-   "check": "ts",
+   "check": "level",
    "edits": [
     {
-     "file": "client/src/game/arena/map_view.ts",
-     "old": "    min.x = Math.min(min.x, p.X - r)\n",
-     "new": "    min.x = Math.min(min.x, p.X)\n"
+     "file": "pkg/level/grid.go",
+     "old": "{center[0] - radius, center[1] - radius}",
+     "new": "{center[0], center[1]}"
     }
    ]
   },

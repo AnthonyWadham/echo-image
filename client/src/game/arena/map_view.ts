@@ -19,6 +19,7 @@ export interface MapShapes {
   Solids: Solid[]
   Outlines: Spot[][] // loops around walls
   Edges: Spot[][] // loops around the play area
+  Bounds?: Bounds // the box around its shapes and objects: none for an empty map
 }
 
 /** One convex piece of wall: level.Solid. */
@@ -38,7 +39,7 @@ export class MapView {
   readonly #root = new Group()
   readonly #shapes: (id: string) => MapShapes | undefined
   #id: string | undefined
-  /** The box around the drawn map's shapes: undefined with none drawn. */
+  /** The drawn map's bounds: undefined with none drawn. */
   bounds: Bounds | undefined
 
   constructor(parent: Object3D, shapes: (id: string) => MapShapes | undefined) {
@@ -69,7 +70,7 @@ export class MapView {
         this.#root.add(new LineLoop(geometry, line))
       }
     }
-    this.bounds = bounds(m)
+    this.bounds = m.Bounds
   }
 }
 
@@ -86,25 +87,4 @@ function outline(s: Solid): Shape {
   return new Shape()
     .absarc(a.X, a.Y, Radius, angle + Math.PI / 2, angle + (3 * Math.PI) / 2, false)
     .absarc(b.X, b.Y, Radius, angle - Math.PI / 2, angle + Math.PI / 2, false)
-}
-
-/** The box around m's shapes. */
-export function bounds(m: MapShapes): Bounds | undefined {
-  const spans: [Spot, number][] = []
-  for (const s of m.Solids) {
-    if ('Polygon' in s) spans.push(...s.Polygon.map((p): [Spot, number] => [p, 0]))
-    else if ('Circle' in s) spans.push([s.Circle.Center, s.Circle.Radius])
-    else spans.push([s.Capsule.Center1, s.Capsule.Radius], [s.Capsule.Center2, s.Capsule.Radius])
-  }
-  for (const p of [...m.Outlines, ...m.Edges].flat()) spans.push([p, 0])
-  if (spans.length === 0) return undefined
-  const min = { x: Infinity, y: Infinity }
-  const max = { x: -Infinity, y: -Infinity }
-  for (const [p, r] of spans) {
-    min.x = Math.min(min.x, p.X - r)
-    min.y = Math.min(min.y, p.Y - r)
-    max.x = Math.max(max.x, p.X + r)
-    max.y = Math.max(max.y, p.Y + r)
-  }
-  return { min, max }
 }

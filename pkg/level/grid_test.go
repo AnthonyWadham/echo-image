@@ -98,6 +98,34 @@ func TestFloodLeaksWithoutAnEdge(t *testing.T) {
 	t.Fatal("a flood from a spawn stays inside a map with no edge")
 }
 
+// Bounds is the box around every shape and object, a round shape's radius included. An empty map has none.
+func TestBoundsIsTheBoxAroundEveryShapeAndObject(t *testing.T) {
+	m := level.Map{
+		Solids: []level.Solid{
+			{Polygon: []level.Point{{1024, 1024}, {2048, 1024}, {2048, 2048}}},
+			{Circle: &level.Circle{Center: level.Point{-3072, 4096}, Radius: 512}},
+			{Capsule: &level.Capsule{Center1: level.Point{3072, -2048}, Center2: level.Point{6144, -2048}, Radius: 256}},
+		},
+	}
+	want := func(m level.Map, lowX, lowY, highX, highY float64) {
+		t.Helper()
+		low, high, ok := m.Bounds()
+		if wantLow, wantHigh := (box2d.Vec2{X: lowX, Y: lowY}), (box2d.Vec2{X: highX, Y: highY}); !ok || low != wantLow || high != wantHigh {
+			t.Errorf("got %v to %v (%v), want %v to %v", low, high, ok, wantLow, wantHigh)
+		}
+	}
+	want(m, -3.5, -2.25, 6.25, 4.5)
+	m.Outlines = []level.Loop{{Points: []level.Point{{0, 0}, {7168, 0}, {0, 5120}}}}
+	want(m, -3.5, -2.25, 7, 5)
+	m.Edges = []level.Loop{{Points: []level.Point{{-8192, -8192}, {-8192, 8192}, {8192, 8192}, {8192, -8192}}}}
+	want(m, -8, -8, 8, 8)
+	m.Objects = []level.Object{{At: level.Point{0, 9216}}}
+	want(m, -8, -8, 8, 9)
+	if _, _, ok := (level.Map{}).Bounds(); ok {
+		t.Error("an empty map has bounds")
+	}
+}
+
 // A grid samples only circles at least half a cell wide, and only a map with something in it.
 func TestNewGridRefuses(t *testing.T) {
 	world := newWorld()

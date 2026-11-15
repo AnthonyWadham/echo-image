@@ -157,7 +157,7 @@ test('an Echo is hit where your screen drew it, unless it died before your frame
   }
 })
 
-// A map file's shapes in meters: 1024 units each (pkg/level's Unit).
+// A map file's shapes in meters, without its bounds: 1024 units each (pkg/level's Unit).
 type Units = [number, number]
 interface MapFile {
   solids: { polygon?: Units[]; circle?: Round; capsule?: Round & { center1: Units; center2: Units } }[]
@@ -184,7 +184,9 @@ test("gives a map's shapes as its file has them, in meters, and none for a map i
   const { default_map: id } = JSON.parse(content['arena/tuning.json']!) as { default_map: string }
   const file = JSON.parse(content[`arena/${id}.level.json`]!) as MapFile
   expect(file.solids.length * file.outlines.length * file.edges.length).toBeGreaterThan(0)
-  expect(predictor.shapes(id)).toStrictEqual(inMeters(file))
+  const shapes = predictor.shapes(id)
+  delete shapes?.Bounds // checked on the round map below
+  expect(shapes).toStrictEqual(inMeters(file))
   expect(predictor.shapes('no such map')).toBeUndefined()
   // A round wall and a capsule, in a predictor of their own.
   const round = [
@@ -206,5 +208,8 @@ test("gives a map's shapes as its file has them, in meters, and none for a map i
     'arena/tuning.json': JSON.stringify({ maps: ['round'], default_map: 'round' }),
     'arena/round.level.json': round,
   })
-  expect(other.shapes('round')).toStrictEqual(inMeters(JSON.parse(round) as MapFile))
+  expect(other.shapes('round')).toStrictEqual({
+    ...inMeters(JSON.parse(round) as MapFile),
+    Bounds: { min: { x: -10, y: -10 }, max: { x: 10, y: 10 } }, // Go's level.Map.Bounds
+  })
 })

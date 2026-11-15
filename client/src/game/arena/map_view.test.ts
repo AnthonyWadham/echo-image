@@ -1,7 +1,7 @@
 import { Box3, Group, LineLoop, Mesh } from 'three'
 import type { Object3D } from 'three'
 import { describe, expect, test } from 'vitest'
-import { MapView, WallHeight, bounds } from './map_view'
+import { MapView, WallHeight } from './map_view'
 import type { MapShapes } from './map_view'
 
 // A square wall, a round one and a capsule along x, the square outlined, inside a 20 x 20 m edge.
@@ -13,6 +13,7 @@ const shapes: MapShapes = {
   ],
   Outlines: [[{ X: 1, Y: 1 }, { X: 2, Y: 1 }, { X: 2, Y: 2 }, { X: 1, Y: 2 }]],
   Edges: [[{ X: -10, Y: -10 }, { X: -10, Y: 10 }, { X: 10, Y: 10 }, { X: 10, Y: -10 }]],
+  Bounds: { min: { x: -10, y: -10 }, max: { x: 10, y: 10 } },
 }
 const maps: Record<string, MapShapes> = { walls: shapes, open: { ...shapes, Solids: [], Outlines: [] } }
 
@@ -37,7 +38,7 @@ describe('MapView', () => {
       [[1, 1, WallHeight + 0.01], [2, 2, WallHeight + 0.01]],
       [[-10, -10, 0.01], [10, 10, 0.01]],
     ])
-    expect(view.bounds).toEqual(bounds(shapes))
+    expect(view.bounds).toBe(shapes.Bounds)
   })
 
   test('redraws only for another map, freeing the old, and draws nothing for one it lacks', () => {
@@ -55,17 +56,9 @@ describe('MapView', () => {
     view.show('open')
     expect(freed).toBe(first.length)
     expect(drawn().map((c) => c.type)).toEqual(['LineLoop'])
-    expect(view.bounds).toEqual({ min: { x: -10, y: -10 }, max: { x: 10, y: 10 } })
+    expect(view.bounds).toBe(shapes.Bounds)
     view.show('missing')
     expect(drawn()).toEqual([])
     expect(view.bounds).toBeUndefined()
-  })
-})
-
-describe('bounds', () => {
-  test("is the box around every shape, a round one's radius included", () => {
-    expect(bounds({ ...shapes, Edges: [] })).toEqual({ min: { x: -3.5, y: -2.25 }, max: { x: 6.25, y: 4.5 } })
-    expect(bounds(shapes)).toEqual({ min: { x: -10, y: -10 }, max: { x: 10, y: 10 } })
-    expect(bounds({ Solids: [], Outlines: [], Edges: [] })).toBeUndefined()
   })
 })

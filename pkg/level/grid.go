@@ -30,7 +30,7 @@ func NewGrid(world *box2d.World, m Map, cell, radius float64, filter box2d.Query
 		return nil, fmt.Errorf("level: a grid of %v m cells samples circles of radius %v m or more, not %v",
 			cell, cell/2, radius)
 	}
-	lo, hi, ok := m.bounds()
+	lo, hi, ok := m.Bounds()
 	if !ok {
 		return nil, errors.New("level: an empty map has nothing to sample")
 	}
@@ -184,8 +184,8 @@ func (g *Grid) seed(seeds []int, lo, hi int, reached []bool) []int {
 	return seeds
 }
 
-// bounds is the box around m's shapes and objects, in meters, or ok=false when it has none.
-func (m Map) bounds() (box2d.Vec2, box2d.Vec2, bool) {
+// Bounds is the box around m's shapes and objects, in meters, or ok=false when it has none.
+func (m Map) Bounds() (box2d.Vec2, box2d.Vec2, bool) {
 	var units []Point
 	for _, s := range m.Solids {
 		units = append(units, s.Polygon...)

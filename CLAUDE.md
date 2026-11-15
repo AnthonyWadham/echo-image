@@ -626,7 +626,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **The client draws the map its predictor decoded** (the wasm's `shapes(mapID)`, in meters), so no
   TypeScript reads a map file. `client/src/game/arena/map_view.ts` draws it grey, again only when a
   body_sync of your sim names another map. The camera follows your drawn Body and stops 1 m past the
-  box around the map's shapes (`Stage.follow`).
+  map's bounds (`Stage.follow`). Go owns that box (`level.Map.Bounds`, sent with the shapes): no
+  TypeScript works it out.
 - **Content is code.** It is embedded and hashed into `SimVersion`, so a shard resumes a snapshot on
   the content its build carries; changing content is a new build.
 - **Prefer typed per-feature config structs** over a single stringly-typed global settings bag
