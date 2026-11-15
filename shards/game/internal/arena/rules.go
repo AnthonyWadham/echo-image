@@ -28,6 +28,18 @@ var (
 	passing = box2d.QueryFilter{CategoryBits: uint64(interact.Body), MaskBits: uint64(interact.Bounds)}
 )
 
+// Rules is the game's rules for a built map, as a shard runs them at boot and the baker before it writes
+// a file: a spawn for each of players, how many start on each team, and CheckMap for each radius.
+func Rules(players map[uint8]int, radii []float64) func(level.Map, *box2d.World) error {
+	return func(m level.Map, world *box2d.World) error {
+		errs := []error{CheckSpawns(m, players)}
+		for _, r := range radii {
+			errs = append(errs, CheckMap(m, world, r))
+		}
+		return errors.Join(errs...)
+	}
+}
+
 // CheckMap returns an error unless a Body of radius can play all of m, built into world: it has room at
 // each spawn, walks from the first spawn to every other and never off the map, finds no open space it
 // can't walk to, and lands where it walks from anywhere in a wall a pass lets it into. The rules sample

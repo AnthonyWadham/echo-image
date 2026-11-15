@@ -1,0 +1,245 @@
+{
+ "compressionlevel": -1,
+ "height": 24,
+ "infinite": false,
+ "layers": [
+  {
+   "draworder": "topdown",
+   "id": 1,
+   "name": "walls",
+   "objects": [
+    {
+     "height": 768,
+     "id": 1,
+     "name": "",
+     "rotation": 0,
+     "type": "bounds",
+     "visible": true,
+     "width": 1280,
+     "x": 0,
+     "y": 0
+    },
+    {
+     "ellipse": true,
+     "height": 96,
+     "id": 2,
+     "name": "",
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 96,
+     "x": 592,
+     "y": 336
+    },
+    {
+     "height": 160,
+     "id": 3,
+     "name": "",
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 32,
+     "x": 368,
+     "y": 304
+    },
+    {
+     "height": 160,
+     "id": 4,
+     "name": "",
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 32,
+     "x": 880,
+     "y": 304
+    },
+    {
+     "capsule": true,
+     "height": 32,
+     "id": 5,
+     "name": "",
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 192,
+     "x": 544,
+     "y": 144
+    },
+    {
+     "capsule": true,
+     "height": 32,
+     "id": 6,
+     "name": "",
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 192,
+     "x": 544,
+     "y": 592
+    },
+    {
+     "height": 96,
+     "id": 7,
+     "name": "",
+     "rotation": 45,
+     "type": "wall",
+     "visible": true,
+     "width": 32,
+     "x": 246.62741699796953,
+     "y": 146.74516600406096
+    },
+    {
+     "height": 96,
+     "id": 8,
+     "name": "",
+     "rotation": 45,
+     "type": "wall",
+     "visible": true,
+     "width": 32,
+     "x": 1078.6274169979695,
+     "y": 530.7451660040609
+    },
+    {
+     "height": 0,
+     "id": 9,
+     "name": "",
+     "polygon": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 64,
+       "y": 0
+      },
+      {
+       "x": 32,
+       "y": -64
+      }
+     ],
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 0,
+     "x": 128,
+     "y": 640
+    },
+    {
+     "height": 0,
+     "id": 10,
+     "name": "",
+     "polygon": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": -64,
+       "y": 0
+      },
+      {
+       "x": -32,
+       "y": 64
+      }
+     ],
+     "rotation": 0,
+     "type": "wall",
+     "visible": true,
+     "width": 0,
+     "x": 1152,
+     "y": 128
+    }
+   ],
+   "opacity": 1,
+   "type": "objectgroup",
+   "visible": true,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "draworder": "topdown",
+   "id": 2,
+   "name": "spawns",
+   "objects": [
+    {
+     "height": 0,
+     "id": 11,
+     "name": "",
+     "point": true,
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 96,
+     "y": 320
+    },
+    {
+     "height": 0,
+     "id": 12,
+     "name": "",
+     "point": true,
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 96,
+     "y": 448
+    },
+    {
+     "height": 0,
+     "id": 13,
+     "name": "",
+     "point": true,
+     "properties": [
+      {
+       "name": "team",
+       "type": "int",
+       "value": 1
+      }
+     ],
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 1184,
+     "y": 448
+    },
+    {
+     "height": 0,
+     "id": 14,
+     "name": "",
+     "point": true,
+     "properties": [
+      {
+       "name": "team",
+       "type": "int",
+       "value": 1
+      }
+     ],
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 1184,
+     "y": 320
+    }
+   ],
+   "opacity": 1,
+   "type": "objectgroup",
+   "visible": true,
+   "x": 0,
+   "y": 0
+  }
+ ],
+ "nextlayerid": 3,
+ "nextobjectid": 15,
+ "orientation": "orthogonal",
+ "renderorder": "right-down",
+ "tiledversion": "1.12.2",
+ "tileheight": 32,
+ "tilesets": [],
+ "tilewidth": 32,
+ "type": "map",
+ "version": "1.11",
+ "width": 40
+}

@@ -183,7 +183,7 @@ func TestUnknownEffectKindIsDropped(t *testing.T) {
 func TestEffectsAreDeterministic(t *testing.T) {
 	var fx *emitter // the current run's: each run calls setup, then script
 	spawn, _ := spawnOf(t, 0)
-	files := onMap(t, patched(t, effectKinds), shippedWith(t,
+	files := onMap(t, patched(t, effectKinds), openWith(t,
 		wall(box2d.Vec2{X: spawn.X + 2, Y: spawn.Y}, box2d.Vec2{X: 0.5, Y: 5})))
 	cardinal.RequireDeterministic(t, func(world *cardinal.World) {
 		fx = &emitter{}

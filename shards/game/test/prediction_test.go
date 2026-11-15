@@ -17,7 +17,6 @@ import (
 	"echo_image/shards/game/internal/predict"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
-	"echo_image/shards/game/shard"
 	"fmt"
 	"maps"
 	"math"
@@ -147,7 +146,7 @@ func TestShotMeetsYourEchoWhereYouDrawIt(t *testing.T) {
 // body_sync says which sim the shard runs, so a client predicts only with a predictor of the same
 // (predictor.mjs stamps its wasm from the same function: predictor.test.ts).
 func TestBodySyncSaysWhichSimItRuns(t *testing.T) {
-	w := cardinal.NewTestWorld(t, shard.Register)
+	w := cardinal.NewTestWorld(t, withContent(t))
 	w.Command("alice", input(1, frame(1, 0, 0)))
 	w.Tick()
 	if got, want := bodiesFor(t, w, "alice").SimVersion, echoimage.SimVersion(); got != want {

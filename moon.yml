@@ -20,3 +20,8 @@ tasks:
     command: 'go run ./scripts/mutate'
     options:
       cache: false
+  bake:
+    description: 'Rebake the maps from their Tiled sources in maps/, and the Tiled project'
+    command: 'go test ./shards/game/test -run TestMapsAreBaked -update -count=1'
+    options:
+      cache: false

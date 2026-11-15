@@ -1,9 +1,10 @@
 # Map loading strategy (2026-11-13)
 
-> **A proposal, not the source of truth.** Steps 0 to 7 are built (the mover's chain rule, the core
-> in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena` and its open default
-> map, movement, shots and the predictor on the map's world, spawns from the map, the map rules
-> at boot, and the client's grey map and camera). Code,
+> **A proposal, not the source of truth.** Every step is built (the mover's chain rule, the core
+> in `pkg/level`, the Cardinal side in `pkg/levelstate`, the game's `arena`, movement, shots and the
+> predictor on the map's world, spawns from the map, the map rules at boot, the client's grey map and
+> camera, the Tiled baker, and the first real map, `courtyard`). The fill kind and the concave-wall
+> splitter wait for the first concave wall (7.4). Code,
 > [`CLAUDE.md`](../../CLAUDE.md)
 > (how) and [`GDD.md`](../GDD.md) (what) win when they disagree with this file. It replaces the
 > proposal in [`map-system-findings.md`](map-system-findings.md) §6-§7. The facts in that file's §2
@@ -474,7 +475,7 @@ All in echo_image (7.1), one reviewable step at a time.
 | 6 | game | **Done.** The map rules at boot (`arena.CheckMap` over `level.Grid`, 7.11), once per champion radius. A failed landing is logged. Test maps start from the shipped map, so they keep its edge and spawns |
 | 7 | client | **Done.** The wasm's `shapes(mapID)` gives the map as `pkg/level` decoded it, in meters. `game/arena/map_view.ts` draws it grey: solids as 1 m blocks, outlines on their tops, edges on the ground. The camera follows your drawn Body and stops at the map (`Stage.follow`) |
 | 8 | `pkg/level/bake` | **Done.** `Bake` reads Tiled's JSON, converts, snaps, encodes, then decodes, builds and runs the game's rules as a shard does. `Project` writes the Tiled project from the schema. The splitter waits for the fill kind: a concave wall is refused |
-| 9 | game | Tiled sources, generated project, staleness test, the first real map |
+| 9 | game | **Done.** `maps/` holds `open.tmj` (bakes to the old file byte for byte), `courtyard.tmj` (40 x 24 m, the default map) and the generated project. `TestMapsAreBaked` rebakes both and checks the project; `moon run echo:bake` writes them. World tests play `open` (`onOpen`), so a new shipped map moves none of them |
 
 - Step 4 must not be split. Server walls without predictor walls make every wall stop a correction (F8).
 - Another game can use it only once it moves to world-engine (7.1).

@@ -6,7 +6,6 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	playercomp "echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
-	"echo_image/shards/game/shard"
 	"math"
 	"testing"
 
@@ -28,7 +27,7 @@ func readyTick(t *testing.T, w *cardinal.TestWorld, viewer string, body uint32) 
 // Everyone sees her shot leave her Body: its first tick flies from her spot, and each next from where
 // the last one got to.
 func TestFireStartsCooldownAndOthersSeeTheShot(t *testing.T) {
-	w := cardinal.NewTestWorld(t, shard.Register)
+	w := cardinal.NewTestWorld(t, withContent(t))
 	def, _ := primary(t)
 	cooldown := def.CooldownTicks()
 

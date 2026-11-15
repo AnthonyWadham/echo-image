@@ -1,0 +1,84 @@
+{
+ "compressionlevel": -1,
+ "height": 100,
+ "infinite": false,
+ "layers": [
+  {
+   "draworder": "topdown",
+   "id": 1,
+   "name": "walls",
+   "objects": [
+    {
+     "height": 3200,
+     "id": 1,
+     "name": "",
+     "rotation": 0,
+     "type": "bounds",
+     "visible": true,
+     "width": 3200,
+     "x": 0,
+     "y": 0
+    }
+   ],
+   "opacity": 1,
+   "type": "objectgroup",
+   "visible": true,
+   "x": 0,
+   "y": 0
+  },
+  {
+   "draworder": "topdown",
+   "id": 2,
+   "name": "spawns",
+   "objects": [
+    {
+     "height": 0,
+     "id": 2,
+     "name": "",
+     "point": true,
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 1440,
+     "y": 1600
+    },
+    {
+     "height": 0,
+     "id": 3,
+     "name": "",
+     "point": true,
+     "properties": [
+      {
+       "name": "team",
+       "type": "int",
+       "value": 1
+      }
+     ],
+     "rotation": 0,
+     "type": "spawn",
+     "visible": true,
+     "width": 0,
+     "x": 1760,
+     "y": 1600
+    }
+   ],
+   "opacity": 1,
+   "type": "objectgroup",
+   "visible": true,
+   "x": 0,
+   "y": 0
+  }
+ ],
+ "nextlayerid": 3,
+ "nextobjectid": 4,
+ "orientation": "orthogonal",
+ "renderorder": "right-down",
+ "tiledversion": "1.12.2",
+ "tileheight": 32,
+ "tilesets": [],
+ "tilewidth": 32,
+ "type": "map",
+ "version": "1.11",
+ "width": 100
+}

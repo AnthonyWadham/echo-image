@@ -4169,9 +4169,9 @@
    "check": "boot",
    "edits": [
     {
-     "file": "shards/game/shard/catalog.go",
-     "old": "\t\t\t\terrs = append(errs, arena.CheckMap(m, world, r))\n",
-     "new": "\t\t\t\t_ = r\n"
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\t\terrs = append(errs, CheckMap(m, world, r))\n",
+     "new": "\t\t\t_ = r\n"
     }
    ]
   },
@@ -4653,6 +4653,42 @@
      "file": "pkg/level/bake/project.go",
      "old": "\tcase k >= reflect.Int && k <= reflect.Uint64: // every int and uint, not uintptr",
      "new": "\tcase k >= reflect.Int && k <= reflect.Int64:"
+    }
+   ]
+  },
+  {
+   "id": "M9-C1",
+   "breaks": "the boot skips the game's rules",
+   "check": "boot",
+   "edits": [
+    {
+     "file": "shards/game/shard/catalog.go",
+     "old": "\t\tCheck: arena.Rules(players, radii)})",
+     "new": "\t\tCheck: nil})"
+    }
+   ]
+  },
+  {
+   "id": "M9-R1",
+   "breaks": "the rules forget the spawns",
+   "check": "boot",
+   "edits": [
+    {
+     "file": "shards/game/internal/arena/rules.go",
+     "old": "\t\terrs := []error{CheckSpawns(m, players)}",
+     "new": "\t\terrs := []error{}"
+    }
+   ]
+  },
+  {
+   "id": "M9-H1",
+   "breaks": "world tests play the shipped default map",
+   "check": "boot",
+   "edits": [
+    {
+     "file": "shards/game/test/harness_test.go",
+     "old": "\tfor _, files := range append([]map[string]string{onOpen}, patches...) {",
+     "new": "\tfor _, files := range patches {"
     }
    ]
   }

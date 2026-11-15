@@ -586,8 +586,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   Use it for test-only shot types and champions; never add test content to the shipped files.
   A test with walls declares its map before boot: `onMap` writes a test map into the files, and
   `duelOn` and `fxDuelOn` are `duel` and `fxDuel` on one. The shard's own world has no wall to add.
-  A test map starts from the shipped one (`shippedMap`, `shippedWith`), so it keeps the edge and
-  spawns the map rules need.
+  World tests play the shipped open map: `patched` lists only it (`onOpen`), so a new shipped map moves
+  none of them. A test map starts from it (`openMap`, `openWith`), so it keeps the edge and spawns the
+  map rules need.
   A test that reads metrics passes its own meter provider to `registerWith`. Never swap otel's global
   one: it stays wired into every later world.
 - **Every test Body comes from `spawnBody`.** A test that needs more players patches the dev roster
@@ -606,6 +607,13 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Map files are decoded only by the level library** (`pkg/level`), never `content.Load`.
   `content/arena/tuning.json` lists the maps that ship (`content/arena/<id>.level.json`) and the
   default; the catalog builds each into the `levelstate` plugin, so a bad map fails the boot.
+- **Maps are drawn in Tiled 1.12+ and baked.** `maps/<id>.tmj` is each map's source, and
+  `maps/echo.tiled-project` the project generated from the schema: its classes are the kinds and object
+  types. `moon run echo:bake` rebakes `content/arena` and the project (`pkg/level/bake`, with the boot's
+  own `arena.Rules`); `TestMapsAreBaked` fails when one is stale or a listed map has no source. A tile is
+  a meter and the canvas's centre is (0, 0); objects bake in layer order, so each team's spawns go in
+  that order; the `bounds` class draws the edge. Walls are convex: the baker refuses a concave polygon
+  until the fill kind exists. `courtyard` (40 x 24 m) is the default map.
 - **A map holds a spawn for each player.** Each team's Bodies take its spawns in file order, one each
   (`arena.Spawns`), as team games' maps do. The boot fails if any map has fewer spawns for a team than
   the dev roster puts on it: the game's rules run on every map through `levelstate.Config.Check`.

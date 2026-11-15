@@ -7,9 +7,6 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/argus-labs/world-engine/pkg/box2d"
-
-	"echo_image/pkg/level"
 	"echo_image/pkg/levelstate"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
@@ -67,13 +64,7 @@ func loadLevels(fsys fs.FS, players map[uint8]int, radii []float64) (*levelstate
 		return nil, err
 	}
 	return levelstate.NewPlugin(levelstate.Config{Maps: files, Schema: arena.Schema(), Default: t.DefaultMap,
-		Check: func(m level.Map, world *box2d.World) error {
-			errs := []error{arena.CheckSpawns(m, players)}
-			for _, r := range radii {
-				errs = append(errs, arena.CheckMap(m, world, r))
-			}
-			return errors.Join(errs...)
-		}})
+		Check: arena.Rules(players, radii)})
 }
 
 // lineUp checks the IDs one file names in another: each ability's shots and effect kinds, and each

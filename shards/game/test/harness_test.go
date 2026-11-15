@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"echo_image/pkg/level"
+	"echo_image/pkg/level/bake"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
@@ -23,6 +24,8 @@ import (
 	"flag"
 	"maps"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -65,11 +68,14 @@ func withFiles(files content.Overlay) func(*cardinal.World) {
 	return func(world *cardinal.World) { shard.RegisterWith(world, files, otel.GetMeterProvider()) }
 }
 
-// patched is the content withContent registers, which a predictor can load too.
+// onOpen has world tests play the open map, so a new shipped map moves none of them.
+var onOpen = map[string]string{"arena/tuning.json": `{"maps": ["open"], "default_map": "open"}`}
+
+// patched is the content withContent registers, on the open map, which a predictor can load too.
 func patched(t testing.TB, patches ...map[string]string) content.Overlay {
 	t.Helper()
 	docs := map[string]map[string]any{}
-	for _, files := range patches {
+	for _, files := range append([]map[string]string{onOpen}, patches...) {
 		for file, patch := range files {
 			if docs[file] == nil {
 				raw, err := content.FS.ReadFile(file)
@@ -245,7 +251,7 @@ func primary(t *testing.T) (cast.Def, flight.Shot) {
 // duel has alice and bob take their Bodies (on opposite teams), standing still.
 func duel(t *testing.T) (w *cardinal.TestWorld, alice, bob *client) {
 	t.Helper()
-	w = cardinal.NewTestWorld(t, shard.Register)
+	w = cardinal.NewTestWorld(t, withContent(t))
 	alice, bob = claim(t, w)
 	return w, alice, bob
 }
@@ -281,7 +287,7 @@ func twoVsTwo(t testing.TB, patches ...map[string]string) content.Overlay {
 	t.Helper()
 	roster := map[string]string{"player/tuning.json": `{"dev_spawns": [{"team": 0}, {"team": 1}, {"team": 0},
 		{"team": 1}]}`}
-	m := shippedMap(t)
+	m := openMap(t)
 	m.Objects = []level.Object{spawnAt(0, -5, 0), spawnAt(0, -3, 0), spawnAt(1, 5, 0), spawnAt(1, 3, 0)}
 	return onMap(t, patched(t, append([]map[string]string{roster}, patches...)...), m)
 }
@@ -295,7 +301,7 @@ func skirmish(tb testing.TB) (step func()) {
 			{"team": 1}]}`,
 		"echo/tuning.json": `{"max_hp": 1e9}`,
 	})
-	m := shippedMap(tb)
+	m := openMap(tb)
 	m.Objects = []level.Object{
 		spawnAt(0, -5, 0), spawnAt(0, -5, 3), spawnAt(0, -5, -3), spawnAt(1, 5, 0), spawnAt(1, 5, 3), spawnAt(1, 5, -3),
 	}
@@ -446,7 +452,7 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 			}
 		})
 	}
-	edgeless := shippedMap(t)
+	edgeless := openMap(t)
 	edgeless.Edges = nil
 	if err := shard.CheckContent(onMap(t, content.Overlay{}, edgeless)); err == nil ||
 		!strings.Contains(err.Error(), "map test: arena: a Body walks off the map") {
@@ -454,6 +460,61 @@ func TestBadContentFailsTheBoot(t *testing.T) {
 	}
 	if err := shard.CheckContent(content.FS); err != nil {
 		t.Fatalf("the shipped content fails: %v", err)
+	}
+}
+
+// mapsDir holds the maps' Tiled sources and the game's Tiled project.
+const mapsDir = "../../../maps"
+
+// Every map that ships is baked from its Tiled source in maps/, by the rules a shard boots with, and the
+// Tiled project there is the game's schema. After a map is edited in Tiled, `moon run echo:bake` rebakes
+// them (go test ./shards/game/test -run TestMapsAreBaked -update).
+func TestMapsAreBaked(t *testing.T) {
+	movement := tuningOf[player.MovementTuning](t)
+	c := bake.Config{Schema: arena.Schema(), Edges: []string{"bounds"},
+		Check: arena.Rules(movement.DevPlayers(), movement.Radii())}
+	listed := tuningOf[arena.ArenaTuning](t).Maps
+	sources, err := filepath.Glob(filepath.Join(mapsDir, "*.tmj"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, path := range sources {
+		sources[i] = strings.TrimSuffix(filepath.Base(path), ".tmj")
+	}
+	if want := slices.Sorted(slices.Values(listed)); !slices.Equal(sources, want) {
+		t.Errorf("maps/ has sources for %v, want one for each map arena/tuning.json lists: %v", sources, want)
+	}
+	for _, id := range listed {
+		tmj, err := os.ReadFile(filepath.Join(mapsDir, id+".tmj"))
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		data, err := bake.Bake(id, tmj, c)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		baked(t, filepath.Join("..", "content", "arena", id+".level.json"), data)
+	}
+	project, err := bake.Project(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baked(t, filepath.Join(mapsDir, "echo.tiled-project"), project)
+}
+
+// baked fails unless the file at path holds data, or writes it there with -update.
+func baked(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if *update {
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if have, err := os.ReadFile(path); err != nil || string(have) != string(data) {
+		t.Errorf("%s is stale (%v): `moon run echo:bake` rebakes it", path, err)
 	}
 }
 
@@ -537,29 +598,29 @@ func spawnOf(t *testing.T, i int) (box2d.Vec2, float64) {
 			before++
 		}
 	}
-	return arena.Spawns(shippedMap(t))[team][before], tuning.Champions[tuning.DevChampion].Radius
+	return arena.Spawns(openMap(t))[team][before], tuning.Champions[tuning.DevChampion].Radius
 }
 
-// shippedMap is the shipped default map.
-func shippedMap(t testing.TB) level.Map {
+// openMap is the shipped open map, which world tests play: a 100 x 100 m edge with nothing inside, and a
+// spawn each side of the centre.
+func openMap(t testing.TB) level.Map {
 	t.Helper()
-	tuning := tuningOf[arena.ArenaTuning](t)
-	files, err := tuning.Files(content.FS)
+	data, err := content.FS.ReadFile("arena/open.level.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := level.Decode(files[tuning.DefaultMap], arena.Schema())
+	m, err := level.Decode(data, arena.Schema())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return m
 }
 
-// shippedWith is the shipped default map with solids in place of its own: a test map inside its edge,
-// where Bodies start as they do there.
-func shippedWith(t testing.TB, solids ...level.Solid) level.Map {
+// openWith is the open map with solids in place of its own: a test map inside its edge, where Bodies
+// start as they do there.
+func openWith(t testing.TB, solids ...level.Solid) level.Map {
 	t.Helper()
-	m := shippedMap(t)
+	m := openMap(t)
 	m.Solids = solids
 	return m
 }
@@ -637,7 +698,7 @@ func onMap(t testing.TB, files content.Overlay, m level.Map) content.Overlay {
 // duelOn is duel on the shipped map with solids in place of its own.
 func duelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client) {
 	t.Helper()
-	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, shippedWith(t, solids...))))
+	w = cardinal.NewTestWorld(t, withFiles(onMap(t, content.Overlay{}, openWith(t, solids...))))
 	alice, bob = claim(t, w)
 	return w, alice, bob
 }
@@ -646,7 +707,7 @@ func duelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, 
 func fxDuelOn(t *testing.T, solids ...level.Solid) (w *cardinal.TestWorld, alice, bob *client, fx *emitter) {
 	t.Helper()
 	fx = &emitter{}
-	files := onMap(t, patched(t, effectKinds), shippedWith(t, solids...))
+	files := onMap(t, patched(t, effectKinds), openWith(t, solids...))
 	w = cardinal.NewTestWorld(t, withEmitter(withFiles(files), fx))
 	alice, bob = claim(t, w)
 	return w, alice, bob, fx
@@ -726,7 +787,8 @@ func dash(t *testing.T) (int, dashParams) {
 
 var (
 	update = flag.Bool("update", false,
-		"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture")
+		"rewrite testdata from TestWireFixtures, TestPredictionMatchesServer and TestViewFixture, and the maps "+
+			"from TestMapsAreBaked")
 	recordTo = flag.String("record", "", "write TestPredictionMatchesServer's run to this file, for the wasm build")
 	seed     = flag.Uint64("seed", 0, "TestRandomPlayIsPredicted's seed, to rerun a failure; 0 picks one")
 )

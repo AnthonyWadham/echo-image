@@ -1,0 +1,50 @@
+{
+    "automappingRulesFile": "",
+    "commands": [],
+    "extensionsPath": "extensions",
+    "folders": [
+        "."
+    ],
+    "properties": [],
+    "propertyTypes": [
+        {
+            "color": "#ff8a95a5",
+            "drawFill": true,
+            "id": 1,
+            "members": [],
+            "name": "bounds",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
+        },
+        {
+            "color": "#ffd9a441",
+            "drawFill": true,
+            "id": 2,
+            "members": [],
+            "name": "wall",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
+        },
+        {
+            "color": "#ff5fb3a1",
+            "drawFill": true,
+            "id": 3,
+            "members": [
+                {
+                    "name": "team",
+                    "type": "int",
+                    "value": 0
+                }
+            ],
+            "name": "spawn",
+            "type": "class",
+            "useAs": [
+                "object"
+            ]
+        }
+    ]
+}
