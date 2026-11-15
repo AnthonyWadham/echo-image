@@ -160,6 +160,15 @@ func TestDecodeRefuses(t *testing.T) {
 		{"a 5 mm segment", func(m *level.Map) {
 			m.Edges[0].Points = append(m.Edges[0].Points, level.Point{u(10) - 5, u(-6)})
 		}, nil, "segment 3 is"},
+		{"an outline that crosses itself", func(m *level.Map) {
+			m.Outlines[0].Points = []level.Point{pt(-6, -2), pt(-2, -1), pt(-2, -2), pt(-6, -1)}
+		}, nil, "segments 0 and 2 cross"},
+		{"an outline with sides 4 mm apart", func(m *level.Map) {
+			m.Outlines[0].Points = []level.Point{pt(-6, -2), pt(-2, -2), pt(-2, -1), pt(-4, -1), {u(-4), u(-2) + 4}}
+		}, nil, "segments 0 and 3 cross or come within"},
+		{"an edge folding back on itself", func(m *level.Map) {
+			m.Edges[0].Points = append(m.Edges[0].Points, pt(0, -6), pt(5, -6))
+		}, nil, "segments 3 and 5 cross"},
 		{"an outline wound clockwise", func(m *level.Map) {
 			m.Outlines[0].Points = reverse(m.Outlines[0].Points)
 		}, nil, "wrong way"},

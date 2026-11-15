@@ -613,7 +613,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   own `arena.Rules`); `TestMapsAreBaked` fails when one is stale or a listed map has no source. A tile is
   a meter and the canvas's centre is (0, 0); objects bake in layer order, so each team's spawns go in
   that order; the `bounds` class draws the edge. Walls are convex: the baker refuses a concave polygon
-  until the fill kind exists. `courtyard` (40 x 24 m) is the default map.
+  until the fill kind exists. A loop (an edge, an outline) can't cross itself, or bring two segments
+  within 5 mm (Box2D's `LinearSlop`): `pkg/level` refuses it at every load, with Box2D's own
+  `SegmentDistance`. `courtyard` (40 x 24 m) is the default map.
 - **A map holds a spawn for each player.** Each team's Bodies take its spawns in file order, one each
   (`arena.Spawns`), as team games' maps do. The boot fails if any map has fewer spawns for a team than
   the dev roster puts on it: the game's rules run on every map through `levelstate.Config.Check`.

@@ -7,10 +7,10 @@ package level
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
 	"reflect"
 	"strings"
 
@@ -328,7 +328,17 @@ func (l Loop) check(want int, kinds Kinds) error {
 			return fmt.Errorf("segment %d is LinearSlop (5 mm) or shorter", i)
 		}
 	}
-	switch w := winding(l.Points); {
+	// Box2D's chains mustn't cross themselves, and it doesn't check.
+	points := vecs(l.Points)
+	for i := range n {
+		for j := i + 2; j < n && (i > 0 || j < n-1); j++ { // segments that share no point
+			d := box2d.SegmentDistance(points[i], points[(i+1)%n], points[j], points[(j+1)%n])
+			if d.DistanceSquared <= box2d.LinearSlop*box2d.LinearSlop {
+				return fmt.Errorf("segments %d and %d cross or come within LinearSlop (5 mm)", i, j)
+			}
+		}
+	}
+	switch w := Winding(l.Points); {
 	case w == 0:
 		return errors.New("loop has no area")
 	case w != want:
@@ -337,14 +347,15 @@ func (l Loop) check(want int, kinds Kinds) error {
 	return nil
 }
 
-// winding returns the sign of the loop's area, exactly: 1 counter-clockwise, -1 clockwise, 0 none.
-func winding(points []Point) int {
-	var sum, term big.Int
+// Winding returns the sign of the loop's area: 1 counter-clockwise, -1 clockwise, 0 none. It's exact for
+// a loop in Box2D's world that doesn't cross itself: twice its area fits an int64.
+func Winding(points []Point) int {
+	var sum int64
 	for i, p := range points {
 		q := points[(i+1)%len(points)]
-		sum.Add(&sum, term.SetInt64(int64(p[0])*int64(q[1])-int64(q[0])*int64(p[1])))
+		sum += int64(p[0])*int64(q[1]) - int64(q[0])*int64(p[1])
 	}
-	return sum.Sign()
+	return cmp.Compare(sum, 0)
 }
 
 // check checks o's ID is from 1 and not taken, its type is in types with props of its struct, and it

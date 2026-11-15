@@ -3429,6 +3429,54 @@
    ]
   },
   {
+   "id": "M1-L3",
+   "breaks": "a loop may cross itself",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\t\t\tif d.DistanceSquared <= box2d.LinearSlop*box2d.LinearSlop {",
+     "new": "\t\t\tif d.DistanceSquared < 0 {"
+    }
+   ]
+  },
+  {
+   "id": "M1-L4",
+   "breaks": "a loop's segments may come within LinearSlop, short of crossing",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\t\t\tif d.DistanceSquared <= box2d.LinearSlop*box2d.LinearSlop {",
+     "new": "\t\t\tif d.DistanceSquared <= 0 {"
+    }
+   ]
+  },
+  {
+   "id": "M1-L5",
+   "breaks": "a loop's first and last segments, which share a point, count as crossing",
+   "check": "level",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "j < n && (i > 0 || j < n-1); j++",
+     "new": "j < n; j++"
+    }
+   ]
+  },
+  {
+   "id": "M1-L6",
+   "breaks": "a loop that crosses itself bakes",
+   "check": "bake",
+   "edits": [
+    {
+     "file": "pkg/level/level.go",
+     "old": "\t\t\tif d.DistanceSquared <= box2d.LinearSlop*box2d.LinearSlop {",
+     "new": "\t\t\tif d.DistanceSquared < 0 {"
+    }
+   ]
+  },
+  {
    "id": "M1-W1",
    "breaks": "a loop may wind either way",
    "check": "level",
@@ -4519,7 +4567,7 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\tif area(loop) > 0 { // counter-clockwise",
+     "old": "\tif level.Winding(loop) > 0 { // counter-clockwise",
      "new": "\tif false {"
     }
    ]
@@ -4531,32 +4579,8 @@
    "edits": [
     {
      "file": "pkg/level/bake/tiled.go",
-     "old": "\treturn append(loop[first:], loop[:first]...), nil",
-     "new": "\treturn loop, nil"
-    }
-   ]
-  },
-  {
-   "id": "M8-X1",
-   "breaks": "an edge crossing itself bakes",
-   "check": "bake",
-   "edits": [
-    {
-     "file": "pkg/level/bake/tiled.go",
-     "old": "\tif crosses(points) {",
-     "new": "\tif false {"
-    }
-   ]
-  },
-  {
-   "id": "M8-X2",
-   "breaks": "an edge folding back on itself bakes",
-   "check": "bake",
-   "edits": [
-    {
-     "file": "pkg/level/bake/tiled.go",
-     "old": "\treturn d1 == 0 && on(c, d, a) || d2 == 0 && on(c, d, b) || d3 == 0 && on(a, b, c) || d4 == 0 && on(a, b, d)",
-     "new": "\treturn false"
+     "old": "\treturn append(loop[first:], loop[:first]...)",
+     "new": "\treturn loop"
     }
    ]
   },

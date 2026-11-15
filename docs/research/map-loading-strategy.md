@@ -393,9 +393,9 @@ One tier: errors.
 
 | Runs at | Checks |
 |---|---|
-| every load (shard, wasm, bake) | format known; canonical bytes; kinds and types known; props strict; each polygon is its own convex hull; each loop has 4+ points and the right winding; segments and capsules longer than LinearSlop; every point inside Box2D's world |
+| every load (shard, wasm, bake) | format known; canonical bytes; kinds and types known; props strict; each polygon is its own convex hull; each loop has 4+ points and the right winding, and no two segments that cross or come within LinearSlop; segments and capsules longer than LinearSlop; every point inside Box2D's world |
 | bake and shard boot | the game's rules, on the built world, through Box2D queries, for each champion radius: spawns clear of walls; every spawn reachable from the first; map sealed; every clear cell reachable; every wall cell a pass reaches lands where Bodies walk (F26). Built at boot in step 6 |
-| bake only | Tiled rules: every object has a class; no tiles, templates or infinite maps; no polygon crosses itself |
+| bake only | Tiled rules: every object has a class; no tiles, templates or infinite maps |
 
 A message names the file, the object, its ID and its position.
 

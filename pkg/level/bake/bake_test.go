@@ -201,9 +201,9 @@ func TestBakeRefuses(t *testing.T) {
 		{"a wall's property", set(2, map[string]any{"properties": team("int", 1)}), "a wall has no properties"},
 		{"a round edge", set(1, map[string]any{"ellipse": true}), "a bounds is a rectangle or a polygon"},
 		{"an edge crossing itself", set(1, map[string]any{"polygon": points(0, 0, 640, 384, 640, 0, 0, 384)}),
-			"crosses itself"},
+			"edges[0] (src 1): segments"},
 		{"an edge folding back", set(1, map[string]any{"polygon": points(0, 0, 640, 0, 320, 0, 320, 384)}),
-			"crosses itself"},
+			"edges[0] (src 1): segments"},
 		{"a spawn as a box", set(8, map[string]any{"point": false, "width": 32, "height": 32}), "a spawn is a point"},
 		{"a property the spawn lacks", set(9, map[string]any{
 			"properties": []any{map[string]any{"name": "side", "type": "int", "value": 1}},

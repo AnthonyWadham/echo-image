@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"math/big"
 	"reflect"
 	"slices"
 	"strconv"
@@ -191,11 +190,7 @@ func (r *reader) shape(o tiledObject) error {
 		}
 	}
 	if edge {
-		loop, err := edgeLoop(points)
-		if err != nil {
-			return err
-		}
-		r.m.Edges = append(r.m.Edges, level.Loop{Src: o.ID, Kind: o.Class, Points: loop})
+		r.m.Edges = append(r.m.Edges, level.Loop{Src: o.ID, Kind: o.Class, Points: edgeLoop(points)})
 		return nil
 	}
 	polygon, err := convex(points)
@@ -304,13 +299,10 @@ func convex(points []level.Point) ([]level.Point, error) {
 	return out, nil
 }
 
-// edgeLoop is an edge's corners clockwise from its lowest, then leftmost, or an error if it crosses itself.
-func edgeLoop(points []level.Point) ([]level.Point, error) {
-	if crosses(points) {
-		return nil, errors.New("crosses itself")
-	}
+// edgeLoop is an edge's corners clockwise from its lowest, then leftmost.
+func edgeLoop(points []level.Point) []level.Point {
 	loop := slices.Clone(points)
-	if area(loop) > 0 { // counter-clockwise
+	if level.Winding(loop) > 0 { // counter-clockwise
 		slices.Reverse(loop)
 	}
 	first := 0
@@ -319,60 +311,7 @@ func edgeLoop(points []level.Point) ([]level.Point, error) {
 			first = i
 		}
 	}
-	return append(loop[first:], loop[:first]...), nil
-}
-
-// area is the sign of the loop's area, exactly: 1 counter-clockwise, -1 clockwise, 0 none.
-func area(points []level.Point) int {
-	var sum, term big.Int
-	for i, p := range points {
-		q := points[(i+1)%len(points)]
-		sum.Add(&sum, term.SetInt64(int64(p[0])*int64(q[1])-int64(q[0])*int64(p[1])))
-	}
-	return sum.Sign()
-}
-
-// crosses reports whether two sides of the loop that don't share a corner meet.
-func crosses(points []level.Point) bool {
-	n := len(points)
-	for i := range n {
-		for j := i + 2; j < n; j++ {
-			if i == 0 && j == n-1 { // they share points[0]
-				continue
-			}
-			if meet(points[i], points[(i+1)%n], points[j], points[(j+1)%n]) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// meet reports whether segments ab and cd share a point.
-func meet(a, b, c, d level.Point) bool {
-	d1, d2, d3, d4 := turn(c, d, a), turn(c, d, b), turn(a, b, c), turn(a, b, d)
-	if d1*d2 < 0 && d3*d4 < 0 {
-		return true
-	}
-	return d1 == 0 && on(c, d, a) || d2 == 0 && on(c, d, b) || d3 == 0 && on(a, b, c) || d4 == 0 && on(a, b, d)
-}
-
-// turn is the sign of the turn from ab to ac: 1 left, -1 right, 0 on a line. Points are in Box2D's
-// world, so the products fit an int64.
-func turn(a, b, c level.Point) int64 {
-	v := (int64(b[0])-int64(a[0]))*(int64(c[1])-int64(a[1])) - (int64(b[1])-int64(a[1]))*(int64(c[0])-int64(a[0]))
-	switch {
-	case v > 0:
-		return 1
-	case v < 0:
-		return -1
-	}
-	return 0
-}
-
-// on reports whether p, on ab's line, lies within ab.
-func on(a, b, p level.Point) bool {
-	return min(a[0], b[0]) <= p[0] && p[0] <= max(a[0], b[0]) && min(a[1], b[1]) <= p[1] && p[1] <= max(a[1], b[1])
+	return append(loop[first:], loop[:first]...)
 }
 
 // canvas turns Tiled's pixels, y down from the canvas's top left, into units, y up from its centre: a
