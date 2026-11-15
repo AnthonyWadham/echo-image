@@ -183,16 +183,24 @@ func TestChainBlocksFromTheFrontOnly(t *testing.T) {
 	world, body := newWorld(v(10, 0))
 	addLoop(world, body, v(0, 0), v(4, 0), v(4, 4), v(0, 4)) // x from 10 to 14
 	const radius = 0.5
-	walk := func(center box2d.Vec2) box2d.Vec2 {
+	walk := func(world *box2d.World, center, velocity box2d.Vec2) box2d.Vec2 {
 		for range 20 {
-			center, _ = Move(world, box2d.Circle{Center: center, Radius: radius}, v(5, 0), 1.0/20, blocked)
+			center, _ = Move(world, box2d.Circle{Center: center, Radius: radius}, velocity, 1.0/20, blocked)
 		}
 		return center
 	}
-	if c := walk(v(8, 2)); math.Abs(c.X+radius-10) > 2*box2d.LinearSlop {
+	if c := walk(world, v(8, 2), v(5, 0)); math.Abs(c.X+radius-10) > 2*box2d.LinearSlop {
 		t.Errorf("from outside, it stopped at %v, want its edge at the face, x 10", c)
 	}
-	if c := walk(v(12, 2)); c.X-radius <= 14 {
+	if c := walk(world, v(12, 2), v(5, 0)); c.X-radius <= 14 {
 		t.Errorf("from inside, it stopped at %v, want it past the face at x 14", c)
+	}
+
+	// Inside an L, beside its inner corner, the center is in front of the arm's top face and past its end.
+	// Box2D gives no plane there and the cast lets it creep, so it gets out late, not never.
+	ell, body := newWorld(v(0, 0))
+	addLoop(ell, body, v(0, 0), v(6, 0), v(6, 2), v(2, 2), v(2, 6), v(0, 6))
+	if c := walk(ell, v(1.9, 2.3), v(0, -5)); c.Y+radius >= 0 {
+		t.Errorf("from inside the L, it stopped at %v, want it out below the bottom at y 0", c)
 	}
 }

@@ -31,7 +31,7 @@ func Move(world *box2d.World, circle box2d.Circle, velocity box2d.Vec2, dt float
 	target := box2d.MulAdd(center, dt, velocity)
 	var planes []box2d.CollisionPlane
 	collect := func(shape box2d.ShapeID, hit *box2d.PlaneResult, _ any) bool {
-		if world.ShapeType(shape) == box2d.ChainSegmentShape && !chainPlane(world, shape, center) {
+		if world.ShapeType(shape) == box2d.ChainSegmentShape && !chainPlane(world, shape, center, circle.Radius) {
 			return true
 		}
 		// Rigid, like upstream's FLT_MAX push limit.
@@ -55,33 +55,13 @@ func Move(world *box2d.World, circle box2d.Circle, velocity box2d.Vec2, dt float
 	return center, box2d.ClipVector(velocity, planes)
 }
 
-// chainPlane reports whether a chain segment's plane counts: from its front only, and not at an end while
-// center is over the next segment's face (Box2D's ghost vertices). The pinned CollideMover does neither.
-func chainPlane(world *box2d.World, shape box2d.ShapeID, center box2d.Vec2) bool {
+// chainPlane reports whether a chain segment's plane counts, by Box2D's own chain rule: from its front
+// only, and not past an end the next segment covers (ghost vertices). The pinned CollideMover does neither.
+func chainPlane(world *box2d.World, shape box2d.ShapeID, center box2d.Vec2, radius float64) bool {
 	seg := world.ShapeChainSegment(shape)
-	c := box2d.InvTransformPoint(world.BodyTransform(world.ShapeBody(shape)), center)
-	p1, p2 := seg.Segment.Point1, seg.Segment.Point2
-	if !front(p1, p2, c) {
-		return false
-	}
-	e := box2d.Sub(p2, p1)
-	switch t := box2d.Dot(box2d.Sub(c, p1), e); {
-	case t <= 0:
-		return !overFace(seg.Ghost1, p1, c)
-	case t >= box2d.Dot(e, e):
-		return !overFace(p2, seg.Ghost2, c)
-	}
-	return true
-}
-
-// front reports whether c is on the side of the segment from a to b that collides.
-func front(a, b, c box2d.Vec2) bool { return box2d.Cross(box2d.Sub(c, a), box2d.Sub(b, a)) >= 0 }
-
-// overFace reports whether c is in front of the segment from a to b and projects strictly inside it.
-func overFace(a, b, c box2d.Vec2) bool {
-	e := box2d.Sub(b, a)
-	t := box2d.Dot(box2d.Sub(c, a), e)
-	return front(a, b, c) && t > 0 && t < box2d.Dot(e, e)
+	circle := box2d.Circle{Center: center, Radius: radius}
+	return box2d.CollideChainSegmentAndCircle(&seg, world.BodyTransform(world.ShapeBody(shape)), &circle,
+		box2d.TransformIdentity).PointCount > 0
 }
 
 // byGeometry orders planes by normal, then offset.

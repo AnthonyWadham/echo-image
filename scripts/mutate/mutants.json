@@ -3286,25 +3286,25 @@
   },
   {
    "id": "M0-S1",
-   "breaks": "a chain segment blocks from behind too",
+   "breaks": "a chain segment's plane always counts: it blocks from behind, and a joint keeps its corner plane",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/physics/mover/mover.go",
-     "old": "\tif !front(p1, p2, c) {\n\t\treturn false\n\t}\n",
-     "new": ""
+     "old": "world.ShapeType(shape) == box2d.ChainSegmentShape && !chainPlane(world, shape, center, circle.Radius)",
+     "new": "false"
     }
    ]
   },
   {
    "id": "M0-S2",
-   "breaks": "a chain joint keeps its corner plane (no ghost vertices)",
+   "breaks": "the chain rule tests the circle's center, not the circle",
    "check": "go",
    "edits": [
     {
      "file": "shards/game/internal/physics/mover/mover.go",
-     "old": "\te := box2d.Sub(p2, p1)\n\tswitch t := box2d.Dot(box2d.Sub(c, p1), e); {\n\tcase t <= 0:\n\t\treturn !overFace(seg.Ghost1, p1, c)\n\tcase t >= box2d.Dot(e, e):\n\t\treturn !overFace(p2, seg.Ghost2, c)\n\t}\n",
-     "new": ""
+     "old": "circle := box2d.Circle{Center: center, Radius: radius}",
+     "new": "circle := box2d.Circle{Center: center}"
     }
    ]
   },
@@ -3315,8 +3315,8 @@
    "edits": [
     {
      "file": "shards/game/internal/physics/mover/mover.go",
-     "old": "c := box2d.InvTransformPoint(world.BodyTransform(world.ShapeBody(shape)), center)",
-     "new": "c := center"
+     "old": "world.BodyTransform(world.ShapeBody(shape)), &circle,",
+     "new": "box2d.TransformIdentity, &circle,"
     }
    ]
   },
