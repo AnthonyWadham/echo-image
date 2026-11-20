@@ -6,6 +6,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
 	"echo_image/pkg/levelstate"
+	"echo_image/pkg/queue"
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/history/past"
 	"echo_image/shards/game/internal/physics"
@@ -75,7 +76,7 @@ func fly(w *cardinal.World, world *box2d.World, tuning ProjectileTuning, scene *
 		return
 	}
 	if end.Hit.Meet.Payload {
-		w.EmitSystemEvent(combatcomp.DamageIntent{
+		queue.Send(w, combatcomp.DamageIntent{
 			Target: cardinal.EntityID(end.Hit.Target), Credit: shot.Get[team.Owner]().Body, Cause: p.Cause,
 			Amount: p.Damage, Until: end.Until,
 		})

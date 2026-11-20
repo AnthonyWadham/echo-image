@@ -4,6 +4,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/ability/cast"
 	"echo_image/shards/game/internal/ability/component"
 	"echo_image/shards/game/internal/ability/hooks"
@@ -20,9 +21,9 @@ type hookCasterRow struct {
 	Transform physics2d.Transform2D
 }
 
-// CastHookSystem (Update, after echo.ReplaySystem and before the receivers of its intents) runs each
-// cast's hook (cast.Run) and emits what it asks for as intents, with the cast's Cause and the caster's
-// side; the features that own the state act on them. O(C) for C casts.
+// CastHookSystem (Update, after echo.ReplaySystem and before the owners that drain its intents) runs
+// each cast's hook (cast.Run) and sends what it asks for as intents to their owners' queues, with the
+// cast's Cause and the caster's side. O(C) for C casts.
 type CastHookSystem struct {
 	Tuning AbilityTuning
 }
@@ -44,7 +45,7 @@ func (s *CastHookSystem) Run(w *cardinal.World) {
 	}
 }
 
-// intents is a cast.Sink that emits one cast's requests as intents.
+// intents is a cast.Sink that sends one cast's requests as intents.
 type intents struct {
 	w     *cardinal.World
 	cause component.Cause
@@ -53,10 +54,10 @@ type intents struct {
 }
 
 func (s intents) Launch(l cast.Launch) {
-	s.w.EmitSystemEvent(projectilecomp.LaunchIntent{
+	queue.Send(s.w, projectilecomp.LaunchIntent{
 		Shot: l.Shot, Cause: s.cause, Launch: l.Launch, Owner: s.owner, Team: s.team,
 		From: physics2d.Vec2{X: l.From.X, Y: l.From.Y}, Dir: physics2d.Vec2{X: l.Dir.X, Y: l.Dir.Y},
 	})
 }
 
-func (s intents) Effect(in status.Intent) { s.w.EmitSystemEvent(effectcomp.EffectIntent(in)) }
+func (s intents) Effect(in status.Intent) { queue.Send(s.w, effectcomp.EffectIntent(in)) }

@@ -6,6 +6,7 @@ import (
 	effectcomp "echo_image/shards/game/internal/effect/component"
 	playercomp "echo_image/shards/game/internal/player/component"
 	projectilecomp "echo_image/shards/game/internal/projectile/component"
+	"echo_image/shards/game/internal/team"
 	"fmt"
 	"math"
 	"testing"
@@ -180,7 +181,8 @@ func TestOwnBlockedByLetsAStunnedBodyCast(t *testing.T) {
 }
 
 // Never assume the caster: every ability, cast by a Body or by an Echo, sends intents that carry the
-// caster as the cause and start from it, for the caster's owner.
+// caster as the cause and start from it, for the caster's owner. Their owners drain them that tick:
+// shots leave from where the caster was, and effects come from it.
 func TestAnyCasterCastsEveryAbility(t *testing.T) {
 	w, _, _, fx := fxDuel(t)
 	body := yourBody(t, bodiesFor(t, w, "alice"))
@@ -197,25 +199,51 @@ func TestAnyCasterCastsEveryAbility(t *testing.T) {
 		e := echoOf(t, w, "alice", body)
 		return physics2d.Vec2{X: e.X, Y: e.Y}
 	}
+	type shotRow struct {
+		Projectile projectilecomp.Projectile
+		Owner      team.Owner
+		Team       team.Team
+	}
+	type holderRow struct {
+		Effects effectcomp.Effects
+	}
+	// sources is the source of each effect entry in the world, by holder and serial.
+	sources := func() map[[2]uint64]uint32 {
+		all := map[[2]uint64]uint32{}
+		for e := range w.Contains[holderRow]().Iter() {
+			for x := range e.Get[effectcomp.Effects]().List.Values() {
+				all[[2]uint64{uint64(e.ID()), uint64(x.Serial)}] = x.Source
+			}
+		}
+		return all
+	}
 	for id := range tuningOf[ability.AbilityTuning](t).Abilities {
 		for caster, cid := range casters {
-			emit(fx, abilitycomp.AbilityCast{Cause: abilitycomp.Cause{Caster: cid, Ability: id}, AimX: 0.6, AimY: 0.8})
+			cause, before := abilitycomp.Cause{Caster: cid, Ability: id}, sources()
+			emit(fx, abilitycomp.AbilityCast{Cause: cause, AimX: 0.6, AimY: 0.8})
 			w.Tick()
-			launches, effects := w.Emitted[projectilecomp.LaunchIntent](), w.Emitted[effectcomp.EffectIntent]()
-			if len(launches)+len(effects) == 0 {
+			from, sent := where(caster), 0
+			for e := range w.Contains[shotRow]().Iter() {
+				if p := e.Get[projectilecomp.Projectile](); p.Cause == cause {
+					sent++
+					owner, side := e.Get[team.Owner]().Body, e.Get[team.Team]().ID
+					if owner != cardinal.EntityID(body.EntityID) || side != body.Team || p.Prev != from {
+						t.Errorf("%s cast by her %s: a shot from %v for %d on team %d, want it from %v for her Body %d",
+							id, caster, p.Prev, owner, side, from, body.EntityID)
+					}
+				}
+			}
+			for key, source := range sources() {
+				if _, ok := before[key]; ok {
+					continue
+				}
+				sent++
+				if source != uint32(cid) {
+					t.Errorf("%s cast by her %s: an effect from %d, want from %d", id, caster, source, cid)
+				}
+			}
+			if sent == 0 {
 				t.Errorf("%s cast by her %s sent no intent", id, caster)
-			}
-			from := where(caster)
-			for _, l := range launches {
-				if l.Cause.Caster != cid || l.Owner != cardinal.EntityID(body.EntityID) || l.Team != body.Team || l.From != from {
-					t.Errorf("%s cast by her %s: %+v, want it from %v, caused by %d, for her Body %d",
-						id, caster, l, from, cid, body.EntityID)
-				}
-			}
-			for _, in := range effects {
-				if in.Source != uint32(cid) {
-					t.Errorf("%s cast by her %s: effect %+v, want its source %d", id, caster, in, cid)
-				}
 			}
 		}
 	}

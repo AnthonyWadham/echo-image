@@ -10,6 +10,26 @@ Each entry has a status:
 
 ---
 
+## Loop guard for triggers
+
+- **Status:** idea
+- **Added:** 2026-11-20
+- **Today:** nothing in echo can loop. A death triggers "out", and "out" triggers nothing. A depth cap
+  on every intent (`queue.Chain`) was built and taken out before use.
+
+**Why not a depth cap:** a loop that branches (a split, a fork) makes 65,536 copies by step 16 at two
+children a step, so a cap stops it far too late. A guard that is a design rule ("an on-crit strike
+can't crit again") stops at step 1.
+
+**What games do** (from memory): a rule per mechanic, carried on the child. Dota flags reflected
+damage so it can't be reflected again. Risk of Rain 2 records which items already fired in a chain.
+Rampage has four hand-made guards of this kind (`docs/research/owner-queues.md` §3).
+
+**Plan:** with the first trigger that can fire itself (on-hit, on-death, reflect, split), add that
+mechanic's rule. When a second one comes, share one "already fired" flag set across them.
+
+---
+
 ## Units that block movement, and prediction
 
 - **Status:** idea

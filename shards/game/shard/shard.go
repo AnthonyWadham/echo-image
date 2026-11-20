@@ -91,13 +91,13 @@ func RegisterWith(world *cardinal.World, fsys fs.FS, meters metric.MeterProvider
 	// Areas (Update).
 	world.RegisterSystem(&area.AreaSystem{Tuning: c.areas, Physics: physicsPlugin})
 
-	// Combat (Update, after every DamageIntent and HealIntent emitter).
+	// Combat (Update, after every DamageIntent and HealIntent sender).
 	world.RegisterSystem(&combat.DamageResolveSystem{})
 
 	// Elimination (Update, after damage resolves, before effects).
 	world.RegisterSystem(&echo.EliminationSystem{Tuning: c.echoes})
 
-	// Effects (Update, after every EffectIntent emitter and status reader).
+	// Effects (Update, after every EffectIntent sender and status reader).
 	world.RegisterSystem(&effect.ResolveSystem{Tuning: c.effects})
 
 	// PostUpdate reads the tick's final state: a new writer goes in Update.

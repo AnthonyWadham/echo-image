@@ -1,6 +1,6 @@
 // Package component holds the effect feature's ECS data: the effect list and EffectIntent. Any feature
-// reads an entity's status here, and asks for a change by emitting EffectIntent. It imports only the
-// engine, the pure effect/status core and interact.
+// reads an entity's status here, and asks for a change by sending EffectIntent to effect's queue. It
+// imports only the engine, the pure effect/status core and interact.
 package component
 
 import (

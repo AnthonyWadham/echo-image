@@ -4,6 +4,7 @@ import (
 	"context"
 	"echo_image/pkg/level"
 	"echo_image/pkg/level/bake"
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
@@ -22,11 +23,17 @@ import (
 	"echo_image/shards/game/shard"
 	"encoding/json"
 	"flag"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"maps"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -599,6 +606,187 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 	}
 }
 
+// Each system event's emitters run before its readers, which miss an event emitted after them. Each
+// intent's senders run before the one system that drains its queue, so it lands the tick it's sent,
+// and each declared queue has that one system. Cardinal can't check this from declarations yet, so
+// this test reads each system's own file for what it emits, reads, sends and drains, and checks that
+// against the order a tick ran.
+func TestSendersRunBeforeTheirReceivers(t *testing.T) {
+	run := map[string]int{}
+	for i, s := range systemsRun(t) {
+		run[s.name] = i
+	}
+	by, declared := map[string]map[string][]string{}, map[string]bool{}
+	for _, u := range sourceUses(t, run) {
+		if u.verb == "declares" {
+			declared[u.typ] = true
+			continue
+		}
+		if by[u.typ] == nil {
+			by[u.typ] = map[string][]string{}
+		}
+		by[u.typ][u.verb] = append(by[u.typ][u.verb], u.system)
+	}
+	if len(declared) == 0 || len(by) == 0 {
+		t.Fatalf("found %d queues and %d types used, want some: the scan missed the source", len(declared), len(by))
+	}
+	for typ := range declared {
+		if drains := by[typ]["drains"]; len(drains) != 1 {
+			t.Errorf("queue %s is drained by %v, want one system", typ, drains)
+		}
+	}
+	for typ, verbs := range by {
+		if len(verbs["sends"]) > 0 && !declared[typ] {
+			t.Errorf("%v send %s, which no feature declares a queue for", verbs["sends"], typ)
+		}
+		for _, pair := range [][2]string{{"emits", "reads"}, {"sends", "drains"}} {
+			for _, from := range verbs[pair[0]] {
+				for _, to := range verbs[pair[1]] {
+					if run[from] >= run[to] {
+						t.Errorf("%s %s %s, but doesn't run before %s, which %s it", from, pair[0], typ, to, pair[1])
+					}
+				}
+			}
+		}
+	}
+}
+
+// use is what a system's file does with a type: emits or reads it as a system event, or sends or drains
+// it as an intent. A queue's declaration is a use with no system.
+type use struct{ system, verb, typ string }
+
+// sourceUses reads the Go files under shards/game/internal and pkg, but tests and pkg/queue itself, for
+// each type a file emits, reads, sends, drains or declares a queue for. Every use but a declaration
+// sits in the file of the one system of run that does it, and names its type.
+func sourceUses(t *testing.T, run map[string]int) []use {
+	t.Helper()
+	const root, queuePath = "../../..", "echo_image/pkg/queue"
+	type file struct {
+		path, pkgPath string
+		ast           *ast.File
+	}
+	fset, systemIn := token.NewFileSet(), map[string]string{} // the file each system of run is in
+	typeNames := map[string]bool{}                            // every type the scan declares, by path and name
+	var files []file
+	for _, dir := range []string{"shards/game/internal", "pkg"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
+				return err
+			case d.IsDir() && p == filepath.Join(root, "pkg", "queue"):
+				return filepath.SkipDir
+			case d.IsDir() || filepath.Ext(p) != ".go" || strings.HasSuffix(p, "_test.go"):
+				return nil
+			}
+			f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(root, filepath.Dir(p))
+			pkgPath := "echo_image/" + filepath.ToSlash(rel)
+			files = append(files, file{p, pkgPath, f})
+			for _, decl := range f.Decls {
+				if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.TYPE {
+					for _, spec := range g.Specs {
+						typ := spec.(*ast.TypeSpec).Name.Name
+						typeNames[pkgPath+"."+typ] = true
+						name := f.Name.Name + "." + typ
+						if _, ok := run[name]; ok {
+							systemIn[name] = p
+						}
+					}
+				}
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	systemOf := map[string]string{} // the system of run in each file
+	for name, p := range systemIn {
+		if other, ok := systemOf[p]; ok {
+			t.Fatalf("%s holds two systems, %s and %s: give each its own file", p, other, name)
+		}
+		systemOf[p] = name
+	}
+	var uses []use
+	for _, f := range files {
+		imported := map[string]string{} // path by local name
+		for _, spec := range f.ast.Imports {
+			p, _ := strconv.Unquote(spec.Path.Value)
+			if imported[path.Base(p)] = p; spec.Name != nil {
+				imported[spec.Name.Name] = p
+			}
+		}
+		typeOf := func(e ast.Expr) string {
+			switch e := e.(type) {
+			case *ast.Ident:
+				return f.pkgPath + "." + e.Name
+			case *ast.SelectorExpr:
+				if x, ok := e.X.(*ast.Ident); ok && imported[x.Name] != "" {
+					return imported[x.Name] + "." + e.Sel.Name
+				}
+			}
+			return ""
+		}
+		valueType := func(e ast.Expr) string { // the type of a literal T{…} or a conversion T(x), or ""
+			switch e := e.(type) {
+			case *ast.CompositeLit:
+				return typeOf(e.Type)
+			case *ast.CallExpr:
+				if t := typeOf(e.Fun); len(e.Args) == 1 && typeNames[t] {
+					return t
+				}
+			}
+			return ""
+		}
+		ast.Inspect(f.ast, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			fun, typ := call.Fun, ""
+			if ix, ok := fun.(*ast.IndexExpr); ok {
+				fun, typ = ix.X, typeOf(ix.Index)
+			}
+			sel, ok := fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			x, _ := sel.X.(*ast.Ident)
+			fromQueue, verb := x != nil && imported[x.Name] == queuePath, ""
+			switch {
+			case sel.Sel.Name == "EmitSystemEvent" && len(call.Args) == 1:
+				verb, typ = "emits", valueType(call.Args[0])
+			case sel.Sel.Name == "SystemEvents":
+				verb = "reads"
+			case fromQueue && (sel.Sel.Name == "Send" || sel.Sel.Name == "SendAt"):
+				if verb = "sends"; typ == "" {
+					typ = valueType(call.Args[len(call.Args)-1])
+				}
+			case fromQueue && sel.Sel.Name == "Drain":
+				verb = "drains"
+			case fromQueue && sel.Sel.Name == "Declare":
+				verb = "declares"
+			default:
+				return true
+			}
+			at, system := fset.Position(call.Pos()), systemOf[f.path]
+			switch {
+			case typ == "":
+				t.Errorf("%s: can't tell what this %s: name the type", at, verb)
+			case verb == "declares" || system != "":
+				uses = append(uses, use{system, verb, typ})
+			default:
+				t.Errorf("%s %s %s outside the file of a system a tick runs", at, verb, typ)
+			}
+			return true
+		})
+	}
+	return uses
+}
+
 // spawnOf is where the dev roster's Body i starts on the shipped default map, and its radius, known
 // before boot so a test can put its map's walls around it. Players claim Bodies in roster order: alice's
 // is 0, bob's 1.
@@ -731,26 +919,32 @@ func radiusOf(w *cardinal.TestWorld, b body) float64 {
 	return w.Entity(cardinal.EntityID(b.EntityID)).Get[physics2d.PhysicsBody2D]().Shapes.At(0).Radius
 }
 
-// emitter emits queued system events in the next tick's PreUpdate, as a reactor would. An effect then
-// applies from the tick after that; damage and heals apply that tick.
-type emitter struct{ queue []func(*cardinal.World) }
+// emitter sends intents and emits system events in the next tick's PreUpdate, as a reactor would, so
+// each owner drains its intents that tick. An effect then applies from the tick after that; damage and
+// heals apply that tick.
+type emitter struct{ pending []func(*cardinal.World) }
 
 func (e *emitter) Run(w *cardinal.World) {
-	for _, emit := range e.queue {
-		emit(w)
+	for _, run := range e.pending {
+		run(w)
 	}
-	e.queue = nil
+	e.pending = nil
 }
 
-// emit queues ev for the next tick.
+// emit emits ev in the next tick.
 func emit[T interface{ Name() string }](e *emitter, ev T) {
-	e.queue = append(e.queue, func(w *cardinal.World) { w.EmitSystemEvent(ev) })
+	e.pending = append(e.pending, func(w *cardinal.World) { w.EmitSystemEvent(ev) })
 }
 
-// effect queues in for b.
+// send sends r to its owner's queue in the next tick.
+func send[R queue.Request](e *emitter, r R) {
+	e.pending = append(e.pending, func(w *cardinal.World) { queue.Send(w, r) })
+}
+
+// effect sends in for b.
 func (e *emitter) effect(b body, in effectcomp.EffectIntent) {
 	in.Target = b.EntityID
-	emit(e, in)
+	send(e, in)
 }
 
 // withEmitter is setup plus fx, in PreUpdate so the resolvers see what it emits.

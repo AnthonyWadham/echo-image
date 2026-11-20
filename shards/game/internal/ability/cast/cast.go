@@ -86,7 +86,7 @@ type Launch struct {
 	From, Dir hooks.Vec2
 }
 
-// Sink acts on what casts ask for: ability.CastHookSystem's emits each request as its feature's intent,
+// Sink acts on what casts ask for: ability.CastHookSystem's sends each request as its feature's intent,
 // and the predictor's predicts the ones its client draws. A new request type is a new method, so neither
 // side can miss it.
 type Sink interface {

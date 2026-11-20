@@ -2,12 +2,12 @@ package projectile
 
 import (
 	"cmp"
-	"slices"
 
 	"github.com/argus-labs/world-engine/pkg/box2d"
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/projectile/component"
 	"echo_image/shards/game/internal/projectile/flight"
 	"echo_image/shards/game/internal/ref"
@@ -23,16 +23,16 @@ type projectileRow struct {
 	Transform  physics2d.Transform2D
 }
 
-// LaunchSystem (Update, after every LaunchIntent sender, before FlightSystem) launches a shot for each
-// LaunchIntent, in sorted order, since emit order can change after a restore and the order sets the
-// shots' entity IDs. O(L log L) for L launches.
+// LaunchSystem (Update, after every LaunchIntent sender, before FlightSystem) drains its queue and
+// launches a shot for each LaunchIntent, in sorted order, since the order they were sent in can change
+// after a restore and the order sets the shots' entity IDs. O(L log L) for L launches.
 type LaunchSystem struct {
 	Tuning ProjectileTuning
 }
 
 func (s *LaunchSystem) Run(w *cardinal.World) {
 	shots := s.Tuning.Shots
-	for _, in := range slices.SortedFunc(w.SystemEvents[component.LaunchIntent](), compareLaunch) {
+	for _, in := range queue.Drain[component.LaunchIntent](w, compareLaunch) {
 		def, ok := shots[in.Shot]
 		if !ok {
 			w.Logger().Error().Str("shot", in.Shot).Msg("launched no shot of unknown type")

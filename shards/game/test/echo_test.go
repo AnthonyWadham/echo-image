@@ -169,7 +169,7 @@ func TestEchoDeathPutsItsPlayerOut(t *testing.T) {
 	w, alice, bob, fx := fxDuel(t)
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	mine := echoOf(t, w, "alice", a)
-	emit(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
+	send(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
 	w.Tick() // her Echo dies; out applies from the next tick
 
 	b := yourBody(t, bodiesFor(t, w, "bob"))

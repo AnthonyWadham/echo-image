@@ -8,8 +8,9 @@ import (
 )
 
 // LaunchIntent asks projectile.LaunchSystem to launch a shot of type Shot this tick, from From along
-// Dir (a unit vector), for Owner on Team. Launch is its place among its cast's launches. It lives in this
-// leaf so a sender doesn't import projectile's systems.
+// Dir (a unit vector), for Owner on Team. Launch is its place among its cast's launches. A sender
+// sends it to projectile's queue with queue.Send. It lives in this leaf so a sender doesn't import
+// projectile's systems.
 type LaunchIntent struct {
 	Shot   string // a key of projectile.ProjectileTuning.Shots
 	Cause  abilitycomp.Cause
@@ -20,5 +21,5 @@ type LaunchIntent struct {
 	Dir    physics2dcomp.Vec2
 }
 
-// Name is the system-event name.
+// Name names its queue.
 func (LaunchIntent) Name() string { return "launch_intent" }

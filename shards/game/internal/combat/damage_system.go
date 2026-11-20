@@ -7,6 +7,7 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/combat/component"
 )
 
@@ -18,12 +19,12 @@ type Damageable struct {
 	Health component.Health
 }
 
-// DamageResolveSystem (Update, after every DamageIntent and HealIntent emitter) is the only writer of
-// Health. For each target it takes the tick's damage and heals, and writes HP once: never above MaxHP,
-// and at 0 or below the target dies: HP 0 and a component.Died, timed by the hit that took it there.
-// Overkill counts, so a small heal can't save a target from a much bigger hit. Hits count in the order
-// they land, ties in sorted order, since emit order can change after a restore. O(I log I) for I
-// intents.
+// DamageResolveSystem (Update, after every DamageIntent and HealIntent sender) is the only writer of
+// Health. It drains both queues. For each target it takes the tick's damage and heals, and writes HP
+// once: never above MaxHP, and at 0 or below the target dies: HP 0 and a component.Died, timed by the
+// hit that took it there. Overkill counts, so a small heal can't save a target from a much bigger hit.
+// Hits count in the order they land, ties in sorted order, since the order they were sent in can
+// change after a restore. O(I log I) for I intents.
 type DamageResolveSystem struct{}
 
 func (s *DamageResolveSystem) Run(w *cardinal.World) {
@@ -32,7 +33,7 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 		heal float64
 	}
 	changes := map[cardinal.EntityID]change{}
-	for _, in := range slices.SortedFunc(w.SystemEvents[component.DamageIntent](), compareDamage) {
+	for _, in := range queue.Drain[component.DamageIntent](w, compareDamage) {
 		c := changes[in.Target]
 		c.hits = append(c.hits, in)
 		changes[in.Target] = c
@@ -45,7 +46,7 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 			Float64("amount", in.Amount).
 			Msg("damage applied")
 	}
-	for _, in := range slices.SortedFunc(w.SystemEvents[component.HealIntent](), compareHeal) {
+	for _, in := range queue.Drain[component.HealIntent](w, compareHeal) {
 		c := changes[in.Target]
 		c.heal += in.Amount
 		changes[in.Target] = c
