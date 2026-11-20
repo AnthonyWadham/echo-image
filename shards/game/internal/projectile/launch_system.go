@@ -32,7 +32,7 @@ type LaunchSystem struct {
 
 func (s *LaunchSystem) Run(w *cardinal.World) {
 	shots := s.Tuning.Shots
-	for _, in := range queue.Drain[component.LaunchIntent](w, compareLaunch) {
+	for _, in := range queue.Drain(w, compareLaunch) {
 		def, ok := shots[in.Shot]
 		if !ok {
 			w.Logger().Error().Str("shot", in.Shot).Msg("launched no shot of unknown type")
