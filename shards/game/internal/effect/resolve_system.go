@@ -5,6 +5,7 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/effect/component"
 	"echo_image/shards/game/internal/effect/status"
 )
@@ -14,11 +15,11 @@ type holderRow struct {
 	Effects component.Effects
 }
 
-// ResolveSystem (Update, last: after every EffectIntent emitter) is the only writer of Effects. It
-// adds this tick's intents in a fixed order, so they apply from the next tick, and drops the entries
-// that are over by then. So every system in a tick reads the same status. The rules are
-// effect/status's, which the client predictor runs too. O(I log I + H·L) for I intents and H holders
-// of L entries.
+// ResolveSystem (Update, last: after every EffectIntent sender) is the only writer of Effects. It
+// drains its queue in a fixed order (the rules' Compare) and adds what it drained, so it applies from
+// the next tick, and drops the entries that are over by then. So every system in a tick reads the same
+// status. The rules are effect/status's, which the client predictor runs too. O(I log I + H·L) for I
+// intents and H holders of L entries.
 type ResolveSystem struct {
 	Tuning EffectTuning
 }
@@ -27,11 +28,8 @@ func (s *ResolveSystem) Run(w *cardinal.World) {
 	tuning := s.Tuning
 	next := w.TickHeight() + 1
 	holders := w.Contains[holderRow]()
-	var intents []status.Intent
-	for in := range w.SystemEvents[component.EffectIntent]() {
-		intents = append(intents, status.Intent(in))
-	}
-	slices.SortFunc(intents, tuning.Compare)
+	byRules := func(a, b component.EffectIntent) int { return tuning.Compare(status.Intent(a), status.Intent(b)) }
+	intents := queue.Drain[component.EffectIntent](w, byRules)
 	for i := 0; i < len(intents); {
 		j := i + 1
 		for j < len(intents) && intents[j].Target == intents[i].Target {
@@ -53,12 +51,12 @@ func (s *ResolveSystem) Run(w *cardinal.World) {
 
 // add adds intents, all for e, to e's effect list from tick on. An intent of an unknown kind is dropped
 // with an error, since it's its sender's bug.
-func add(w *cardinal.World, e cardinal.Entity, tuning EffectTuning, intents []status.Intent, tick uint64) {
+func add(w *cardinal.World, e cardinal.Entity, tuning EffectTuning, intents []component.EffectIntent, tick uint64) {
 	fx := e.Get[component.Effects]()
 	list := slices.Collect(fx.List.Values())
 	for _, in := range intents {
 		var ok bool
-		if list, ok = tuning.Apply(list, &fx.Next, in, tick); !ok {
+		if list, ok = tuning.Apply(list, &fx.Next, status.Intent(in), tick); !ok {
 			w.Logger().Error().Str("kind", in.Kind).Uint32("target", in.Target).
 				Msg("dropped an effect of unknown kind")
 		}

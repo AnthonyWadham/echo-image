@@ -400,7 +400,7 @@ func TestOthersSeeChampionsAndEffectKinds(t *testing.T) {
 	w, _, _, fx := fxDuel(t)
 	b := yourBody(t, bodiesFor(t, w, "bob"))
 	fx.effect(b, effectcomp.EffectIntent{Kind: "stun", Ticks: 5})
-	emit(fx, effectcomp.EffectIntent{Target: echoOf(t, w, "alice", b).EntityID, Kind: "slow", Ticks: 3, Value: -2000})
+	send(fx, effectcomp.EffectIntent{Target: echoOf(t, w, "alice", b).EntityID, Kind: "slow", Ticks: 3, Value: -2000})
 	w.Tick()
 
 	stun := bodiesFor(t, w, "bob").You.Effects.At(0)

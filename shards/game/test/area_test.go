@@ -14,7 +14,8 @@ import (
 )
 
 // addArea builds an entity of side s at pos holding an area of kind kind, with a 0.5 m circle, acting at
-// once. It's like an Echo.
+// once. It's like an Echo with a sliver of HP: the first damage it takes kills it, so its Died shows
+// that damage.
 func addArea(w *cardinal.TestWorld, kind string, s body, pos physics2d.Vec2) cardinal.EntityID {
 	type holderRow struct {
 		Area      areacomp.Area
@@ -23,9 +24,11 @@ func addArea(w *cardinal.TestWorld, kind string, s body, pos physics2d.Vec2) car
 		Transform physics2d.Transform2D
 		Velocity  physics2d.Velocity2D
 		Body      physics2d.PhysicsBody2D
+		Health    combatcomp.Health
 	}
 	h := w.Create[holderRow]()
 	h.Set(areacomp.Area{Kind: kind})
+	h.Set(combatcomp.Health{HP: 1e-9, MaxHP: 1e-9})
 	h.Set(team.Team{ID: s.Team})
 	h.Set(team.Owner{Body: cardinal.EntityID(s.EntityID)})
 	h.Set(physics2d.Transform2D{Position: pos})
@@ -43,9 +46,9 @@ func TestAreaActsOnWhatTouchesIt(t *testing.T) {
 	addArea(w, "anticamp", a, physics2d.Vec2{X: a.X + 0.78, Y: a.Y + 0.78}) // its box overlaps her, its circle doesn't
 	touching := addArea(w, "anticamp", a, physics2d.Vec2{X: a.X - 0.6, Y: a.Y - 0.6})
 	w.Tick()
-	hits := w.Emitted[combatcomp.DamageIntent]()
-	if len(hits) != 1 || hits[0].Target != touching || hits[0].Until != 1 {
-		t.Fatalf("damage %+v, want one over the tick, on the area %d that touches her", hits, touching)
+	died := w.Emitted[combatcomp.Died]()
+	if len(died) != 1 || died[0].Target != touching || died[0].Until != 1 {
+		t.Fatalf("deaths %+v, want one at the tick's end, of the area %d that touches her", died, touching)
 	}
 }
 
@@ -61,13 +64,13 @@ func TestAreaRulesSeeTags(t *testing.T) {
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	trap := addArea(w, "trap", a, physics2d.Vec2{X: a.X, Y: a.Y})
 	w.Tick()
-	if n := len(w.Emitted[combatcomp.DamageIntent]()); n != 0 {
-		t.Fatalf("%d damage while she isn't stunned, want 0", n)
+	if died := w.Emitted[combatcomp.Died](); len(died) != 0 {
+		t.Fatalf("deaths %+v while she isn't stunned, want none", died)
 	}
 	fx.effect(a, effectcomp.EffectIntent{Kind: "stun", Ticks: 5})
 	w.Tick() // the stun applies from the next tick
 	w.Tick()
-	if hits := w.Emitted[combatcomp.DamageIntent](); len(hits) != 1 || hits[0].Target != trap {
-		t.Fatalf("damage %+v, want one on the trap %d while she is stunned", hits, trap)
+	if died := w.Emitted[combatcomp.Died](); len(died) != 1 || died[0].Target != trap {
+		t.Fatalf("deaths %+v, want the trap %d's while she is stunned", died, trap)
 	}
 }

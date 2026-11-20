@@ -6,6 +6,7 @@ import (
 
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/pkg/queue"
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	"echo_image/shards/game/internal/echo/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -27,7 +28,7 @@ func (s *EliminationSystem) Run(w *cardinal.World) {
 		if !e.Has[component.Echo]() {
 			continue
 		}
-		w.EmitSystemEvent(effectcomp.EffectIntent{
+		queue.Send(w, effectcomp.EffectIntent{
 			Target: uint32(e.Get[team.Owner]().Body), Kind: s.Tuning.DeathEffect, Ticks: status.Forever,
 			Source: uint32(d.Target),
 		})

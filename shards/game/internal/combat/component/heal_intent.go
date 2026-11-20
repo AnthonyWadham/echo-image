@@ -14,5 +14,5 @@ type HealIntent struct {
 	Amount float64
 }
 
-// Name is the system-event name.
+// Name names its queue.
 func (HealIntent) Name() string { return "heal_intent" }

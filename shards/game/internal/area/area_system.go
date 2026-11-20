@@ -5,6 +5,7 @@ import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 	"github.com/argus-labs/world-engine/pkg/plugin/physics2d"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/area/component"
 	combatcomp "echo_image/shards/game/internal/combat/component"
 	effectcomp "echo_image/shards/game/internal/effect/component"
@@ -72,7 +73,7 @@ func (s *AreaSystem) act(w *cardinal.World, world *box2d.World, e cardinal.Entit
 		kind := interact.Kind(world.ShapeFilter(id).CategoryBits)
 		if rule, _, ok := interact.First(def.Rules, kind, relation(side, thing), effectcomp.TagsOf(thing, tick)); ok {
 			// Self is the only To so far.
-			w.EmitSystemEvent(combatcomp.DamageIntent{
+			queue.Send(w, combatcomp.DamageIntent{
 				Target: e.ID(), Credit: cardinal.EntityID(side.Owner), Amount: rule.DamagePerSecond * physics.SecondsPerTick,
 				Until: 1,
 			})

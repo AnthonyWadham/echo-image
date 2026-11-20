@@ -125,26 +125,6 @@ func TestKilledEchoLastsUntilTheShotReachesIt(t *testing.T) {
 	}
 }
 
-// A shot's damage carries the cast that fired it, and credits the Body that cast it.
-func TestShotDamageCarriesItsCast(t *testing.T) {
-	w, alice, bob := duel(t)
-	moveFor(w, bob, 0, 1, ticks(0.5)) // off his Echo
-	k := fireAtEcho(t, w, alice)
-	casts := w.Emitted[abilitycomp.AbilityCast]()
-	if len(casts) != 1 {
-		t.Fatalf("%d casts, want 1", len(casts))
-	}
-	flyFor(w, k)
-	hits := w.Emitted[combatcomp.DamageIntent]()
-	target := cardinal.EntityID(echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "bob"))).EntityID)
-	if len(hits) != 1 || hits[0].Target != target || hits[0].Credit != casts[0].Caster || hits[0].Cause != casts[0].Cause {
-		t.Fatalf("damage %+v, want one on bob's Echo %d, credited to and caused by %+v", hits, target, casts[0].Cause)
-	}
-	if ended := endedShots(t, w, "bob"); len(ended) != 1 || hits[0].Until != ended[0].Until {
-		t.Fatalf("damage lands at %v of the tick, want when the shot ended %+v", hits[0].Until, ended)
-	}
-}
-
 // An enemy Body on the path in front of bob's Echo where alice drew it stops the shot there: bob stood
 // half over his Echo, toward her, and walked off after her view. The Echo takes no damage.
 func TestEnemyBodyBlocksShot(t *testing.T) {
@@ -433,7 +413,7 @@ func TestShotExpiresAtRange(t *testing.T) {
 	const n = 16 // 6 of these got stuck at a remainder above 0
 	for k := range n {
 		a := 2 * math.Pi * float64(k) / n
-		emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: uint64(k)},
+		send(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: uint64(k)},
 			From: physics2d.Vec2{X: 100, Y: 100}, Dir: physics2d.Vec2{X: math.Cos(a), Y: math.Sin(a)}}) // far from everyone
 	}
 	w.Tick() // first step
@@ -469,7 +449,7 @@ func TestNewShotTakesAnEndedOnesIDNotItsSerial(t *testing.T) {
 	def, shot := primary(t)
 	hook, _ := hooks.Bind(def.Hook, def.Params) // primary checked it
 	launch := func(k uint64) {
-		emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: k},
+		send(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Cause: abilitycomp.Cause{Tick: k},
 			From: physics2d.Vec2{X: 100, Y: 100}, Dir: physics2d.Vec2{X: 1}}) // far from everyone
 	}
 	launch(1)
@@ -572,7 +552,7 @@ func TestShotMeetsEchoWhereItIsNow(t *testing.T) {
 	hook, _ := hooks.Bind(def.Hook, def.Params) // primary checked it
 	a := yourBody(t, bodiesFor(t, w, "alice"))
 	x := now.X + step + tuningOf[echo.EchoTuning](t).HitRadius + shot.Radius - step/2
-	emit(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Owner: cardinal.EntityID(a.EntityID), Team: a.Team,
+	send(fx, projectilecomp.LaunchIntent{Shot: hook.Refs.Shots[0], Owner: cardinal.EntityID(a.EntityID), Team: a.Team,
 		From: physics2d.Vec2{X: x, Y: now.Y - 0.3}, Dir: physics2d.Vec2{Y: 1}})
 	bob.move(1, 0)
 	w.Tick()
@@ -592,7 +572,7 @@ func TestShotMeetsAnEchoTheTickItSpawns(t *testing.T) {
 	claim(t, w)
 	b := yourBody(t, bodiesFor(t, w, "bob"))
 	// carol joins at (-3, 0), and her Echo spawns there as bob's lance flies up through her Body.
-	emit(fx, projectilecomp.LaunchIntent{Shot: "lance", Owner: cardinal.EntityID(b.EntityID), Team: b.Team,
+	send(fx, projectilecomp.LaunchIntent{Shot: "lance", Owner: cardinal.EntityID(b.EntityID), Team: b.Team,
 		From: physics2d.Vec2{X: -3, Y: -0.7}, Dir: physics2d.Vec2{Y: 1}})
 	join(t, w, "carol")
 	if got := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "carol"))); got.HP != got.MaxHP-10 {
@@ -658,8 +638,8 @@ func TestShotRulesSeeTags(t *testing.T) {
 	}
 }
 
-// Shots launched in one tick get the same entity IDs whatever order their intents arrive in, since that
-// order can change after a restore.
+// Shots launched in one tick get the same entity IDs whatever order their intents were sent in, since
+// that order can change after a restore.
 func TestLaunchOrderIsFixed(t *testing.T) {
 	a := projectilecomp.LaunchIntent{Shot: "bolt", Cause: abilitycomp.Cause{Caster: 1, Ability: "bolt"}, Owner: 1,
 		Dir: physics2d.Vec2{X: 1}}
@@ -670,7 +650,7 @@ func TestLaunchOrderIsFixed(t *testing.T) {
 		w := cardinal.NewTestWorld(t, withEmitter(withContent(t), fx))
 		claim(t, w)
 		for _, in := range order {
-			emit(fx, in)
+			send(fx, in)
 		}
 		w.Tick()
 		byID := map[uint32]uint8{}

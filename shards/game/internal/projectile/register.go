@@ -3,13 +3,15 @@ package projectile
 import (
 	"github.com/argus-labs/world-engine/pkg/cardinal"
 
+	"echo_image/pkg/queue"
 	"echo_image/shards/game/internal/projectile/component"
 )
 
-// RegisterTypes registers the projectile feature's components and events with the world.
+// RegisterTypes registers the projectile feature's component, the queue it drains and its events with
+// the world.
 func RegisterTypes(w *cardinal.World) {
 	w.RegisterComponent[component.Projectile]()
-	w.RegisterSystemEvent[component.LaunchIntent]()
+	queue.Declare[component.LaunchIntent](w)
 	w.RegisterSystemEvent[component.ShotEnded]()
 	w.RegisterEvent[ProjectileSync]()
 }

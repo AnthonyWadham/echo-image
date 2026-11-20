@@ -48,13 +48,13 @@ one is the *what*.
 - **Test files:** a test file mirrors one source file or one feature package (`player_test.go`,
   `projectile_test.go`, … in `shards/game/test`). One harness: shared helpers live in
   `harness_test.go`. Never a topical one-off file or a second harness. Unit and fuzz tests sit beside the code they test.
-- **`pkg/level`, `pkg/level/bake` and `pkg/levelstate` are built to move to world-engine,** so they
-  follow world-engine's rules, not this repo's: `level` imports only `box2d` and the standard library,
-  `bake` adds `level`, `levelstate` adds `cardinal` and `level`, and none names a game word; JSON is
-  `goccy/go-json`;
+- **`pkg/level`, `pkg/level/bake`, `pkg/levelstate` and `pkg/queue` are built to move to world-engine,**
+  so they follow world-engine's rules, not this repo's: `level` imports only `box2d` and the standard
+  library, `bake` adds `level`, `levelstate` adds `cardinal` and `level`, `queue` imports only
+  `cardinal`, and none names a game word; JSON is `goccy/go-json`;
   tests are external packages (`level_test`). Lint them with world-engine's config and its pinned
   linter (v2.15.0, built with this repo's Go): `golangci-lint run --config
-  ../world-engine/.golangci.yaml --fix=false ./pkg/level/... ./pkg/levelstate/...`.
+  ../world-engine/.golangci.yaml --fix=false ./pkg/level/... ./pkg/levelstate/... ./pkg/queue/...`.
 - **The client needs Go too.** `bun run dev` and `bun run build` (in `client/`) first build
   `predictor.wasm` and copy that toolchain's `wasm_exec.js` (`client/scripts/predictor.mjs`, both
   gitignored). Vitest runs the same script as its global setup, so its tests never use a stale build.
@@ -103,7 +103,7 @@ shards/game/
     combat/   package combat      damage: damage_system.go (the one writer of Health), death_system.go
                                   (removes what died, after the syncs)
       component/  package component   Health, DamageIntent, HealIntent, Died — combat's leaf; any damage or
-                                      heal source emits an intent without importing combat's systems
+                                      heal source sends an intent without importing combat's systems
     area/     package area        areas: area_system.go (each area acts on what overlaps its holder,
                                   by rules), tuning.go (area kinds), doc.go
       component/  package component   Area — area's leaf; a constructor gives its entity an area
@@ -221,7 +221,7 @@ name their JSON file by path string in `JSONFile()`.
    layout rule 2.)
 5. **`shard.go` is wiring only** — register plugins/systems in order, no logic.
 6. **Each feature registers its own types** in `register.go`: `RegisterTypes(w)` registers every
-   component (including its `component/` leaf's), command and system event the feature owns.
+   component (including its `component/` leaf's), command, system event and queue the feature owns.
    `shard.go` calls each feature's `RegisterTypes` before registering systems.
 
 ### File layout within a package
@@ -231,7 +231,7 @@ things that must both hold as a feature grows: you can tell a file's role at a g
 can read another's data without risking an import cycle.
 
 1. **Role goes in the filename suffix.** A behavior file is `<concept>_<role>.go` —
-   `movement_system.go`, `input_command.go`, `spawn_system.go`, `damage_intent_event.go`. `ls` alone
+   `movement_system.go`, `input_command.go`, `spawn_system.go`, `damage_intent.go`. `ls` alone
    tells you what each file is; you never open `move.go` and `movement.go` to find out one's a command
    and the other's a system. Config definitions are `tuning.go` (`<concept>_tuning.go` when a feature
    has several); the package doc is `doc.go` or the namesake file. A search Row / query projection
@@ -241,9 +241,9 @@ can read another's data without risking an import cycle.
    component`) import only the engine. That's what lets a future `enemy` read `component.Player` or
    attach `component.Health` with **zero** risk of an import cycle — the failure that bites hard the
    first time two features reference each other's state. The leaf holds component *types* only — rows,
-   systems, client events, commands, and tunings stay in the behavior package. One exception: a system
-   event another feature emits or reads lives in the owner's leaf too — an intent sent into it
-   (`combat/component.DamageIntent`) or a fact others react to (`player/component.BodyClaimed`,
+   systems, client events, commands, and tunings stay in the behavior package. One exception: a type
+   another feature sends or reads lives in the owner's leaf too — an intent sent to its queue
+   (`combat/component.DamageIntent`) or a system event others react to (`player/component.BodyClaimed`,
    `ability/component.AbilityCast`) — so no feature imports another's systems.
    - **This is NOT the "split by layer" anti-pattern.** Separating *data* (a genuine leaf) from
      *behavior* is a real dependency boundary; splitting *behavior* into `systems/`/`events/` dirs is
@@ -330,15 +330,29 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   the first matching rule per thing. Bodies and Echoes mask `interact.Area` so the query finds them. Anti-camp is
   the Echo's area (`content/area/tuning.json`, kind `anticamp`), and its `Start` is the warmup.
 
+### Owner queues (`pkg/queue`)
+- **An intent goes to its owner's queue.** A request to change state another feature owns (damage, a
+  heal, an effect, a launch) is sent to that owner's queue: a component on one entity. It is not a
+  system event: it has one reader, a snapshot keeps it, and one sent after the drain waits for the
+  next tick instead of being lost. The owner's one system drains it once a tick, sorted by the tick
+  each was due, then the owner's compare, never by send order. A second drain in a tick panics.
+- **No loop guard yet.** Nothing in echo that triggers on a hit or a death can trigger again. Add a
+  guard with the first mechanic that can loop, as a rule on that mechanic (`docs/backlog.md`).
+- **Delayed events** (`queue.DeclareDelayed`, `Schedule`, `Cancel`) fire a system event at the start
+  of a later tick. Built and tested, with no user yet.
+- **What Cardinal lacks, and the stand-ins** (ID versions, the order check, a phase before PreUpdate):
+  `pkg/queue/doc.go` and [`docs/research/owner-queues.md`](docs/research/owner-queues.md).
+
 ### Collision handling: deferred intents, rule-driven shots, per-feature contact reactions
-- **Damage is deferred.** A damage source emits `DamageIntent`, and a heal `HealIntent` (both in the
-  `combat/component` leaf, so a source never imports combat's systems). `combat.DamageResolveSystem`
-  (Update, registered *after* every emitter) drains them and is the **only** place `Health` changes.
+- **Damage is deferred.** A damage source sends `DamageIntent`, and a heal `HealIntent`, to combat's
+  queue (both in the `combat/component` leaf, so a source never imports combat's systems).
+  `combat.DamageResolveSystem` (Update, registered *after* every sender) drains them and is the
+  **only** place `Health` changes.
   Sources today: `projectile.FlightSystem` (shot hits) and `area.AreaSystem` (anti-camp); no heals yet.
 - **HP stays between 0 and `MaxHP`.** For each target the resolver takes the tick's damage, then its
   heals, and writes HP once, never above `MaxHP`. Overkill counts, so a small heal can't save a target
   from a much bigger hit. Intents are summed in sorted order, so the order they arrive in — or which
-  source emitted first — never changes the result, and there's **no per-type event fan-out**. (Rampage
+  source sent first — never changes the result, and there's **no per-type event fan-out**. (Rampage
   re-emitted a typed event per collision kind to control ordering; deferral makes that unnecessary.)
 - **A death is timed.** Each `DamageIntent` says when in the tick it lands (`Until`: a shot's
   `flight.End.Until`, 1 for damage over the tick). At 0 or below the target dies: HP 0 and a `Died`
@@ -423,7 +437,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   (a Body's happen in `player.MovementSystem`, see Movement and walls); these events carry category
   bits, not meaning. **A feature that reacts to contacts declares its own receiver** over that stream
   and does a **single pass** for *its* kinds only, matching by **category bits** (`physics.Match` —
-  integer compare, *never* a reverse ECS type lookup) and **emitting intents**. It is **not** a global
+  integer compare, *never* a reverse ECS type lookup) and **sending intents**. It is **not** a global
   router.
 - **Know the cost of that model:** the engine keeps ONE shared event queue per type, so each reactor
   re-scans the *whole* contact stream — N reactors × C contacts/tick = **O(N·C)** `Match` calls. Fine
@@ -527,16 +541,22 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - The physics plugin registers on `Init` (rebuild) and `PreUpdate` (step), so its events are ready
   before `Update` game logic runs.
 - **System events are same-tick and cleared at tick end**, so the **emitter must be registered
-  before the receiver**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem`,
-  `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`,
-  which emits `LaunchIntent` before `projectile.LaunchSystem`; every `DamageIntent` and `HealIntent`
-  emitter (`projectile.FlightSystem`, `area.AreaSystem`) before `combat.DamageResolveSystem`; and every
-  `EffectIntent` emitter (`ability.CastHookSystem`, and `echo.EliminationSystem`, which reads `Died`
-  after `combat.DamageResolveSystem`) before `effect.ResolveSystem`.
-- **Every receiver sorts its intents by a full key before it acts,** because emit order can change
-  after a restore (`LaunchSystem` sorts launches, so new shots get the same entity IDs). Only one whose
-  every intent touches its own entity, and whose own emits a later receiver sorts, may walk them in
-  emit order (`echo.SpawnSystem`, `ability.CastHookSystem`).
+  before the reader**: `player.InputSystem` (emits `BodyClaimed`) before `echo.SpawnSystem`,
+  `ability.CastSystem` (emits `AbilityCast`) before `ability.CastHookSystem`, and
+  `combat.DamageResolveSystem` (emits `Died`) before `echo.EliminationSystem`.
+- **An intent's senders register before its queue's drain,** so it lands the tick it's sent:
+  `ability.CastHookSystem` (sends `LaunchIntent`) before `projectile.LaunchSystem`; every
+  `DamageIntent` and `HealIntent` sender (`projectile.FlightSystem`, `area.AreaSystem`) before
+  `combat.DamageResolveSystem`; and every `EffectIntent` sender (`ability.CastHookSystem`,
+  `echo.EliminationSystem`) before `effect.ResolveSystem`.
+- **`TestSendersRunBeforeTheirReceivers` checks both orders,** and that each queue has one drain. It
+  reads each system's own file, so write each send and emit as a literal (`T{…}`) or a conversion
+  (`T(x)`), each drain as `queue.Drain[T]`, and keep one system per file.
+- **Every receiver sorts what it gets by a full key before it acts,** because send and emit order can
+  change after a restore. `queue.Drain` sorts by the owner's compare (`LaunchSystem`'s sorts
+  launches, so new shots get the same entity IDs). A system event's reader sorts too, unless every
+  event touches its own entity and what it sends a drain sorts (`echo.SpawnSystem`,
+  `ability.CastHookSystem`).
 - **`player.InputSystem`, `ability.CastSystem`, then `player.MovementSystem`
   run in PreUpdate, registered before the physics plugin.** Movement moves each Body by the frame Input
   just applied, so a frame moves the Body in the same tick its `InputAck` is sent. Client prediction
@@ -848,7 +868,7 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   its `params` (`{"hook": "launch", "params": {"shot": "bolt"}}`). A hook reads its `Cast` and params
   and appends requests to `Out` (`Launches`, `Effects`). `cast.Run`, which the server and the predictor
   both call, runs it and hands each request to a `cast.Sink`: launches numbered within the cast, from
-  the caster, and effects as intents from it. `ability.CastHookSystem`'s sink emits them as intents with
+  the caster, and effects as intents from it. `ability.CastHookSystem`'s sink sends them as intents with
   the cast's Cause and the caster's Owner and Team; the predictor's keeps your shots and the effects on
   your Body. Hooks never write state, never import Cardinal, and never branch on a champion or another
   ability's ID.
@@ -865,8 +885,8 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   `distance` in `seconds` (whole ticks). It runs from the tick after the cast, walls stop it, and an
   effect whose kind `ends` `ends_on_cc` (a stun) ends it (the `dash` kind has `ends_on_cc`). A slow
   doesn't.
-- **Timed effects (stun, slow, pass, forced move) belong to `effect`.** A feature asks with
-  `EffectIntent{Target, Kind, Ticks, Value, VelX, VelY, Source}`; what each kind does (tags, passes,
+- **Timed effects (stun, slow, pass, forced move) belong to `effect`.** A feature sends
+  `EffectIntent{Target, Kind, Ticks, Value, VelX, VelY, Source}` to effect's queue; what each kind does (tags, passes,
   stat, stacking, ends, blocked_by) is content in `content/effect/tuning.json`, and the load fails on a name it doesn't
   know. An intent of an unknown kind is dropped with an error log. A refresh keeps what is strongest at
   every tick: a new entry is dropped only if one with its refresh key (its kind, plus its source for
@@ -903,6 +923,9 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
 - **Commands & system events:** `for cmd := range w.Commands[T]()` (`cmd.Payload`; `cmd.Player()` is
   the sender's player ID, false if a shard sent it);
   `w.EmitSystemEvent(v)`; `for e := range w.SystemEvents[T]()`.
+- **Intents (`pkg/queue`):** the owner calls `queue.Declare[T](w)` in `RegisterTypes`; any system
+  sends with `queue.Send(w, T{…})` (`queue.SendAt` for a later tick); the owner's one system takes them
+  with `queue.Drain[T](w, compare)`, once a tick.
 - **Registration is explicit.** Every component, command, event and system event must be registered
   before `StartGame` (the owning feature's `RegisterTypes`); an unregistered one panics on first use.
 - **Components, commands & system events** implement `Name() string` — unique, stable across runs, and
@@ -932,6 +955,11 @@ corner or a pillar differs by its sampling, a few cm. Every system honors this:
   replaces the proposal in [`map-system-findings.md`](docs/research/map-system-findings.md) §6-§7).
   The predictor on Unity, phones and consoles:
   [`docs/research/predictor-on-every-client.md`](docs/research/predictor-on-every-client.md).
+  How features affect each other (events and owner queues):
+  [`docs/research/event-architecture.md`](docs/research/event-architecture.md), its survey
+  [`gameplay-coupling-survey.md`](docs/research/gameplay-coupling-survey.md), the queue API
+  [`queue-api.md`](docs/research/queue-api.md), and what echo built:
+  [`owner-queues.md`](docs/research/owner-queues.md).
 - **Backlog of ideas and decisions for later:** [`docs/backlog.md`](docs/backlog.md). Read it when
   asked what to build next, and add to it when asked to save an idea.
 - World Engine source (incl. the `physics2d` plugin) lives at `../world-engine`, for reading. The build

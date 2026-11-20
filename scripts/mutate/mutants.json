@@ -13,7 +13,9 @@
   "arena": "go test ./shards/game/internal/arena",
   "motion": "go test ./shards/game/internal/player/motion",
   "boot": "go test ./shards/game/test -run TestBadContentFailsTheBoot",
-  "bake": "go test ./pkg/level/bake"
+  "bake": "go test ./pkg/level/bake",
+  "queue": "go test ./pkg/queue",
+  "order": "go test ./shards/game/test -run TestSendersRunBeforeTheirReceivers"
  },
  "mutants": [
   {
@@ -156,7 +158,7 @@
    "edits": [
     {
      "file": "shards/game/internal/ability/cast_hook_system.go",
-     "old": "{ s.w.EmitSystemEvent(effectcomp.EffectIntent(in)) }",
+     "old": "{ queue.Send(s.w, effectcomp.EffectIntent(in)) }",
      "new": "{ _, _ = in, effectcomp.EffectIntent{} }"
     }
    ]
@@ -5001,6 +5003,189 @@
      "file": "shards/game/content/embed.go",
      "old": "json.Unmarshal(raw, &v, json.RejectUnknownMembers(true))",
      "new": "json.Unmarshal(raw, &v, json.RejectUnknownMembers(true), json.MatchCaseInsensitiveNames(true))"
+    }
+   ]
+  },
+  {
+   "id": "QU-S1",
+   "breaks": "a request sent before the drain waits a tick",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\tadd(w, w.TickHeight(), reqs)\n",
+     "new": "\tadd(w, w.TickHeight()+1, reqs)\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-S2",
+   "breaks": "SendAt ignores its tick",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\tadd(w, tick, reqs)\n",
+     "new": "\tadd(w, w.TickHeight(), reqs)\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-D1",
+   "breaks": "a second drain in a tick passes",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\tif q.Drained == now+1 {\n\t\tpanic(fmt.Sprintf(\"queue: %s drained twice in tick %d; one owner system drains it\", q.Name(), now))\n\t}\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "QU-F1",
+   "breaks": "a drain leaves what it took",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\tq.Items = q.Items.Filter(func(x waiting[R]) bool { return x.Due > now })\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "QU-O1",
+   "breaks": "a drain keeps send order",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "return cmp.Or(cmp.Compare(a.Due, b.Due), compare(a.Req, b.Req))",
+     "new": "return 0"
+    },
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\t\"cmp\"\n\t\"fmt\"\n",
+     "new": "\t\"fmt\"\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-O3",
+   "breaks": "a drain ignores the tick each was due",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "return cmp.Or(cmp.Compare(a.Due, b.Due), compare(a.Req, b.Req))",
+     "new": "return compare(a.Req, b.Req)"
+    },
+    {
+     "file": "pkg/queue/queue.go",
+     "old": "\t\"cmp\"\n\t\"fmt\"\n",
+     "new": "\t\"fmt\"\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-E1",
+   "breaks": "events fire in schedule order",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "\t\treturn cmp.Or(cmp.Compare(a.Due, b.Due), s.compare(a.Event, b.Event), cmp.Compare(a.Ticket, b.Ticket))\n",
+     "new": "\t\treturn 0\n"
+    },
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "\t\"cmp\"\n\t\"slices\"\n",
+     "new": "\t\"slices\"\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-E3",
+   "breaks": "fire ignores the tick each was due",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "return cmp.Or(cmp.Compare(a.Due, b.Due), s.compare(a.Event, b.Event), cmp.Compare(a.Ticket, b.Ticket))",
+     "new": "return cmp.Or(s.compare(a.Event, b.Event), cmp.Compare(a.Ticket, b.Ticket))"
+    }
+   ]
+  },
+  {
+   "id": "QU-E4",
+   "breaks": "fire leaves what it fired",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "\td.Items = d.Items.Filter(func(x scheduled[E]) bool { return x.Due > now })\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "QU-E5",
+   "breaks": "Cancel leaves the event",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "\td.Items = d.Items.Without(i)\n",
+     "new": ""
+    }
+   ]
+  },
+  {
+   "id": "QU-E6",
+   "breaks": "a ticket is given out twice",
+   "check": "queue",
+   "edits": [
+    {
+     "file": "pkg/queue/delayed_event.go",
+     "old": "\td.Last++\n",
+     "new": "\td.Last = uint64(d.Items.Len()) + 1\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-R1",
+   "breaks": "a drain names no type",
+   "check": "order",
+   "edits": [
+    {
+     "file": "shards/game/internal/projectile/launch_system.go",
+     "old": "queue.Drain[component.LaunchIntent](w, compareLaunch)",
+     "new": "queue.Drain(w, compareLaunch)"
+    }
+   ]
+  },
+  {
+   "id": "QU-R2",
+   "breaks": "areas send damage after combat drains it",
+   "check": "order",
+   "edits": [
+    {
+     "file": "shards/game/shard/shard.go",
+     "old": "\t// Areas (Update).\n\tworld.RegisterSystem(&area.AreaSystem{Tuning: c.areas, Physics: physicsPlugin})\n\n\t// Combat (Update, after every DamageIntent and HealIntent sender).\n\tworld.RegisterSystem(&combat.DamageResolveSystem{})\n\n",
+     "new": "\t// Combat (Update, after every DamageIntent and HealIntent sender).\n\tworld.RegisterSystem(&combat.DamageResolveSystem{})\n\n\t// Areas (Update).\n\tworld.RegisterSystem(&area.AreaSystem{Tuning: c.areas, Physics: physicsPlugin})\n\n"
+    }
+   ]
+  },
+  {
+   "id": "QU-R3",
+   "breaks": "elimination reads deaths before combat emits them",
+   "check": "order",
+   "edits": [
+    {
+     "file": "shards/game/shard/shard.go",
+     "old": "\t// Combat (Update, after every DamageIntent and HealIntent sender).\n\tworld.RegisterSystem(&combat.DamageResolveSystem{})\n\n\t// Elimination (Update, after damage resolves, before effects).\n\tworld.RegisterSystem(&echo.EliminationSystem{Tuning: c.echoes})\n\n",
+     "new": "\t// Elimination (Update, after damage resolves, before effects).\n\tworld.RegisterSystem(&echo.EliminationSystem{Tuning: c.echoes})\n\n\t// Combat (Update, after every DamageIntent and HealIntent sender).\n\tworld.RegisterSystem(&combat.DamageResolveSystem{})\n\n"
     }
    ]
   }

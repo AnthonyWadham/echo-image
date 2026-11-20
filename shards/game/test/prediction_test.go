@@ -431,7 +431,7 @@ func TestDeadEchoIsNotPredicted(t *testing.T) {
 		t.Fatal(err)
 	}
 	mine := echoOf(t, w, "alice", yourBody(t, bodiesFor(t, w, "alice")))
-	emit(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
+	send(fx, combatcomp.DamageIntent{Target: cardinal.EntityID(mine.EntityID), Amount: mine.MaxHP})
 	w.Tick() // it dies, and is sent once more
 	p := predict.New(rules)
 	p.Reset(predictFrom(t, bodiesFor(t, w, "alice")))
