@@ -655,6 +655,12 @@ func TestSendersRunBeforeTheirReceivers(t *testing.T) {
 // it as an intent. A queue's declaration is a use with no system.
 type use struct{ system, verb, typ string }
 
+// funcIn is a top-level func's signature and where it is declared.
+type funcIn struct {
+	path, pkgPath string
+	typ           *ast.FuncType
+}
+
 // sourceUses reads the Go files under shards/game/internal and pkg, but tests and pkg/queue itself, for
 // each type a file emits, reads, sends, drains or declares a queue for. Every use but a declaration
 // sits in the file of the one system of run that does it, and names its type.
@@ -667,6 +673,7 @@ func sourceUses(t *testing.T, run map[string]int) []use {
 	}
 	fset, systemIn := token.NewFileSet(), map[string]string{} // the file each system of run is in
 	typeNames := map[string]bool{}                            // every type the scan declares, by path and name
+	funcs := map[string]funcIn{}                              // every top-level func, by path and name
 	var files []file
 	for _, dir := range []string{"shards/game/internal", "pkg"} {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
@@ -686,6 +693,9 @@ func sourceUses(t *testing.T, run map[string]int) []use {
 			pkgPath := "echo_image/" + filepath.ToSlash(rel)
 			files = append(files, file{p, pkgPath, f})
 			for _, decl := range f.Decls {
+				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
+					funcs[pkgPath+"."+fn.Name.Name] = funcIn{p, pkgPath, fn.Type}
+				}
 				if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.TYPE {
 					for _, spec := range g.Specs {
 						typ := spec.(*ast.TypeSpec).Name.Name
@@ -710,22 +720,45 @@ func sourceUses(t *testing.T, run map[string]int) []use {
 		}
 		systemOf[p] = name
 	}
-	var uses []use
+	importsOf := map[string]map[string]string{} // each file's import paths by local name
 	for _, f := range files {
-		imported := map[string]string{} // path by local name
+		imported := map[string]string{}
 		for _, spec := range f.ast.Imports {
 			p, _ := strconv.Unquote(spec.Path.Value)
 			if imported[path.Base(p)] = p; spec.Name != nil {
 				imported[spec.Name.Name] = p
 			}
 		}
-		typeOf := func(e ast.Expr) string {
+		importsOf[f.path] = imported
+	}
+	typeIn := func(filePath, pkgPath string, e ast.Expr) string { // a type expression's path and name
+		switch e := e.(type) {
+		case *ast.Ident:
+			return pkgPath + "." + e.Name
+		case *ast.SelectorExpr:
+			if x, ok := e.X.(*ast.Ident); ok && importsOf[filePath][x.Name] != "" {
+				return importsOf[filePath][x.Name] + "." + e.Sel.Name
+			}
+		}
+		return ""
+	}
+	firstParam := func(filePath, pkgPath string, ft *ast.FuncType) string {
+		if ft.Params == nil || len(ft.Params.List) == 0 {
+			return ""
+		}
+		return typeIn(filePath, pkgPath, ft.Params.List[0].Type)
+	}
+	var uses []use
+	for _, f := range files {
+		imported := importsOf[f.path]
+		typeOf := func(e ast.Expr) string { return typeIn(f.path, f.pkgPath, e) }
+		compareType := func(e ast.Expr) string { // R of a Drain's compare func(a, b R) int, as Go infers it
 			switch e := e.(type) {
+			case *ast.FuncLit:
+				return firstParam(f.path, f.pkgPath, e.Type)
 			case *ast.Ident:
-				return f.pkgPath + "." + e.Name
-			case *ast.SelectorExpr:
-				if x, ok := e.X.(*ast.Ident); ok && imported[x.Name] != "" {
-					return imported[x.Name] + "." + e.Sel.Name
+				if fn, ok := funcs[f.pkgPath+"."+e.Name]; ok {
+					return firstParam(fn.path, fn.pkgPath, fn.typ)
 				}
 			}
 			return ""
@@ -766,7 +799,9 @@ func sourceUses(t *testing.T, run map[string]int) []use {
 					typ = valueType(call.Args[len(call.Args)-1])
 				}
 			case fromQueue && sel.Sel.Name == "Drain":
-				verb = "drains"
+				if verb = "drains"; typ == "" && len(call.Args) == 2 {
+					typ = compareType(call.Args[1])
+				}
 			case fromQueue && sel.Sel.Name == "Declare":
 				verb = "declares"
 			default:

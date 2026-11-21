@@ -33,7 +33,7 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 		heal float64
 	}
 	changes := map[cardinal.EntityID]change{}
-	for _, in := range queue.Drain[component.DamageIntent](w, compareDamage) {
+	for _, in := range queue.Drain(w, compareDamage) {
 		c := changes[in.Target]
 		c.hits = append(c.hits, in)
 		changes[in.Target] = c
@@ -46,7 +46,7 @@ func (s *DamageResolveSystem) Run(w *cardinal.World) {
 			Float64("amount", in.Amount).
 			Msg("damage applied")
 	}
-	for _, in := range queue.Drain[component.HealIntent](w, compareHeal) {
+	for _, in := range queue.Drain(w, compareHeal) {
 		c := changes[in.Target]
 		c.heal += in.Amount
 		changes[in.Target] = c

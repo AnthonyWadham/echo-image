@@ -5155,13 +5155,13 @@
   },
   {
    "id": "QU-R1",
-   "breaks": "a drain names no type",
+   "breaks": "projectile drains launches before the ability hooks send them",
    "check": "order",
    "edits": [
     {
-     "file": "shards/game/internal/projectile/launch_system.go",
-     "old": "queue.Drain[component.LaunchIntent](w, compareLaunch)",
-     "new": "queue.Drain(w, compareLaunch)"
+     "file": "shards/game/shard/shard.go",
+     "old": "\t// Ability hooks (Update, before every receiver of their intents).\n\tworld.RegisterSystem(&ability.CastHookSystem{Tuning: c.abilities})\n\n\t// Projectiles (Update): launch, then fly, so a shot moves the tick it launches.\n\tworld.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})\n",
+     "new": "\t// Projectiles (Update): launch, then fly, so a shot moves the tick it launches.\n\tworld.RegisterSystem(&projectile.LaunchSystem{Tuning: c.shots})\n\n\t// Ability hooks (Update, before every receiver of their intents).\n\tworld.RegisterSystem(&ability.CastHookSystem{Tuning: c.abilities})\n"
     }
    ]
   },

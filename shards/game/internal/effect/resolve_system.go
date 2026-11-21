@@ -28,8 +28,9 @@ func (s *ResolveSystem) Run(w *cardinal.World) {
 	tuning := s.Tuning
 	next := w.TickHeight() + 1
 	holders := w.Contains[holderRow]()
-	byRules := func(a, b component.EffectIntent) int { return tuning.Compare(status.Intent(a), status.Intent(b)) }
-	intents := queue.Drain[component.EffectIntent](w, byRules)
+	intents := queue.Drain(w, func(a, b component.EffectIntent) int {
+		return tuning.Compare(status.Intent(a), status.Intent(b))
+	})
 	for i := 0; i < len(intents); {
 		j := i + 1
 		for j < len(intents) && intents[j].Target == intents[i].Target {
