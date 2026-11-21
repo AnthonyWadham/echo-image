@@ -87,7 +87,7 @@ agents: read the file before changing that system.
 | Repo layout, conventions, file layout | `.claude/rules/layout.md` | |
 | Tick rate | `.claude/rules/tick-rate.md` | `internal/physics/timestep` |
 | X meets Y rules (`interact`) | `.claude/rules/interact-rules.md` | |
-| Owner queues, delayed events | `.claude/rules/owner-queues.md` | `pkg/queue/doc.go`, `docs/research/owner-queues.md` |
+| Owner queues, delayed events | `.claude/rules/owner-queues.md` | `pkg/queue/doc.go`, `queuetest.CheckOrder`, `docs/research/owner-queues.md` |
 | Collision, shots, damage, teams, lag compensation | `.claude/rules/collision.md` | `docs/research/favor-the-shooter.md` |
 | Movement and walls | `.claude/rules/movement.md` | |
 | System registration order | `.claude/rules/registration-order.md` | `shards/game/shard/shard.go` |

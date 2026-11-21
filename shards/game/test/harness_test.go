@@ -5,6 +5,7 @@ import (
 	"echo_image/pkg/level"
 	"echo_image/pkg/level/bake"
 	"echo_image/pkg/queue"
+	"echo_image/pkg/queue/queuetest"
 	"echo_image/shards/game/content"
 	"echo_image/shards/game/internal/ability"
 	"echo_image/shards/game/internal/ability/cast"
@@ -23,17 +24,11 @@ import (
 	"echo_image/shards/game/shard"
 	"encoding/json"
 	"flag"
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"io/fs"
 	"maps"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -606,220 +601,10 @@ func TestReadersRunInPostUpdate(t *testing.T) {
 	}
 }
 
-// Each system event's emitters run before its readers, which miss an event emitted after them. Each
-// intent's senders run before the one system that drains its queue, so it lands the tick it's sent,
-// and each declared queue has that one system. Cardinal can't check this from declarations yet, so
-// this test reads each system's own file for what it emits, reads, sends and drains, and checks that
-// against the order a tick ran.
+// Each intent's senders run before the one system that drains its queue, and each system event's
+// emitters before its readers, as the game's source and one tick show.
 func TestSendersRunBeforeTheirReceivers(t *testing.T) {
-	run := map[string]int{}
-	for i, s := range systemsRun(t) {
-		run[s.name] = i
-	}
-	by, declared := map[string]map[string][]string{}, map[string]bool{}
-	for _, u := range sourceUses(t, run) {
-		if u.verb == "declares" {
-			declared[u.typ] = true
-			continue
-		}
-		if by[u.typ] == nil {
-			by[u.typ] = map[string][]string{}
-		}
-		by[u.typ][u.verb] = append(by[u.typ][u.verb], u.system)
-	}
-	if len(declared) == 0 || len(by) == 0 {
-		t.Fatalf("found %d queues and %d types used, want some: the scan missed the source", len(declared), len(by))
-	}
-	for typ := range declared {
-		if drains := by[typ]["drains"]; len(drains) != 1 {
-			t.Errorf("queue %s is drained by %v, want one system", typ, drains)
-		}
-	}
-	for typ, verbs := range by {
-		if len(verbs["sends"]) > 0 && !declared[typ] {
-			t.Errorf("%v send %s, which no feature declares a queue for", verbs["sends"], typ)
-		}
-		for _, pair := range [][2]string{{"emits", "reads"}, {"sends", "drains"}} {
-			for _, from := range verbs[pair[0]] {
-				for _, to := range verbs[pair[1]] {
-					if run[from] >= run[to] {
-						t.Errorf("%s %s %s, but doesn't run before %s, which %s it", from, pair[0], typ, to, pair[1])
-					}
-				}
-			}
-		}
-	}
-}
-
-// use is what a system's file does with a type: emits or reads it as a system event, or sends or drains
-// it as an intent. A queue's declaration is a use with no system.
-type use struct{ system, verb, typ string }
-
-// funcIn is a top-level func's signature and where it is declared.
-type funcIn struct {
-	path, pkgPath string
-	typ           *ast.FuncType
-}
-
-// sourceUses reads the Go files under shards/game/internal and pkg, but tests and pkg/queue itself, for
-// each type a file emits, reads, sends, drains or declares a queue for. Every use but a declaration
-// sits in the file of the one system of run that does it, and names its type.
-func sourceUses(t *testing.T, run map[string]int) []use {
-	t.Helper()
-	const root, queuePath = "../../..", "echo_image/pkg/queue"
-	type file struct {
-		path, pkgPath string
-		ast           *ast.File
-	}
-	fset, systemIn := token.NewFileSet(), map[string]string{} // the file each system of run is in
-	typeNames := map[string]bool{}                            // every type the scan declares, by path and name
-	funcs := map[string]funcIn{}                              // every top-level func, by path and name
-	var files []file
-	for _, dir := range []string{"shards/game/internal", "pkg"} {
-		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, d fs.DirEntry, err error) error {
-			switch {
-			case err != nil:
-				return err
-			case d.IsDir() && p == filepath.Join(root, "pkg", "queue"):
-				return filepath.SkipDir
-			case d.IsDir() || filepath.Ext(p) != ".go" || strings.HasSuffix(p, "_test.go"):
-				return nil
-			}
-			f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)
-			if err != nil {
-				return err
-			}
-			rel, err := filepath.Rel(root, filepath.Dir(p))
-			pkgPath := "echo_image/" + filepath.ToSlash(rel)
-			files = append(files, file{p, pkgPath, f})
-			for _, decl := range f.Decls {
-				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil {
-					funcs[pkgPath+"."+fn.Name.Name] = funcIn{p, pkgPath, fn.Type}
-				}
-				if g, ok := decl.(*ast.GenDecl); ok && g.Tok == token.TYPE {
-					for _, spec := range g.Specs {
-						typ := spec.(*ast.TypeSpec).Name.Name
-						typeNames[pkgPath+"."+typ] = true
-						name := f.Name.Name + "." + typ
-						if _, ok := run[name]; ok {
-							systemIn[name] = p
-						}
-					}
-				}
-			}
-			return err
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	systemOf := map[string]string{} // the system of run in each file
-	for name, p := range systemIn {
-		if other, ok := systemOf[p]; ok {
-			t.Fatalf("%s holds two systems, %s and %s: give each its own file", p, other, name)
-		}
-		systemOf[p] = name
-	}
-	importsOf := map[string]map[string]string{} // each file's import paths by local name
-	for _, f := range files {
-		imported := map[string]string{}
-		for _, spec := range f.ast.Imports {
-			p, _ := strconv.Unquote(spec.Path.Value)
-			if imported[path.Base(p)] = p; spec.Name != nil {
-				imported[spec.Name.Name] = p
-			}
-		}
-		importsOf[f.path] = imported
-	}
-	typeIn := func(filePath, pkgPath string, e ast.Expr) string { // a type expression's path and name
-		switch e := e.(type) {
-		case *ast.Ident:
-			return pkgPath + "." + e.Name
-		case *ast.SelectorExpr:
-			if x, ok := e.X.(*ast.Ident); ok && importsOf[filePath][x.Name] != "" {
-				return importsOf[filePath][x.Name] + "." + e.Sel.Name
-			}
-		}
-		return ""
-	}
-	firstParam := func(filePath, pkgPath string, ft *ast.FuncType) string {
-		if ft.Params == nil || len(ft.Params.List) == 0 {
-			return ""
-		}
-		return typeIn(filePath, pkgPath, ft.Params.List[0].Type)
-	}
-	var uses []use
-	for _, f := range files {
-		imported := importsOf[f.path]
-		typeOf := func(e ast.Expr) string { return typeIn(f.path, f.pkgPath, e) }
-		compareType := func(e ast.Expr) string { // R of a Drain's compare func(a, b R) int, as Go infers it
-			switch e := e.(type) {
-			case *ast.FuncLit:
-				return firstParam(f.path, f.pkgPath, e.Type)
-			case *ast.Ident:
-				if fn, ok := funcs[f.pkgPath+"."+e.Name]; ok {
-					return firstParam(fn.path, fn.pkgPath, fn.typ)
-				}
-			}
-			return ""
-		}
-		valueType := func(e ast.Expr) string { // the type of a literal T{…} or a conversion T(x), or ""
-			switch e := e.(type) {
-			case *ast.CompositeLit:
-				return typeOf(e.Type)
-			case *ast.CallExpr:
-				if t := typeOf(e.Fun); len(e.Args) == 1 && typeNames[t] {
-					return t
-				}
-			}
-			return ""
-		}
-		ast.Inspect(f.ast, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			fun, typ := call.Fun, ""
-			if ix, ok := fun.(*ast.IndexExpr); ok {
-				fun, typ = ix.X, typeOf(ix.Index)
-			}
-			sel, ok := fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			x, _ := sel.X.(*ast.Ident)
-			fromQueue, verb := x != nil && imported[x.Name] == queuePath, ""
-			switch {
-			case sel.Sel.Name == "EmitSystemEvent" && len(call.Args) == 1:
-				verb, typ = "emits", valueType(call.Args[0])
-			case sel.Sel.Name == "SystemEvents":
-				verb = "reads"
-			case fromQueue && (sel.Sel.Name == "Send" || sel.Sel.Name == "SendAt"):
-				if verb = "sends"; typ == "" {
-					typ = valueType(call.Args[len(call.Args)-1])
-				}
-			case fromQueue && sel.Sel.Name == "Drain":
-				if verb = "drains"; typ == "" && len(call.Args) == 2 {
-					typ = compareType(call.Args[1])
-				}
-			case fromQueue && sel.Sel.Name == "Declare":
-				verb = "declares"
-			default:
-				return true
-			}
-			at, system := fset.Position(call.Pos()), systemOf[f.path]
-			switch {
-			case typ == "":
-				t.Errorf("%s: can't tell what this %s: name the type", at, verb)
-			case verb == "declares" || system != "":
-				uses = append(uses, use{system, verb, typ})
-			default:
-				t.Errorf("%s %s %s outside the file of a system a tick runs", at, verb, typ)
-			}
-			return true
-		})
-	}
-	return uses
+	queuetest.CheckOrder(t, shard.Register, "../internal", "../../../pkg")
 }
 
 // spawnOf is where the dev roster's Body i starts on the shipped default map, and its radius, known

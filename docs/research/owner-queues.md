@@ -154,5 +154,6 @@ rampage? Short answer: lint for the mechanical rules, a skill for the judgment c
 - Drains: `combat/damage_system.go`, `effect/resolve_system.go`, `projectile/launch_system.go`.
 - Senders: `projectile/flight_system.go`, `area/area_system.go`, `ability/cast_hook_system.go`,
   `echo/elimination_system.go`.
-- Order test: `shards/game/test/harness_test.go`. Mutants: `QU-*` in `scripts/mutate/mutants.json`.
+- Order test: `queuetest.CheckOrder` in `pkg/queue/queuetest`, called from
+  `shards/game/test/harness_test.go`. Mutants: `QU-*` in `scripts/mutate/mutants.json`.
 - `sim.go` hashes `pkg/queue` into `SimVersion`.

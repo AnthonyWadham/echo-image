@@ -17,8 +17,8 @@ paths:
   `DamageIntent` and `HealIntent` sender (`projectile.FlightSystem`, `area.AreaSystem`) before
   `combat.DamageResolveSystem`; and every `EffectIntent` sender (`ability.CastHookSystem`,
   `echo.EliminationSystem`) before `effect.ResolveSystem`.
-- **`TestSendersRunBeforeTheirReceivers` checks both orders,** and that each queue has one drain. It
-  reads each system's own file, so write each send and emit as a literal (`T{…}`) or a conversion
+- **`TestSendersRunBeforeTheirReceivers` checks both orders,** and that each queue has one drain, with
+  `queuetest.CheckOrder`. It reads each system's own file, so write each send and emit as a literal (`T{…}`) or a conversion
   (`T(x)`), give each drain a compare that is a named func or a literal (its first parameter is the
   type), and keep one system per file.
 - **Every receiver sorts what it gets by a full key before it acts,** because send and emit order can

@@ -1,6 +1,9 @@
 // Package queue lets one feature ask another to change state the other owns, and fire an event on a
 // later tick.
 //
+// Not for broadcasts with many readers: use a system event. Check a game's wiring with
+// queuetest.CheckOrder.
+//
 // # Owner queues
 //
 // Each kind of request has one owner: the feature whose state it changes.
@@ -26,7 +29,7 @@
 //     waits past its tick names its entity with a version the game keeps, and whoever acts on it
 //     checks that version.
 //   - A startup check that each sender runs before its owner drains, and each emitter before the
-//     readers of its event. A game can check this from its source.
+//     readers of its event. A game's test checks this from its source with queuetest.CheckOrder.
 //   - A phase before PreUpdate. Delayed events fire from the PreUpdate system that DeclareDelayed
 //     registers.
 //
@@ -34,4 +37,5 @@
 //
 //   - queue.go: Request, Declare, Send, SendAt and Drain.
 //   - delayed_event.go: Event, DeclareDelayed, Schedule, Cancel and CancelFunc.
+//   - queuetest: CheckOrder, the order check for a game's tests.
 package queue
